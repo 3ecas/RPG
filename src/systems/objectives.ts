@@ -1,6 +1,8 @@
 /**
  * Objective evaluation shared by quests and missions. Counted kinds (kill,
  * craft, gather, talk, trade) advance from events; live kinds read the state.
+ * Gather and craft objectives also look in the bag, so what you already hold
+ * counts and nothing has to be redone after accepting.
  */
 import { EQUIP_SLOTS } from '@/types/ids';
 import type { Objective } from '@/types/content';
@@ -60,8 +62,13 @@ export function view(state: GameState, ctx: Ctx, o: Objective, counted: number):
   const make = (text: string, current: number) => ({ text, current: Math.min(current, t), target: t, done: current >= t });
   switch (o.type) {
     case 'kill': return make(`Defeat ${o.count}× ${ctx.content.monster(o.monsterId).name}`, counted);
-    case 'craft': return make(`Craft ${o.count}× ${ctx.content.recipeName(ctx.content.recipe(o.recipeId))}`, counted);
-    case 'gather': return make(`Gather ${o.count}× ${ctx.content.item(o.itemId).name}`, counted);
+    case 'craft': {
+      const recipe = ctx.content.recipe(o.recipeId);
+      const output = recipe.outputs[0];
+      const held = output ? Math.floor(inventory.count(state, output.itemId) / output.qty) : 0;
+      return make(`Craft or hold ${o.count}× ${ctx.content.recipeName(recipe)}`, Math.max(counted, held));
+    }
+    case 'gather': return make(`Gather or hold ${o.count}× ${ctx.content.item(o.itemId).name}`, Math.max(counted, inventory.count(state, o.itemId)));
     case 'talk': return make(`Talk to ${ctx.content.npc(o.npcId).name}`, Math.max(counted, state.world.talkedTo.includes(o.npcId) ? 1 : 0));
     case 'trade': return make(`${o.kind === 'market' ? 'Trade on the market' : o.kind === 'shop' ? 'Buy or sell at shops' : 'Barter with a trader'} ${o.count}×`, counted);
     case 'collect': return make(`Bring ${o.count}× ${ctx.content.item(o.itemId).name}`, inventory.count(state, o.itemId));

@@ -20,6 +20,24 @@ describe('missions', () => {
     expect(game.claimMission('first_logs')).toEqual({ ok: false, reason: 'Already claimed.' });
   });
 
+  it('what is already in the bag counts for gather and craft objectives', () => {
+    const game = newGame();
+    give(game, 'oak_log', 10);
+    expect(game.missionObjectives('first_logs')[0]).toMatchObject({ current: 10, target: 10, done: true });
+    expect(game.claimMission('first_logs').ok).toBe(true);
+    expect(inventory.count(game.state, 'oak_log')).toBe(10); // gathering objectives do not take the items
+
+    give(game, 'shrimp', 5);
+    expect(game.missionObjectives('first_meal')[0]).toMatchObject({ current: 5, done: true });
+    expect(game.claimMission('first_meal').ok).toBe(true);
+
+    // Progress already tallied is never lost, even after selling the goods.
+    game.startGathering('shrimp_spot');
+    tickFor(game, 9000);
+    game.state.inventory = game.state.inventory.filter((s) => s.itemId !== 'raw_shrimp');
+    expect(game.missionObjectives('first_catch')[0]?.current).toBe(3);
+  });
+
   it('live objectives (talk, equip) and points rewards', () => {
     const game = newGame();
     expect(game.claimMission('meet_the_elder')).toEqual({ ok: false, reason: 'Not finished yet.' });

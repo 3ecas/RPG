@@ -441,7 +441,9 @@ Design notes per feature:
   any tier, unlock a node, visit a zone, equip a kind of gear) and rewards
   (gold, xp, items, points). `systems/objectives.ts` evaluates objectives for
   both quests and missions: counted kinds advance from events, live kinds
-  read the state. A chapter opens when the previous one is fully claimed.
+  read the state, and gather / craft objectives also count what the bag
+  already holds, so nothing has to be redone after accepting. A chapter opens
+  when the previous one is fully claimed.
 - **Zone specialization.** Every zone lists its stations, shops, traders,
   people and whether it has the market. The village is social and farming,
   Copper Hills the first forge, Kingsport the trade city with the only
