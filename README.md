@@ -9,10 +9,18 @@ simulates up to 12 hours of progress while the tab is closed.
 
 ```bash
 npm install
-npm run dev       # http://localhost:5173
-npm run build     # static site in dist/ – host it anywhere
+npm run dev       # http://localhost:5173, reloads as you edit
+npm run build     # produces ONE self-contained file: dist/index.html
 npm run check     # typecheck + lint (enforces layer boundaries) + tests
 ```
+
+**Just want to play?** Run `npm run build` once and double-click
+`dist/index.html`. Everything (script, styles) is inlined into that single
+file, so it works from disk, from a USB stick, or from any static host.
+
+Opening the source `index.html` directly does *not* work: browsers cannot run
+TypeScript, and the dev server is what compiles it. That page now says so
+instead of staying blank.
 
 ## What is in the first slice
 
