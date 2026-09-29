@@ -1,5 +1,6 @@
 import { fmtNum } from '@/util/format';
 import { itemName } from '../components/items';
+import { lockNotice } from '../components/lock';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
 
@@ -13,16 +14,15 @@ function trend(price: number, base: number): { label: string; cls: string } {
 export const marketPanel: Panel = {
   id: 'market',
   title: 'Market',
-  group: 'World',
+  lock: ({ game }) => (game.hasFeature('market') ? null : 'Unlock "Market Access" in the Progression tree.'),
   render({ game }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const open = game.marketOpen();
-    if (!open.ok) return html`<h2>Market</h2><p class="muted">${open.reason} The village has one.</p>`;
+    if (!open.ok) return html`<div class="panel-head"><h2>Market</h2></div>${game.hasFeature('market') ? html`<p class="muted">${open.reason} The village has one.</p>` : lockNotice(open.reason)}`;
     const gold = game.state.player.gold;
     const rows = game.marketView();
     return html`
-      <h2>Market <span class="muted">in ${zone.name} · ${fmtNum(gold)} gold</span></h2>
-      <p class="muted small">Prices move with what you trade: buying pushes a price up, selling pushes it down, and it drifts back toward the base value over time. Dumping a big stack at once pays less per unit.</p>
+      <div class="panel-head"><h2>Market</h2><span class="muted small">in ${zone.name} · ${fmtNum(gold)} gold · your trades move prices; they drift back over time</span></div>
       <table class="table table-market">
         <tr class="head"><th>Item</th><th class="num">Price</th><th>Trend</th><th class="num">You have</th><th class="num">Buy at</th><th></th><th class="num">Sell at</th><th></th></tr>
         ${rows.map((row) => {

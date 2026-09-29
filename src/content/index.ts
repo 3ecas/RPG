@@ -12,6 +12,7 @@ import { ZONES } from './zones';
 import { SHOPS } from './shops';
 import { TRADERS } from './traders';
 import { MARKET_ITEMS } from './market';
+import { PROGRESSION } from './progression';
 
 export const CONTENT = {
   skills: SKILLS,
@@ -26,4 +27,5 @@ export const CONTENT = {
   shops: SHOPS,
   traders: TRADERS,
   market: MARKET_ITEMS,
+  progression: PROGRESSION,
 } satisfies ContentTables;

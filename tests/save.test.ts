@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '@/game';
 import { SAVE_VERSION } from '@/core/migrations';
-import { give, newGame, NOW, registry, tickFor } from './helpers';
+import { give, newGame, NOW, registry, tickFor, unlock } from './helpers';
 
 describe('save / load', () => {
   it('round-trips a state exactly', () => {
@@ -49,6 +49,7 @@ describe('save / load', () => {
 
   it('round-trips economy state and upgrades a version 1 save', () => {
     const game = newGame(11);
+    unlock(game, 'market_access');
     game.state.player.gold = 500;
     game.buy('smithy', 'bronze_bar', 3);
     game.marketSell('shrimp', 5);
@@ -67,6 +68,7 @@ describe('save / load', () => {
     expect(upgraded.shopStock('smithy').find((r) => r.itemId === 'bronze_bar')?.qty).toBe(10); // fresh shops are full
     expect(upgraded.traderOffers('peddler_vex')).toHaveLength(3);
     expect(upgraded.marketView().every((r) => r.price === r.base)).toBe(true);
+    expect(upgraded.state.progression.unlocked).toContain('gathering_basics'); // roots are restored on load
   });
 
   it('upgrades a version 2 save: old skills carry over and renamed items survive', () => {

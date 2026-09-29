@@ -5,10 +5,12 @@ import type { MonsterId } from '@/types/ids';
 import type { Activity, GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
 import * as activity from './activity';
+import * as consumables from './consumables';
 import type { Ctx } from './ctx';
 import { combatXpForDamage, defenceXpForAttack, hitChance, maxHit } from './formulas';
 import * as inventory from './inventory';
 import { log } from './log';
+import * as progression from './progression';
 import * as skills from './skills';
 import { armorPiecesWorn, derive, type DerivedStats, weaponSkill } from './stats';
 
@@ -35,6 +37,7 @@ function spawn(state: GameState, monster: Keyed<MonsterDef, MonsterId>, kills: n
 
 export function tick(state: GameState, ctx: Ctx, a: CombatActivity, dtMs: number): void {
   const stats = derive(state, ctx);
+  const autoEat = progression.hasFeature(state, ctx, 'auto_eat');
   let remaining = dtMs;
   // Sub-step so that attacks from both sides interleave correctly even for large dt (offline catch-up).
   while (remaining > 0 && state.activity === a) {
@@ -46,6 +49,7 @@ export function tick(state: GameState, ctx: Ctx, a: CombatActivity, dtMs: number
       continue;
     }
     const monster = ctx.content.monster(combat.monsterId);
+    if (autoEat) consumables.autoEat(state, ctx, stats.maxHp);
     combat.playerTimerMs += step;
     combat.monsterTimerMs += step;
 
@@ -97,7 +101,7 @@ function monsterAttack(state: GameState, ctx: Ctx, stats: DerivedStats, monster:
 }
 
 function onMonsterDeath(state: GameState, ctx: Ctx, monster: Keyed<MonsterDef, MonsterId>, kills: number): void {
-  const gold = ctx.rng.int(monster.gold[0], monster.gold[1]);
+  const gold = Math.round(ctx.rng.int(monster.gold[0], monster.gold[1]) * (1 + progression.perk(state, ctx, 'gold_find')));
   const drops: string[] = [];
   if (gold > 0) {
     state.player.gold += gold;

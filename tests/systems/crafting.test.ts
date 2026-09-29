@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
-import { give, newGame, setTier, tickFor } from '../helpers';
+import { give, newGame, setTier, tickFor, unlock } from '../helpers';
 
 describe('crafting', () => {
   it('needs the materials and the tier', () => {
     const game = newGame();
+    unlock(game, 'furnace');
     expect(game.startCrafting('smelt_bronze_bar', 1)).toEqual({ ok: false, reason: 'Missing: 1× Copper Ore, 1× Tin Ore.' });
     give(game, 'iron_ore', 1);
     expect(game.startCrafting('smelt_iron_bar', 1)).toEqual({ ok: false, reason: 'Requires Blacksmithing tier 2.' });
@@ -14,6 +15,7 @@ describe('crafting', () => {
 
   it('consumes inputs, produces outputs, grants xp, and stops when done or out of materials', () => {
     const game = newGame();
+    unlock(game, 'furnace');
     give(game, 'copper_ore', 3);
     give(game, 'tin_ore', 5);
     const crafted: string[] = [];
@@ -32,6 +34,7 @@ describe('crafting', () => {
 
   it('runs a full chain: ore to bar to dagger', () => {
     const game = newGame();
+    unlock(game, 'furnace', 'anvil');
     give(game, 'copper_ore', 1);
     give(game, 'tin_ore', 1);
     game.startCrafting('smelt_bronze_bar', 1);

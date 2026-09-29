@@ -19,6 +19,8 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
 
   switch (action) {
     case 'panel': app.setPanel(id); return;
+    case 'tab': app.setTab(id); return;
+    case 'unlock': if (content.hasProgressNode(id)) result = game.unlockNode(id); break;
     case 'log-filter': if ((LOG_FILTERS as readonly string[]).includes(id)) app.setLogFilter(id as LogKind | 'all'); return;
     case 'dismiss-offline': app.offline = null; app.markDirty(); return;
     case 'stop': result = game.stopActivity(); break;

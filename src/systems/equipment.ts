@@ -3,6 +3,7 @@ import type { GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
+import * as progression from './progression';
 import * as skills from './skills';
 import { clampVitals } from './stats';
 
@@ -11,6 +12,7 @@ export function canEquip(state: GameState, ctx: Ctx, itemId: ItemId): Result {
   if (!item.equip) return fail(`${item.name} cannot be equipped.`);
   if (inventory.count(state, itemId) < 1) return fail(`You don't have a ${item.name}.`);
   for (const req of item.equip.requirements ?? []) {
+    if (!progression.hasSkill(state, ctx, req.skill)) return fail(progression.lockedSkillReason(ctx, req.skill));
     if (skills.tier(state, req.skill) < req.tier) return fail(`Requires ${ctx.content.skill(req.skill).name} tier ${req.tier}.`);
   }
   return ok();

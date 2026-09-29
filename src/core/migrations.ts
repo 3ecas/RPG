@@ -1,5 +1,5 @@
 /** Save format versioning. migrations[n] upgrades a version-n save to n+1. Each gets a test with a fixture. */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 type RawSave = Record<string, unknown>;
 type Migration = (raw: RawSave) => RawSave;
@@ -31,6 +31,12 @@ export const migrations: Record<number, Migration> = {
     for (const stack of inventory ?? []) if (stack.itemId && itemRenames[stack.itemId]) stack.itemId = itemRenames[stack.itemId];
     const equipment = player?.equipment as Record<string, string | null> | undefined;
     for (const [slot, itemId] of Object.entries(equipment ?? {})) if (itemId && itemRenames[itemId]) equipment![slot] = itemRenames[itemId]!;
+    return raw;
+  },
+  // 3 → 4: the progression tree. Points are reconciled from tier-ups and quests
+  // at boot, so an old save only needs the empty section.
+  3: (raw) => {
+    if (!raw.progression) raw.progression = { granted: 0, unlocked: [] };
     return raw;
   },
 };

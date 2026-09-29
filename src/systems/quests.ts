@@ -82,7 +82,7 @@ export function canTurnIn(state: GameState, ctx: Ctx, questId: QuestId): Result 
   if (!isComplete(state, ctx, questId)) return fail('The quest is not finished yet.');
   if (!npcs.isHere(state, ctx, quest.giverId)) return fail(`Return to ${ctx.content.npc(quest.giverId).name} to turn this in.`);
   const rewardItems = quest.rewards.flatMap((r) => (r.type === 'item' ? [{ itemId: r.itemId, qty: r.qty }] : []));
-  if (!inventory.canAddAll(state, rewardItems)) return fail('Make room in your inventory for the reward first.');
+  if (!inventory.canAddAll(state, ctx, rewardItems)) return fail('Make room in your inventory for the reward first.');
   return ok();
 }
 
@@ -99,6 +99,7 @@ export function turnIn(state: GameState, ctx: Ctx, questId: QuestId): Result {
       case 'gold': state.player.gold += r.amount; granted.push(`${r.amount} gold`); break;
       case 'item': inventory.add(state, ctx, r.itemId, r.qty, 'quest'); granted.push(`${r.qty}× ${ctx.content.item(r.itemId).name}`); break;
       case 'xp': skills.addXp(state, ctx, r.skill, r.amount); granted.push(`${r.amount} ${ctx.content.skill(r.skill).name} xp`); break;
+      case 'points': granted.push(`${r.amount} progression point${r.amount === 1 ? '' : 's'}`); break;
     }
   }
   delete state.quests.active[questId];

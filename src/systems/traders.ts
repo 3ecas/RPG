@@ -7,6 +7,7 @@ import { fail, ok, type Result } from '@/types/result';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
 import { log } from './log';
+import * as progression from './progression';
 
 export function here(state: GameState, ctx: Ctx): Keyed<TraderDef, TraderId>[] {
   return ctx.content.zone(state.player.zoneId).traders.map((id) => ctx.content.trader(id));
@@ -68,6 +69,7 @@ export function offers(state: GameState, ctx: Ctx, traderId: TraderId): OfferVie
 
 export function canBarter(state: GameState, ctx: Ctx, traderId: TraderId, slot: number): Result {
   const def = ctx.content.trader(traderId);
+  if (!progression.hasFeature(state, ctx, 'traders')) return fail('Unlock "Barter" in the Progression tree to trade with wanderers.');
   if (!isHere(state, ctx, traderId)) return fail(`${def.name} is not here.`);
   const current = state.world.traders[traderId];
   const offerIndex = current?.offers[slot];
@@ -76,7 +78,7 @@ export function canBarter(state: GameState, ctx: Ctx, traderId: TraderId, slot: 
   if ((current.usesLeft[slot] ?? 0) < 1) return fail('Used up until the offers rotate.');
   const missing = inventory.missing(state, offer.give);
   if (missing.length > 0) return fail(`Missing: ${missing.map((m) => `${m.qty}× ${ctx.content.item(m.itemId).name}`).join(', ')}.`);
-  if (!inventory.canAddAll(state, offer.get)) return fail('Inventory is full.');
+  if (!inventory.canAddAll(state, ctx, offer.get)) return fail('Inventory is full.');
   return ok();
 }
 

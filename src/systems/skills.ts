@@ -5,6 +5,7 @@ import type { SkillId } from '@/types/ids';
 import type { Ctx } from './ctx';
 import { tierForXp, tierProgress, xpForTier } from './formulas';
 import { log } from './log';
+import * as progression from './progression';
 
 export function tier(state: GameState, skill: SkillId): Tier {
   return tierForXp(state.player.skills[skill].xp);
@@ -15,8 +16,10 @@ export function totalTier(state: GameState, ctx: Ctx): number {
   return ctx.content.skillIds.reduce((sum, id) => sum + tier(state, id), 0);
 }
 
-export function addXp(state: GameState, ctx: Ctx, skill: SkillId, amount: number): void {
-  if (amount <= 0) return;
+/** Locked skills gain nothing. Group perks from the progression tree multiply the xp. */
+export function addXp(state: GameState, ctx: Ctx, skill: SkillId, baseAmount: number): void {
+  if (baseAmount <= 0 || !progression.hasSkill(state, ctx, skill)) return;
+  const amount = baseAmount * progression.xpMultiplier(state, ctx, ctx.content.skill(skill).group);
   const before = tier(state, skill);
   state.player.skills[skill].xp += amount;
   ctx.events.emit('skill:xp', { skill, xp: amount });

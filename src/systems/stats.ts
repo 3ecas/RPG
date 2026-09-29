@@ -5,6 +5,7 @@ import type { StatBlock, WeaponType } from '@/types/content';
 import type { GameState } from '@/types/state';
 import type { Ctx } from './ctx';
 import { maxHpForTier } from './formulas';
+import * as progression from './progression';
 import { tier } from './skills';
 
 export interface DerivedStats extends StatBlock {
@@ -14,11 +15,12 @@ export interface DerivedStats extends StatBlock {
 const WEAPON_SKILL: Readonly<Record<WeaponType, SkillId>> = { sword: 'swords', axe: 'axes', dagger: 'daggers' };
 const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
 
-/** The combat skill trained by the equipped weapon, or null when fighting bare-handed. */
+/** The combat skill trained by the equipped weapon, or null when bare-handed or the skill is still locked. */
 export function weaponSkill(state: GameState, ctx: Ctx): SkillId | null {
   const weapon = state.player.equipment.weapon;
   const type = weapon ? ctx.content.item(weapon).equip?.weaponType : undefined;
-  return type ? WEAPON_SKILL[type] : null;
+  const skill = type ? WEAPON_SKILL[type] : null;
+  return skill && progression.hasSkill(state, ctx, skill) ? skill : null;
 }
 
 export function armorPiecesWorn(state: GameState): number {
@@ -28,13 +30,15 @@ export function armorPiecesWorn(state: GameState): number {
 export function derive(state: GameState, ctx: Ctx): DerivedStats {
   const skill = weaponSkill(state, ctx);
   const masteryTier = skill ? tier(state, skill) : 0;
-  const shieldTier = state.player.equipment.shield ? tier(state, 'shields') : 0;
+  // Locked skills give no mastery, even if the gear is somehow worn.
+  const armorTier = progression.hasSkill(state, ctx, 'armor') ? tier(state, 'armor') : 0;
+  const shieldTier = state.player.equipment.shield && progression.hasSkill(state, ctx, 'shields') ? tier(state, 'shields') : 0;
   const stats: DerivedStats = {
     attack: BALANCE.MASTERY_ATTACK_PER_TIER * masteryTier,
     strength: BALANCE.MASTERY_STRENGTH_PER_TIER * masteryTier,
-    defence: BALANCE.ARMOR_DEFENCE_PER_TIER * tier(state, 'armor') + BALANCE.SHIELD_DEFENCE_PER_TIER * shieldTier,
+    defence: BALANCE.ARMOR_DEFENCE_PER_TIER * armorTier + BALANCE.SHIELD_DEFENCE_PER_TIER * shieldTier,
     magic: 0,
-    maxHp: maxHpForTier(tier(state, 'vitality')),
+    maxHp: maxHpForTier(tier(state, 'vitality')) + progression.perk(state, ctx, 'max_hp'),
     maxMana: 0,
     attackIntervalMs: BALANCE.UNARMED_ATTACK_INTERVAL_MS,
   };

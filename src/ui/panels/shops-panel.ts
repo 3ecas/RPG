@@ -9,11 +9,10 @@ const ORDER: ItemCategory[] = ['material', 'food', 'weapon', 'armor', 'potion', 
 export const shopsPanel: Panel = {
   id: 'shops',
   title: 'Shops',
-  group: 'World',
   render({ game, ui }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const shops = game.shopsHere();
-    if (shops.length === 0) return html`<h2>Shops</h2><p class="muted">No shops in ${zone.name}.</p>`;
+    if (shops.length === 0) return html`<div class="panel-head"><h2>Shops</h2></div><p class="muted">No shops in ${zone.name}.</p>`;
     const shop = shops.find((s) => s.id === ui.shopId) ?? shops[0]!;
     const gold = game.state.player.gold;
     const stock = game.shopStock(shop.id);
@@ -22,14 +21,11 @@ export const shopsPanel: Panel = {
       .sort((a, b) => Number(b.can.ok) - Number(a.can.ok) || ORDER.indexOf(a.item.category) - ORDER.indexOf(b.item.category) || a.item.name.localeCompare(b.item.name));
 
     return html`
-      <h2>Shops <span class="muted">in ${zone.name} · ${fmtNum(gold)} gold</span></h2>
-      ${shops.length > 1 ? html`<div class="row wrap">${shops.map((s) => html`<button class="btn btn-small ${s.id === shop.id ? 'btn-active' : ''}" data-action="open-shop" data-id="${s.id}">${s.name}</button>`)}</div>` : ''}
-      <section class="card">
-        <div class="card-head"><strong>${shop.name}</strong>${shop.keeperId ? html`<span class="tag">${game.content.npc(shop.keeperId).name}</span>` : ''}</div>
-        <p class="muted">${shop.description}</p>
-        <p class="muted small">Buys ${shop.buys === 'all' ? 'anything' : shop.buys.join(', ')} at ${Math.round(shop.sellRate * 100)}% of value. Stock returns over time.</p>
-      </section>
-      <div class="columns">
+      <div class="panel-head"><h2>Shops</h2><span class="muted small">in ${zone.name} · ${fmtNum(gold)} gold</span>
+        ${shops.length > 1 ? html`<span class="row wrap">${shops.map((s) => html`<button class="btn btn-small ${s.id === shop.id ? 'btn-active' : ''}" data-action="open-shop" data-id="${s.id}">${s.name}</button>`)}</span>` : ''}
+      </div>
+      <p class="muted small"><strong>${shop.name}</strong>${shop.keeperId ? ` (${game.content.npc(shop.keeperId).name})` : ''}: ${shop.description} Buys ${shop.buys === 'all' ? 'anything' : shop.buys.join(', ')} at ${Math.round(shop.sellRate * 100)}% of value${game.perk('sell_bonus') > 0 ? ` (+${Math.round(game.perk('sell_bonus') * 100)}% from perks)` : ''}. Stock returns over time.</p>
+      <div class="grid grid-2">
         <section class="card">
           <h3>Buy</h3>
           <table class="table table-shop">

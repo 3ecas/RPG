@@ -19,17 +19,16 @@ function rewardText(game: Game, quest: Keyed<QuestDef, QuestId>): Raw {
 export const peoplePanel: Panel = {
   id: 'people',
   title: 'People',
-  group: 'World',
   badge({ game }) {
     return game.npcsHere().flatMap((npc) => game.questsByGiver(npc.id)).filter((q) => q.status === 'available' || (q.status === 'active' && game.canTurnIn(q.quest.id).ok)).length;
   },
   render({ game }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const npcs = game.npcsHere();
-    if (npcs.length === 0) return html`<h2>People</h2><p class="muted">Nobody lives in ${zone.name}. The village is where the quests are.</p>`;
+    if (npcs.length === 0) return html`<div class="panel-head"><h2>People</h2></div><p class="muted">Nobody lives in ${zone.name}. The village is where the quests are.</p>`;
     return html`
-      <h2>People <span class="muted">in ${zone.name}</span></h2>
-      <div class="cards cards-wide">
+      <div class="panel-head"><h2>People</h2><span class="muted small">in ${zone.name}</span></div>
+      <div class="grid grid-auto-wide">
         ${npcs.map((npc) => {
           const talked = game.state.world.talkedTo.includes(npc.id);
           const quests = game.questsByGiver(npc.id);

@@ -99,6 +99,7 @@ rpg/
 │  │  ├─ combat.ts               # auto-battle tick, loot, death
 │  │  ├─ requirements.ts         # shared Requirement evaluation
 │  │  ├─ zones.ts · npcs.ts · quests.ts
+│  │  ├─ progression.ts          # tree: points, unlocks, perks, gating queries
 │  │  ├─ shops.ts · market.ts · traders.ts   # the economy (§5)
 │  │  ├─ log.ts · new-game.ts
 │  │  ├─ magic.ts                (planned) mana, spellbook, casting
@@ -113,18 +114,20 @@ rpg/
 │  │  ├─ recipes/{smelting,forging,woodworking,leatherworking,cooking}.ts + index.ts
 │  │  ├─ gather-nodes.ts · monsters.ts · npcs.ts · quests.ts · zones.ts
 │  │  ├─ shops.ts · traders.ts · market.ts
+│  │  ├─ progression.ts          # the tree
 │  │  ├─ index.ts                # CONTENT: all tables
 │  │  ├─ items/potions.ts · recipes/alchemy.ts · spells.ts   (planned)
 │  │  ├─ bosses.ts · dungeons.ts                             (planned)
 │  │
 │  ├─ ui/                        # DOM only
-│  │  ├─ app.ts                  # shell: header, nav, panel, sidebar; string-memoized re-render
+│  │  ├─ app.ts                  # shell: status bar, tabs, sub-tabs, ticker, panel; string-memoized re-render
+│  │  ├─ tabs.ts                 # which panels sit under which tab
 │  │  ├─ actions.ts              # one delegated click handler → Game commands
 │  │  ├─ html.ts                 # escaping tagged template
 │  │  ├─ panel.ts · toast.ts
-│  │  ├─ components/{progress-bar,items}.ts
-│  │  └─ panels/                 # one file per panel + index.ts (nav order)
-│  │     skills · inventory · equipment · journal · gathering · crafting (×5 stations)
+│  │  ├─ components/{progress-bar,items,lock}.ts
+│  │  └─ panels/                 # one file per panel + index.ts
+│  │     skills · tree · inventory · equipment · journal · gathering · crafting (×5 stations)
 │  │     combat · zones · people · shops · market · traders · log · settings
 │  │
 │  └─ util/{format,base64}.ts
@@ -418,6 +421,17 @@ Design notes per feature:
   damage dealt; sets max hp). Requirements share one type:
   `{ type: 'tier' | 'any_tier' | 'quest' | 'item', … }`; zones from tier 2 up
   unlock with `any_tier`, so any playstyle opens the next area.
+- **Progression tree.** `content/progression.ts` is a DAG of nodes in four
+  branches. Points come from facts in the state (one per tier-up, quests'
+  `points` rewards, a starting allowance) and are reconciled by
+  `systems/progression.ts`, so old saves are credited automatically. A node
+  costs points, needs its parents, may carry `Requirement`s, and *unlocks*
+  skills, stations, zones, features (market, barter, auto-eat) or perks
+  (speed, xp, hp, regen, gold, prices, inventory slots). Every system asks
+  `progression.hasSkill / hasStation / hasFeature / perk` before letting the
+  player do something; zones require their node through the shared
+  `Requirement` type (`{ type: 'unlock', nodeId }`). The registry checks that
+  each skill, station and zone is granted by exactly one node.
 - **Material ladders.** `content/tiers.ts` lists each family in tier order
   (bronze → rune, oak → elder, shrimp → swordfish, wheat → sunfruit, nettle →
   dragonleaf, cowhide → dragon scale). `tieredDefiner` in `content/define.ts`
@@ -486,10 +500,12 @@ Design notes per feature:
 
 ## 6. UI design
 
-- **Layout:** left nav (one entry per panel, badges for "new quest" / "level up"),
-  center: the active panel, right sidebar: current activity with progress bar
-  and a Stop button, hp / mana / gold, equipped weapon, last 5 log lines.
-  Header: player name, current zone, offline / autosave indicator.
+- **Layout:** a one-line status bar (zone, tiers, gold, bag, hp, the current
+  activity with its progress bar and a Stop button, save age), a row of tabs,
+  a row of sub-tabs when the tab has several panels (stations, world places,
+  items / equipment), a two-line event ticker, and the panel. No sidebar: the
+  panel gets the full width and lays its content out in CSS grids
+  (`.grid-2/3/4`, `.grid-auto`) so screens stay dense.
 - **Panel contract**, one file per panel:
 
   ```ts
@@ -629,13 +645,14 @@ Netlify or any static host. No server.
 
 Done (steps 1–6 of the build order, all covered by tests and a browser run):
 tooling and layer boundaries, state / loop / save / offline catch-up, fifteen
-skills with six-tier progression, six material tiers of nodes, recipes,
-weapons and armor, eight zones with unlock rules, gathering, five crafting
-stations, equipment and derived stats, food, idle combat that trains the
-weapon's skill, loot, death and respawn, six NPCs, four quests, the journal,
-three shops with restocking stock, the market with player-driven prices,
-two barter traders with rotating offers, log, settings with export / import
-/ reset, and all panels.
+skills with six-tier progression, a progression tree of about forty nodes
+that gates skills, stations, zones, features and perks, six material tiers
+of nodes, recipes, weapons and armor, eight zones, gathering, five crafting
+stations, equipment and derived stats, food and auto-eat, idle combat that
+trains the weapon's skill, loot, death and respawn, six NPCs, four quests,
+the journal, three shops with restocking stock, the market with
+player-driven prices, two barter traders with rotating offers, log,
+settings with export / import / reset, and a tabbed, grid-based UI.
 
 Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
 (step 8), then breadth and balance.

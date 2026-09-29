@@ -7,9 +7,9 @@ import { EventBus } from '@/core/events';
 import type { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
 import { deserialize, serialize } from '@/core/save';
-import type { Keyed, NpcDef, QuestDef, Requirement, ShopDef, Tier, TraderDef } from '@/types/content';
+import type { Feature, Keyed, NpcDef, PerkId, ProgressNodeDef, QuestDef, Requirement, ShopDef, Tier, TraderDef } from '@/types/content';
 import type { GameEventName } from '@/types/events';
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from '@/types/ids';
+import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 import type { GameState } from '@/types/state';
 import type { Result } from '@/types/result';
 import * as activity from '@/systems/activity';
@@ -23,6 +23,7 @@ import * as inventory from '@/systems/inventory';
 import * as market from '@/systems/market';
 import { createInitialState } from '@/systems/new-game';
 import * as npcs from '@/systems/npcs';
+import * as progression from '@/systems/progression';
 import * as quests from '@/systems/quests';
 import * as requirements from '@/systems/requirements';
 import * as shops from '@/systems/shops';
@@ -54,8 +55,10 @@ export class Game {
   private constructor(content: Registry, state: GameState) {
     this.state = state;
     this.ctx = { content, rng: new Rng(state.meta.rngState), events: new EventBus() };
+    this.wire(progression.listeners);
     this.wire(zones.listeners);
     this.wire(quests.listeners);
+    progression.reconcile(this.state, this.ctx);
     zones.checkUnlocks(this.state, this.ctx);
     shops.ensure(this.state, this.ctx);
     traders.ensure(this.state, this.ctx);
@@ -153,6 +156,7 @@ export class Game {
   marketBuy(itemId: ItemId, qty: number): Result { return this.command(market.buy(this.state, this.ctx, itemId, qty)); }
   marketSell(itemId: ItemId, qty: number): Result { return this.command(market.sell(this.state, this.ctx, itemId, qty)); }
   barter(traderId: TraderId, slot: number): Result { return this.command(traders.barter(this.state, this.ctx, traderId, slot)); }
+  unlockNode(nodeId: ProgressNodeId): Result { return this.command(progression.unlock(this.state, this.ctx, nodeId)); }
 
   // ---- read-only queries for the UI ---------------------------------------
   // The UI never re-implements a rule: whether a button is enabled comes from here.
@@ -165,7 +169,24 @@ export class Game {
   weaponSkill(): SkillId | null { return stats.weaponSkill(this.state, this.ctx); }
   activityView(): activity.ActivityView | null { return activity.describe(this.state, this.ctx); }
   itemCount(itemId: ItemId): number { return inventory.count(this.state, itemId); }
-  freeSlots(): number { return inventory.freeSlots(this.state); }
+  freeSlots(): number { return inventory.freeSlots(this.state, this.ctx); }
+  inventoryCapacity(): number { return inventory.capacity(this.state, this.ctx); }
+  isSkillUnlocked(skill: SkillId): boolean { return progression.hasSkill(this.state, this.ctx, skill); }
+  isStationUnlocked(station: StationId): boolean { return progression.hasStation(this.state, this.ctx, station); }
+  hasFeature(feature: Feature): boolean { return progression.hasFeature(this.state, this.ctx, feature); }
+  perk(id: PerkId): number { return progression.perk(this.state, this.ctx, id); }
+  progressPoints(): { available: number; granted: number; spent: number } {
+    return { available: progression.available(this.state, this.ctx), granted: this.state.progression.granted, spent: progression.spent(this.state, this.ctx) };
+  }
+  progressNodeView(nodeId: ProgressNodeId): { node: Keyed<ProgressNodeDef, ProgressNodeId>; status: progression.NodeStatus; can: Result; depth: number; unlocks: string } {
+    const node = this.ctx.content.progressNode(nodeId);
+    return { node, status: progression.status(this.state, this.ctx, nodeId), can: progression.canUnlock(this.state, this.ctx, nodeId), depth: progression.depth(this.ctx, nodeId), unlocks: progression.describeUnlocks(this.ctx, node) };
+  }
+  skillLockReason(skill: SkillId): string | null { return this.isSkillUnlocked(skill) ? null : progression.lockedSkillReason(this.ctx, skill); }
+  stationLockReason(station: StationId): string | null {
+    if (this.isStationUnlocked(station)) return null;
+    return `Unlock "${progression.nodeForStation(this.ctx, station)?.name ?? '?'}" in the Progression tree.`;
+  }
   canGather(nodeId: NodeId): Result { return gathering.canGather(this.state, this.ctx, nodeId); }
   canCraft(recipeId: RecipeId): Result { return crafting.canCraft(this.state, this.ctx, recipeId); }
   maxCraftable(recipeId: RecipeId): number { return crafting.maxCraftable(this.state, this.ctx, recipeId); }
@@ -181,7 +202,7 @@ export class Game {
   canTurnIn(questId: QuestId): Result { return quests.canTurnIn(this.state, this.ctx, questId); }
   shopsHere(): Keyed<ShopDef, ShopId>[] { return shops.here(this.state, this.ctx); }
   shopStock(shopId: ShopId): shops.StockView[] { return shops.stock(this.state, this.ctx, shopId); }
-  shopSellPrice(shopId: ShopId, itemId: ItemId): number { return shops.sellPrice(this.ctx, this.ctx.content.shop(shopId), itemId); }
+  shopSellPrice(shopId: ShopId, itemId: ItemId): number { return shops.sellPrice(this.state, this.ctx, this.ctx.content.shop(shopId), itemId); }
   canSellTo(shopId: ShopId, itemId: ItemId): Result { return shops.canSell(this.state, this.ctx, shopId, itemId); }
   marketOpen(): Result { return market.isOpen(this.state, this.ctx); }
   marketView(): market.MarketView[] { return market.view(this.state, this.ctx); }

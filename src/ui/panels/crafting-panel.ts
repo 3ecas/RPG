@@ -1,6 +1,7 @@
 import type { StationId } from '@/types/ids';
 import { fmtDuration } from '@/util/format';
 import { itemName, stackList } from '../components/items';
+import { lockNotice } from '../components/lock';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
 
@@ -9,14 +10,16 @@ export function craftingPanel(station: StationId, title: string): Panel {
   return {
     id: station,
     title,
-    group: 'Work',
+    lock: ({ game }) => game.stationLockReason(station),
     render({ game }) {
       const def = game.content.station(station);
+      const lock = game.stationLockReason(station);
       const recipes = game.content.recipesByStation(station);
       const active = game.state.activity?.kind === 'craft' ? game.state.activity : null;
       return html`
-        <h2>${def.name} <span class="muted">${def.description}</span></h2>
-        <table class="table table-recipes">
+        <div class="panel-head"><h2>${def.name}</h2><span class="muted small">${def.description}</span></div>
+        ${lock ? lockNotice(`The ${def.name} is locked. ${lock}`) : ''}
+        <table class="table table-recipes ${lock ? 'table-dim' : ''}">
           <tr class="head"><th>Recipe</th><th>Tier</th><th>Needs</th><th>Makes</th><th></th><th></th></tr>
           ${recipes.map((recipe) => {
             const can = game.canCraft(recipe.id);
@@ -36,7 +39,7 @@ export function craftingPanel(station: StationId, title: string): Panel {
                     <button class="btn btn-small" data-action="craft" data-id="${recipe.id}" data-qty="5" ${attr(!can.ok || max < 2, 'disabled')}>5</button>
                     <button class="btn btn-small" data-action="craft" data-id="${recipe.id}" data-qty="all" ${attr(!can.ok || max < 2, 'disabled')}>All (${max})</button>`}
               </td>
-              <td class="small bad">${can.ok || isActive ? '' : can.reason}</td>
+              <td class="small bad">${can.ok || isActive || lock ? '' : can.reason}</td>
             </tr>`;
           })}
         </table>

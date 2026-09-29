@@ -3,9 +3,9 @@
  * cross-reference. If validate() returns errors the game refuses to start.
  */
 import type {
-  ContentTables, GatherNodeDef, ItemDef, Keyed, MonsterDef, NpcDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
+  ContentTables, GatherNodeDef, ItemDef, Keyed, MonsterDef, NpcDef, ProgressNodeDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
 } from '@/types/content';
-import type { ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
+import type { ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 
 function must<T, Id extends string>(table: Readonly<Record<string, T>>, id: Id, kind: string): Keyed<T, Id> {
   const def = table[id];
@@ -27,6 +27,7 @@ export class Registry {
   zone(id: ZoneId): Keyed<ZoneDef, ZoneId> { return must(this.tables.zones, id, 'zone'); }
   shop(id: ShopId): Keyed<ShopDef, ShopId> { return must(this.tables.shops, id, 'shop'); }
   trader(id: TraderId): Keyed<TraderDef, TraderId> { return must(this.tables.traders, id, 'trader'); }
+  progressNode(id: ProgressNodeId): Keyed<ProgressNodeDef, ProgressNodeId> { return must(this.tables.progression, id, 'progression node'); }
 
   get skillIds(): SkillId[] { return Object.keys(this.tables.skills) as SkillId[]; }
   get stationIds(): StationId[] { return Object.keys(this.tables.stations) as StationId[]; }
@@ -37,6 +38,7 @@ export class Registry {
   get shopIds(): ShopId[] { return Object.keys(this.tables.shops) as ShopId[]; }
   get traderIds(): TraderId[] { return Object.keys(this.tables.traders) as TraderId[]; }
   get marketItems(): ItemId[] { return this.tables.market as ItemId[]; }
+  get progressNodeIds(): ProgressNodeId[] { return Object.keys(this.tables.progression) as ProgressNodeId[]; }
 
   hasSkill(id: string): id is SkillId { return id in this.tables.skills; }
   hasItem(id: string): id is ItemId { return id in this.tables.items; }
@@ -48,6 +50,7 @@ export class Registry {
   hasZone(id: string): id is ZoneId { return id in this.tables.zones; }
   hasShop(id: string): id is ShopId { return id in this.tables.shops; }
   hasTrader(id: string): id is TraderId { return id in this.tables.traders; }
+  hasProgressNode(id: string): id is ProgressNodeId { return id in this.tables.progression; }
   isMarketItem(id: string): id is ItemId { return this.tables.market.includes(id); }
 
   shopsKeptBy(npcId: NpcId): Keyed<ShopDef, ShopId>[] {
@@ -84,6 +87,7 @@ export class Registry {
         case 'any_tier': check(validTier(req.tier), `${owner}: bad tier ${req.tier} in requirement`); break;
         case 'quest': check(req.questId in t.quests, `${owner}: unknown quest '${req.questId}' in requirement`); break;
         case 'item': check(req.itemId in t.items, `${owner}: unknown item '${req.itemId}' in requirement`); break;
+        case 'unlock': check(req.nodeId in t.progression, `${owner}: unknown progression node '${req.nodeId}' in requirement`); break;
       }
     };
 
@@ -147,9 +151,11 @@ export class Registry {
       for (const r of def.rewards) {
         if (r.type === 'item') check(r.itemId in t.items, `quest ${id}: unknown reward item '${r.itemId}'`);
         if (r.type === 'xp') check(r.skill in t.skills, `quest ${id}: unknown reward skill '${r.skill}'`);
+        if (r.type === 'points') check(r.amount > 0, `quest ${id}: points reward must be > 0`);
       }
     }
     errors.push(...this.questCycles());
+    errors.push(...this.validateProgression());
 
     for (const [id, def] of Object.entries(t.shops)) {
       check(def.id === id, `shop ${id}: id field is '${def.id}'`);
@@ -210,6 +216,61 @@ export class Registry {
     for (const id of Object.keys(t.shops)) check(referencedShops.has(id), `shop ${id}: not placed in any zone`);
     for (const id of Object.keys(t.traders)) check(referencedTraders.has(id), `trader ${id}: not placed in any zone`);
 
+    return errors;
+  }
+
+  private validateProgression(): string[] {
+    const t = this.tables;
+    const errors: string[] = [];
+    const check = (cond: boolean, msg: string) => { if (!cond) errors.push(msg); };
+    const skillUnlockedBy = new Map<string, string[]>();
+    const stationUnlockedBy = new Map<string, string[]>();
+    const zoneUnlockedBy = new Map<string, string[]>();
+    for (const [id, def] of Object.entries(t.progression)) {
+      check(def.id === id, `progression ${id}: id field is '${def.id}'`);
+      check(Number.isInteger(def.cost) && def.cost >= 0, `progression ${id}: cost must be a non-negative integer`);
+      check(def.unlocks.length > 0, `progression ${id}: unlocks nothing`);
+      for (const parent of def.requires) check(parent in t.progression, `progression ${id}: unknown parent '${parent}'`);
+      for (const r of def.requirements) {
+        switch (r.type) {
+          case 'tier': check(r.skill in t.skills, `progression ${id}: unknown skill '${r.skill}'`); break;
+          case 'quest': check(r.questId in t.quests, `progression ${id}: unknown quest '${r.questId}'`); break;
+          case 'item': check(r.itemId in t.items, `progression ${id}: unknown item '${r.itemId}'`); break;
+          case 'unlock': check(r.nodeId in t.progression, `progression ${id}: unknown node '${r.nodeId}'`); break;
+          case 'any_tier': break;
+        }
+      }
+      for (const u of def.unlocks) {
+        switch (u.type) {
+          case 'skill': check(u.skillId in t.skills, `progression ${id}: unknown skill '${u.skillId}'`); skillUnlockedBy.set(u.skillId, [...(skillUnlockedBy.get(u.skillId) ?? []), id]); break;
+          case 'station': check(u.stationId in t.stations, `progression ${id}: unknown station '${u.stationId}'`); stationUnlockedBy.set(u.stationId, [...(stationUnlockedBy.get(u.stationId) ?? []), id]); break;
+          case 'zone': check(u.zoneId in t.zones, `progression ${id}: unknown zone '${u.zoneId}'`); zoneUnlockedBy.set(u.zoneId, [...(zoneUnlockedBy.get(u.zoneId) ?? []), id]); break;
+          case 'perk': check(u.value > 0, `progression ${id}: perk value must be > 0`); break;
+          case 'feature': break;
+        }
+      }
+    }
+    for (const id of Object.keys(t.skills)) check((skillUnlockedBy.get(id) ?? []).length === 1, `skill ${id}: must be unlocked by exactly one progression node (found ${(skillUnlockedBy.get(id) ?? []).join(', ') || 'none'})`);
+    for (const id of Object.keys(t.stations)) check((stationUnlockedBy.get(id) ?? []).length === 1, `station ${id}: must be unlocked by exactly one progression node`);
+    for (const [id, zone] of Object.entries(t.zones)) {
+      const by = zoneUnlockedBy.get(id) ?? [];
+      check(by.length === 1, `zone ${id}: must be unlocked by exactly one progression node`);
+      const nodeReq = zone.unlock.find((r) => r.type === 'unlock');
+      const startZone = by[0] !== undefined && (t.progression[by[0]]?.cost ?? 1) === 0;
+      check(startZone || (nodeReq !== undefined && nodeReq.type === 'unlock' && nodeReq.nodeId === by[0]), `zone ${id}: must require the node that unlocks it ('${by[0]}')`);
+    }
+    // Cycles in parents.
+    const visiting = new Set<string>();
+    const done = new Set<string>();
+    const visit = (id: string, path: string[]) => {
+      if (done.has(id)) return;
+      if (visiting.has(id)) { errors.push(`progression parent cycle: ${[...path, id].join(' -> ')}`); return; }
+      visiting.add(id);
+      for (const parent of t.progression[id]?.requires ?? []) if (parent in t.progression) visit(parent, [...path, id]);
+      visiting.delete(id);
+      done.add(id);
+    };
+    for (const id of Object.keys(t.progression)) visit(id, []);
     return errors;
   }
 

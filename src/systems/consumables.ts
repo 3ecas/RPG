@@ -6,6 +6,7 @@ import { fail, ok, type Result } from '@/types/result';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
 import { log } from './log';
+import * as progression from './progression';
 import { derive } from './stats';
 
 export function consume(state: GameState, ctx: Ctx, itemId: ItemId): Result {
@@ -61,9 +62,22 @@ export function tickRegen(state: GameState, ctx: Ctx, dtMs: number): void {
     state.player.regenMs = 0;
     return;
   }
+  const interval = BALANCE.HP_REGEN_MS / (1 + progression.perk(state, ctx, 'regen'));
   state.player.regenMs += dtMs;
-  while (state.player.regenMs >= BALANCE.HP_REGEN_MS && state.player.hp < maxHp) {
-    state.player.regenMs -= BALANCE.HP_REGEN_MS;
+  while (state.player.regenMs >= interval && state.player.hp < maxHp) {
+    state.player.regenMs -= interval;
     state.player.hp += 1;
   }
+}
+
+/** Eats the most filling food once hp is at or below the threshold. The caller checks the Auto-Eat feature. */
+export function autoEat(state: GameState, ctx: Ctx, maxHp: number): void {
+  if (state.player.hp > maxHp * BALANCE.AUTO_EAT_THRESHOLD) return;
+  let best: { itemId: ItemId; heal: number } | null = null;
+  for (const stack of state.inventory) {
+    const effects = ctx.content.item(stack.itemId).consume?.effects ?? [];
+    const heal = effects.reduce((sum, e) => sum + (e.type === 'heal' ? e.amount : 0), 0);
+    if (heal > 0 && (!best || heal > best.heal)) best = { itemId: stack.itemId, heal };
+  }
+  if (best) consume(state, ctx, best.itemId);
 }

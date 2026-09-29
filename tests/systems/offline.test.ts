@@ -41,7 +41,9 @@ describe('offline catch-up', () => {
     game.equip('rusty_dagger');
     game.startCombat('rat');
     const summary = game.offlineCatchUp(NOW + HOUR);
-    expect(summary?.kills).toBeGreaterThan(50);
+    // Unarmored, the fight ends at the first death (which stops the activity), so only a lower bound is stable.
+    expect(summary?.kills).toBeGreaterThan(10);
+    expect(summary?.deaths).toBeLessThanOrEqual(1);
     const stats = derive(game.state, game.ctx);
     expect(game.state.player.hp).toBeGreaterThanOrEqual(1);
     expect(game.state.player.hp).toBeLessThanOrEqual(stats.maxHp);

@@ -28,6 +28,7 @@ instead of staying blank.
 
 ## What is in the first slice
 
+- **Progression tree:** points from tier-ups and quests buy nodes in four branches that unlock skills, crafting stations, zones, market access, barter, auto-eat and perks. Nothing past the basics is available until you unlock it.
 - **Skills with tiers:** fifteen skills, each with its own six-tier progression. Fill a tier's bar to unlock the next tier of materials, recipes and gear. Gathering: mining, woodcutting, fishing, farming, harvesting. Production: blacksmithing, woodworking, leatherworking, cooking. Combat: swords, axes, daggers, shields, armor, vitality.
 - **Six material tiers:** bronze → iron → steel → mithril → adamant → rune, and the same ladder for wood, fish, crops, herbs and hides.
 - **Zones:** eight, from Greenhollow Village to Dragon's Reach; each opens when any skill reaches its tier (the woods need a quest).
@@ -68,7 +69,8 @@ ESLint fails the build if a layer imports something it should not.
 | Add a recipe    | Add a literal in `src/content/recipes/<station>.ts`.                            |
 | Add a monster   | `src/content/monsters.ts`, then list it in a zone.                              |
 | Add a quest     | Add the id to `QuestId` and the entry in `src/content/quests.ts`.               |
-| Add a zone      | `src/content/zones.ts` with unlock requirements.                                |
+| Add a zone      | `src/content/zones.ts`, plus the tree node that unlocks it in `src/content/progression.ts`. |
+| Add a tree node | `src/content/progression.ts`: add the id to the union and the entry; validation checks parents and unlocks. |
 | Add a shop      | `src/content/shops.ts`, then list it in a zone (its keeper must be there too).   |
 | Add a trader    | `src/content/traders.ts`, then list it in a zone.                               |
 | Sell on market  | Add the item id to `src/content/market.ts`.                                     |

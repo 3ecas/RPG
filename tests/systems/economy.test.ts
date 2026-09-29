@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BALANCE } from '@/content/balance';
 import * as inventory from '@/systems/inventory';
 import * as market from '@/systems/market';
-import { give, newGame, tickFor } from '../helpers';
+import { give, newGame, tickFor, unlock } from '../helpers';
 
 const HOUR = 3_600_000;
 
@@ -56,6 +56,7 @@ describe('shops', () => {
 describe('market', () => {
   it('only opens in zones that have one', () => {
     const game = newGame();
+    unlock(game, 'market_access');
     game.travel('copper_hills');
     expect(game.marketBuy('copper_ore', 1)).toEqual({ ok: false, reason: 'There is no market in Copper Hills.' });
     expect(game.marketOpen().ok).toBe(false);
@@ -63,6 +64,7 @@ describe('market', () => {
 
   it('moves prices with trades and applies the spread', () => {
     const game = newGame();
+    unlock(game, 'market_access');
     game.state.player.gold = 10_000;
     const base = game.content.item('copper_ore').value; // 4
     expect(market.priceOf(game.state, game.ctx, 'copper_ore')).toBe(base);
@@ -82,6 +84,7 @@ describe('market', () => {
 
   it('clamps prices and relaxes them back toward base over time', () => {
     const game = newGame();
+    unlock(game, 'market_access');
     give(game, 'bone', 5000);
     expect(game.marketSell('bone', 5000).ok).toBe(true);
     const base = game.content.item('bone').value;
@@ -95,6 +98,7 @@ describe('market', () => {
 
   it('buys as much as the gold allows', () => {
     const game = newGame();
+    unlock(game, 'market_access');
     game.state.player.gold = 20;
     expect(game.marketBuy('copper_ore', 100).ok).toBe(true); // 4 × 1.04 → 4 gold each, rising
     expect(inventory.count(game.state, 'copper_ore')).toBeGreaterThanOrEqual(4);
@@ -129,6 +133,8 @@ describe('traders', () => {
 
   it('swaps items and limits uses', () => {
     const game = newGame();
+    expect(game.barter('peddler_vex', 0)).toEqual({ ok: false, reason: 'Unlock "Barter" in the Progression tree to trade with wanderers.' });
+    unlock(game, 'barter');
     game.travel('copper_hills');
     // Force a known offer into slot 0: 20 oak logs → 3 iron ore, 5 uses.
     game.state.world.traders.peddler_vex = { offers: [1, 2, 3], usesLeft: [5, 5, 3], nextRefreshMs: 10 * HOUR };

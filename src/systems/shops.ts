@@ -6,6 +6,7 @@ import { fail, ok, type Result } from '@/types/result';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
 import { log } from './log';
+import * as progression from './progression';
 
 export function here(state: GameState, ctx: Ctx): Keyed<ShopDef, ShopId>[] {
   return ctx.content.zone(state.player.zoneId).shops.map((id) => ctx.content.shop(id));
@@ -40,8 +41,8 @@ export function buyPrice(ctx: Ctx, shop: ShopDef, entry: ShopStockDef): number {
   return entry.price ?? Math.max(1, Math.round(ctx.content.item(entry.itemId).value * shop.markup));
 }
 
-export function sellPrice(ctx: Ctx, shop: ShopDef, itemId: ItemId): number {
-  return Math.floor(ctx.content.item(itemId).value * shop.sellRate);
+export function sellPrice(state: GameState, ctx: Ctx, shop: ShopDef, itemId: ItemId): number {
+  return Math.floor(ctx.content.item(itemId).value * shop.sellRate * (1 + progression.perk(state, ctx, 'sell_bonus')));
 }
 
 export interface StockView {
@@ -66,7 +67,7 @@ export function canSell(state: GameState, ctx: Ctx, shopId: ShopId, itemId: Item
   const shop = ctx.content.shop(shopId);
   const item = ctx.content.item(itemId);
   if (shop.buys !== 'all' && !shop.buys.includes(item.category)) return fail(`${shop.name} doesn't buy ${item.category} items.`);
-  if (sellPrice(ctx, shop, itemId) < 1) return fail(`${item.name} is worth nothing to ${shop.name}.`);
+  if (sellPrice(state, ctx, shop, itemId) < 1) return fail(`${item.name} is worth nothing to ${shop.name}.`);
   if (inventory.count(state, itemId) < 1) return fail(`You don't have any ${item.name}.`);
   return ok();
 }
@@ -86,7 +87,7 @@ export function buy(state: GameState, ctx: Ctx, shopId: ShopId, itemId: ItemId, 
   const price = buyPrice(ctx, shop, entry);
   const bought = Math.min(available, Math.floor(state.player.gold / price));
   if (bought < 1) return fail(`Not enough gold: ${item.name} costs ${price}.`);
-  if (!inventory.canAdd(state, itemId)) return fail('Inventory is full.');
+  if (!inventory.canAdd(state, ctx, itemId)) return fail('Inventory is full.');
 
   const cost = bought * price;
   state.player.gold -= cost;
@@ -105,7 +106,7 @@ export function sell(state: GameState, ctx: Ctx, shopId: ShopId, itemId: ItemId,
   if (!check.ok) return check;
   const sold = Math.min(Math.floor(qty), inventory.count(state, itemId));
   if (sold < 1) return fail('Nothing to sell.');
-  const earned = sold * sellPrice(ctx, shop, itemId);
+  const earned = sold * sellPrice(state, ctx, shop, itemId);
   inventory.remove(state, ctx, itemId, sold);
   state.player.gold += earned;
   log(state, ctx, 'trade', `You sell ${sold}× ${item.name} to ${shop.name} for ${earned} gold.`);

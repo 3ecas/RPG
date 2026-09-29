@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
 import * as quests from '@/systems/quests';
-import { give, newGame, tickUntil } from '../helpers';
+import { give, newGame, tickUntil, unlock } from '../helpers';
 
 describe('quests', () => {
   it('locks quests behind prerequisites', () => {
@@ -41,7 +41,9 @@ describe('quests', () => {
 
   it('craft objectives advance from crafting events', () => {
     const game = newGame();
-    game.acceptQuest('apprentice_smith');
+    expect(game.acceptQuest('apprentice_smith')).toEqual({ ok: false, reason: 'Requires: Unlock "Furnace" in the Progression tree.' });
+    unlock(game, 'furnace');
+    expect(game.acceptQuest('apprentice_smith').ok).toBe(true);
     give(game, 'copper_ore', 2);
     give(game, 'tin_ore', 2);
     game.startCrafting('smelt_bronze_bar', 2);
@@ -49,13 +51,15 @@ describe('quests', () => {
     expect(game.state.quests.active.apprentice_smith?.counts).toEqual([2, 0]);
   });
 
-  it('completing a quest can unlock a zone', () => {
+  it('a quest gates the tree node that opens a zone', () => {
     const game = newGame();
-    expect(game.travel('whispering_woods')).toEqual({ ok: false, reason: 'Requires: Complete "Goblin Menace".' });
+    expect(game.travel('whispering_woods')).toEqual({ ok: false, reason: 'Requires: Unlock "Whispering Woods" in the Progression tree.' });
+    expect(game.unlockNode('whispering_woods')).toEqual({ ok: false, reason: 'Requires: Complete "Goblin Menace".' });
     game.state.quests.completed.push('rat_problem');
     game.acceptQuest('goblin_menace');
     game.state.quests.active.goblin_menace!.counts = [10];
     expect(game.turnInQuest('goblin_menace').ok).toBe(true);
+    expect(game.unlockNode('whispering_woods').ok).toBe(true);
     expect(game.state.world.unlockedZones).toContain('whispering_woods');
     expect(game.travel('whispering_woods').ok).toBe(true);
   });

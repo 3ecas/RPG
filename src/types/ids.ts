@@ -25,6 +25,7 @@ export type ZoneId = keyof typeof ZONES;
 export type ShopId = keyof typeof SHOPS;
 export type TraderId = keyof typeof TRADERS;
 export type { QuestId } from '@/content/quests';
+export type { ProgressNodeId } from '@/content/progression';
 
 
 export type EquipSlot = 'weapon' | 'shield' | 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'ring' | 'amulet';

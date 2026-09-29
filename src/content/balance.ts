@@ -49,4 +49,10 @@ export const BALANCE = {
   MARKET_MAX_RATIO: 4,
   /** Barter offers can be taken this many times per rotation unless the offer says otherwise. */
   TRADER_DEFAULT_USES: 3,
+
+  /** Progression points: a new character starts with these, and earns one per tier-up (quests grant their own). */
+  STARTING_POINTS: 3,
+  POINTS_PER_TIER_UP: 1,
+  /** Auto-eat (a tree feature) eats when hp drops to this fraction of max. */
+  AUTO_EAT_THRESHOLD: 0.5,
 } as const;

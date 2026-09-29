@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
 import { derive } from '@/systems/stats';
-import { give, newGame, setTier } from '../helpers';
+import { give, newGame, setTier, unlock } from '../helpers';
 
 describe('equipment', () => {
   it('equips from the inventory; mastery of the weapon skill adds to its stats', () => {
     const game = newGame();
-    expect(derive(game.state, game.ctx)).toMatchObject({ attack: 0, strength: 0, defence: 2, maxHp: 40, attackIntervalMs: 2400 });
+    expect(derive(game.state, game.ctx)).toMatchObject({ attack: 0, strength: 0, defence: 0, maxHp: 40, attackIntervalMs: 2400 }); // Armor is still locked
     expect(game.equip('rusty_dagger').ok).toBe(true);
     expect(game.state.player.equipment.weapon).toBe('rusty_dagger');
     expect(inventory.count(game.state, 'rusty_dagger')).toBe(0);
@@ -17,6 +17,7 @@ describe('equipment', () => {
 
   it('shields add defence only while one is equipped', () => {
     const game = newGame();
+    unlock(game, 'armor_training', 'shield_training');
     setTier(game, 'shields', 2);
     expect(derive(game.state, game.ctx).defence).toBe(2);
     give(game, 'oak_shield', 1);
@@ -39,6 +40,8 @@ describe('equipment', () => {
     const game = newGame();
     expect(game.equip('iron_sword')).toEqual({ ok: false, reason: "You don't have a Iron Sword." });
     give(game, 'iron_sword', 1);
+    expect(game.equip('iron_sword')).toEqual({ ok: false, reason: 'Swords is locked. Unlock "Swordplay" in the Progression tree.' });
+    unlock(game, 'swordplay');
     expect(game.equip('iron_sword')).toEqual({ ok: false, reason: 'Requires Swords tier 2.' });
     setTier(game, 'swords', 2);
     expect(game.equip('iron_sword').ok).toBe(true);

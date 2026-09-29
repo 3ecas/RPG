@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { derive } from '@/systems/stats';
-import { give, newGame, setTier, tickUntil } from '../helpers';
+import { give, newGame, setTier, tickUntil, unlock } from '../helpers';
 
 describe('combat', () => {
   it('only fights monsters that live in the current zone', () => {
@@ -29,6 +29,7 @@ describe('combat', () => {
 
   it('armor and shields train from attacks taken while wearing them', () => {
     const game = newGame();
+    unlock(game, 'armor_training', 'shield_training');
     give(game, 'bronze_helmet', 1);
     give(game, 'oak_shield', 1);
     game.equip('bronze_helmet');
@@ -43,6 +44,7 @@ describe('combat', () => {
   it('death sends you home at full health with nothing running', () => {
     const game = newGame();
     setTier(game, 'mining', 2);
+    unlock(game, 'old_iron_mines');
     game.travel('old_iron_mines');
     game.state.player.hp = 1;
     let died = false;

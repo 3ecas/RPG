@@ -3,7 +3,7 @@ import { Registry } from '@/core/registry';
 import { Game } from '@/game';
 import * as inventory from '@/systems/inventory';
 import { xpForTier } from '@/systems/formulas';
-import type { ItemId, SkillId } from '@/types/ids';
+import type { ItemId, ProgressNodeId, SkillId } from '@/types/ids';
 
 export const registry = new Registry(CONTENT);
 
@@ -20,6 +20,16 @@ export function give(game: Game, itemId: ItemId, qty: number): void {
 
 export function setTier(game: Game, skill: SkillId, tier: number): void {
   game.state.player.skills[skill].xp = xpForTier(tier);
+}
+
+/** Unlocks tree nodes directly, bypassing cost and prerequisites, for tests that are not about the tree. */
+export function unlock(game: Game, ...nodeIds: ProgressNodeId[]): void {
+  for (const id of nodeIds) if (!game.state.progression.unlocked.includes(id)) game.state.progression.unlocked.push(id);
+}
+
+/** Every node of the tree, for tests that need the whole game open. */
+export function unlockAll(game: Game): void {
+  unlock(game, ...game.content.progressNodeIds);
 }
 
 /** Advances the game in 100 ms ticks. */

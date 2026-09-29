@@ -112,6 +112,14 @@ function sanitize(raw: Raw, content: Registry, fresh: GameState): GameState {
     }
   }
 
+  const progression = rec(raw.progression);
+  if (progression) {
+    s.progression.granted = Math.max(0, Math.floor(num(progression.granted, 0)));
+    if (Array.isArray(progression.unlocked)) {
+      s.progression.unlocked = [...new Set(progression.unlocked.filter((n: unknown): n is string => typeof n === 'string' && content.hasProgressNode(n)))] as GameState['progression']['unlocked'];
+    }
+  }
+
   const world = rec(raw.world);
   if (world) {
     if (Array.isArray(world.unlockedZones)) {

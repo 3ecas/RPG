@@ -1,5 +1,5 @@
 /** Shapes of the content tables. Content files are literals of these types; they contain no logic. */
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId } from './ids';
+import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from './ids';
 
 /** A content definition whose `id` is narrowed to the table's id union. */
 export type Keyed<TDef, Id extends string> = TDef & { readonly id: Id };
@@ -125,10 +125,44 @@ export interface MonsterDef {
 
 export type Requirement =
   | { readonly type: 'tier'; readonly skill: SkillId; readonly tier: Tier }
-  /** At least one skill at this tier. Used for zone unlocks so any playstyle can progress. */
+  /** At least one skill at this tier, so any playstyle can progress. */
   | { readonly type: 'any_tier'; readonly tier: Tier }
   | { readonly type: 'quest'; readonly questId: QuestId }
-  | { readonly type: 'item'; readonly itemId: ItemId; readonly qty: number };
+  | { readonly type: 'item'; readonly itemId: ItemId; readonly qty: number }
+  /** A node of the progression tree has been unlocked. */
+  | { readonly type: 'unlock'; readonly nodeId: ProgressNodeId };
+
+// ---- progression tree ----------------------------------------------------
+
+export type ProgressBranch = 'gathering' | 'crafting' | 'combat' | 'world';
+
+export type Feature = 'market' | 'traders' | 'auto_eat';
+
+/** Numeric bonuses granted by tree nodes. Fractions are added (0.1 = +10%), counts are added as-is. */
+export type PerkId =
+  | 'gather_speed' | 'craft_speed'
+  | 'gather_xp' | 'craft_xp' | 'combat_xp'
+  | 'max_hp' | 'regen' | 'gold_find' | 'sell_bonus' | 'inventory_slots';
+
+export type Unlock =
+  | { readonly type: 'skill'; readonly skillId: SkillId }
+  | { readonly type: 'zone'; readonly zoneId: ZoneId }
+  | { readonly type: 'station'; readonly stationId: StationId }
+  | { readonly type: 'feature'; readonly feature: Feature }
+  | { readonly type: 'perk'; readonly perk: PerkId; readonly value: number };
+
+export interface ProgressNodeDef {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly branch: ProgressBranch;
+  /** Progression points to unlock. Zero-cost nodes without parents are unlocked at the start. */
+  readonly cost: number;
+  /** Parent nodes; all must be unlocked first. */
+  readonly requires: readonly ProgressNodeId[];
+  readonly requirements: readonly Requirement[];
+  readonly unlocks: readonly Unlock[];
+}
 
 export interface NpcDef {
   readonly id: string;
@@ -147,7 +181,8 @@ export type Objective =
 export type Reward =
   | { readonly type: 'gold'; readonly amount: number }
   | { readonly type: 'item'; readonly itemId: ItemId; readonly qty: number }
-  | { readonly type: 'xp'; readonly skill: SkillId; readonly amount: number };
+  | { readonly type: 'xp'; readonly skill: SkillId; readonly amount: number }
+  | { readonly type: 'points'; readonly amount: number };
 
 export interface QuestDef {
   readonly id: string;
@@ -231,4 +266,5 @@ export interface ContentTables {
   readonly traders: Readonly<Record<string, TraderDef>>;
   /** Items the market trades. */
   readonly market: readonly string[];
+  readonly progression: Readonly<Record<string, ProgressNodeDef>>;
 }

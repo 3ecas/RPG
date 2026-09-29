@@ -1,21 +1,32 @@
 /** Smelting, forging, cooking, leatherwork: one system, the recipe's data decides station and skill. */
+import type { RecipeDef } from '@/types/content';
 import type { RecipeId } from '@/types/ids';
 import type { Activity, GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
 import * as activity from './activity';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
+import * as progression from './progression';
 import * as skills from './skills';
 
 type CraftActivity = Extract<Activity, { kind: 'craft' }>;
 
 export function canCraft(state: GameState, ctx: Ctx, recipeId: RecipeId): Result {
   const recipe = ctx.content.recipe(recipeId);
+  if (!progression.hasStation(state, ctx, recipe.station)) {
+    return fail(`The ${ctx.content.station(recipe.station).name} is locked. Unlock "${progression.nodeForStation(ctx, recipe.station)?.name ?? '?'}" in the Progression tree.`);
+  }
+  if (!progression.hasSkill(state, ctx, recipe.skill)) return fail(progression.lockedSkillReason(ctx, recipe.skill));
   if (skills.tier(state, recipe.skill) < recipe.tier) return fail(`Requires ${ctx.content.skill(recipe.skill).name} tier ${recipe.tier}.`);
   const missing = inventory.missing(state, recipe.inputs);
   if (missing.length > 0) return fail(`Missing: ${missing.map((m) => `${m.qty}× ${ctx.content.item(m.itemId).name}`).join(', ')}.`);
-  if (!inventory.canAddAll(state, recipe.outputs)) return fail('Inventory is full.');
+  if (!inventory.canAddAll(state, ctx, recipe.outputs)) return fail('Inventory is full.');
   return ok();
+}
+
+/** Cycle time after speed perks. */
+export function durationOf(state: GameState, ctx: Ctx, recipe: RecipeDef): number {
+  return Math.max(500, Math.round(recipe.durationMs * (1 - progression.perk(state, ctx, 'craft_speed'))));
 }
 
 /** How many times the recipe could run with the current inventory. */
@@ -34,9 +45,10 @@ export function start(state: GameState, ctx: Ctx, recipeId: RecipeId, count: num
 
 export function tick(state: GameState, ctx: Ctx, a: CraftActivity, dtMs: number): void {
   const recipe = ctx.content.recipe(a.recipeId);
+  const duration = durationOf(state, ctx, recipe);
   a.elapsedMs += dtMs;
-  while (a.elapsedMs >= recipe.durationMs) {
-    a.elapsedMs -= recipe.durationMs;
+  while (a.elapsedMs >= duration) {
+    a.elapsedMs -= duration;
     const check = canCraft(state, ctx, a.recipeId);
     if (!check.ok) {
       activity.stop(state, ctx, check.reason);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
-import { newGame, setTier, tickFor } from '../helpers';
+import { newGame, setTier, tickFor, unlock } from '../helpers';
 
 describe('gathering', () => {
   it('only works on nodes in the current zone', () => {
@@ -25,9 +25,10 @@ describe('gathering', () => {
 
   it('enforces the skill tier: tier 2 unlocks iron, tier 3 coal', () => {
     const game = newGame();
-    expect(game.travel('old_iron_mines')).toEqual({ ok: false, reason: 'Requires: Any skill at tier 2.' });
-    setTier(game, 'mining', 2);
+    unlock(game, 'old_iron_mines');
     expect(game.travel('old_iron_mines').ok).toBe(true);
+    expect(game.startGathering('iron_rock')).toEqual({ ok: false, reason: 'Requires Mining tier 2.' });
+    setTier(game, 'mining', 2);
     expect(game.startGathering('coal_seam')).toEqual({ ok: false, reason: 'Requires Mining tier 3.' });
     expect(game.startGathering('iron_rock').ok).toBe(true);
   });

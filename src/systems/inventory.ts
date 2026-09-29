@@ -3,6 +3,7 @@ import type { ItemStack } from '@/types/content';
 import type { ItemId } from '@/types/ids';
 import type { GameState } from '@/types/state';
 import type { Ctx } from './ctx';
+import * as progression from './progression';
 
 export function count(state: GameState, itemId: ItemId): number {
   return state.inventory.find((s) => s.itemId === itemId)?.qty ?? 0;
@@ -20,19 +21,23 @@ export function missing(state: GameState, stacks: readonly Readonly<ItemStack>[]
   });
 }
 
-export function freeSlots(state: GameState): number {
-  return Math.max(0, BALANCE.INVENTORY_SLOTS - state.inventory.length);
+export function capacity(state: GameState, ctx: Ctx): number {
+  return BALANCE.INVENTORY_SLOTS + progression.perk(state, ctx, 'inventory_slots');
+}
+
+export function freeSlots(state: GameState, ctx: Ctx): number {
+  return Math.max(0, capacity(state, ctx) - state.inventory.length);
 }
 
 /** True if a stack of this item exists or there is a free slot for one. */
-export function canAdd(state: GameState, itemId: ItemId): boolean {
-  return count(state, itemId) > 0 || freeSlots(state) > 0;
+export function canAdd(state: GameState, ctx: Ctx, itemId: ItemId): boolean {
+  return count(state, itemId) > 0 || freeSlots(state, ctx) > 0;
 }
 
 /** True if every listed item can be added (distinct new items each need a slot). */
-export function canAddAll(state: GameState, stacks: readonly Readonly<ItemStack>[]): boolean {
+export function canAddAll(state: GameState, ctx: Ctx, stacks: readonly Readonly<ItemStack>[]): boolean {
   const newItems = new Set(stacks.filter((s) => count(state, s.itemId) === 0).map((s) => s.itemId));
-  return newItems.size <= freeSlots(state);
+  return newItems.size <= freeSlots(state, ctx);
 }
 
 /** Adds to a stack. Returns false (and adds nothing) when there is no room. */
@@ -42,7 +47,7 @@ export function add(state: GameState, ctx: Ctx, itemId: ItemId, qty: number, sou
   if (stack) {
     stack.qty += qty;
   } else {
-    if (freeSlots(state) <= 0) return false;
+    if (freeSlots(state, ctx) <= 0) return false;
     state.inventory.push({ itemId, qty });
   }
   ctx.events.emit('item:gained', { itemId, qty, source });

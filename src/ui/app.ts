@@ -1,9 +1,7 @@
 /**
- * The page shell: header, nav, active panel, sidebar. Re-renders only the
- * regions whose HTML actually changed, so text panels stay cheap and inputs
- * in unchanged regions keep their contents.
+ * The page shell: a status bar, tabs, sub-tabs, a two-line event ticker and
+ * the active panel. Each region is re-rendered only when its HTML changed.
  */
-import { BALANCE } from '@/content/balance';
 import type { Game, OfflineSummary } from '@/game';
 import type { Result } from '@/types/result';
 import type { LogKind } from '@/types/state';
@@ -13,6 +11,7 @@ import { progressBar } from './components/progress-bar';
 import { html, type Raw } from './html';
 import type { Panel, UiState, ViewContext } from './panel';
 import { PANELS } from './panels';
+import { TABS, tabOf } from './tabs';
 import { toast } from './toast';
 
 export interface AppHooks {
@@ -22,7 +21,6 @@ export interface AppHooks {
   reset(): void;
 }
 
-const GROUPS: Panel['group'][] = ['Character', 'Work', 'World', 'System'];
 const UI_PREFS_KEY = 'rpg.ui';
 
 export class App {
@@ -36,7 +34,7 @@ export class App {
 
   constructor(private readonly root: HTMLElement, game: Game, readonly hooks: AppHooks) {
     this.current = game;
-    this.ui = { panel: 'skills', logFilter: 'all', exportText: '', shopId: null, ...loadPrefs() };
+    this.ui = { panel: 'skills', lastPanelByTab: {}, logFilter: 'all', exportText: '', shopId: null, ...loadPrefs() };
     if (!PANELS.some((p) => p.id === this.ui.panel)) this.ui.panel = 'skills';
   }
 
@@ -46,7 +44,7 @@ export class App {
 
   mount(): void {
     this.root.innerHTML =
-      '<header class="topbar" id="ui-header"></header><nav class="sidenav" id="ui-nav"></nav><main class="content" id="ui-main"></main><aside class="sidebar" id="ui-aside"></aside>';
+      '<header class="topbar" id="ui-header"></header><nav class="tabs" id="ui-tabs"></nav><nav class="subtabs" id="ui-subtabs"></nav><div class="ticker" id="ui-ticker"></div><main class="content" id="ui-main"></main>';
     this.root.addEventListener('click', (event) => {
       const el = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
       if (!el || el.hasAttribute('disabled')) return;
@@ -73,8 +71,16 @@ export class App {
   setPanel(id: string): void {
     if (!PANELS.some((p) => p.id === id)) return;
     this.ui.panel = id;
+    this.ui.lastPanelByTab[tabOf(id).id] = id;
     savePrefs(this.ui);
     this.markDirty();
+  }
+
+  setTab(id: string): void {
+    const tab = TABS.find((t) => t.id === id);
+    if (!tab) return;
+    const remembered = this.ui.lastPanelByTab[id];
+    this.setPanel(remembered && tab.panels.includes(remembered) ? remembered : tab.panels[0]!);
   }
 
   setLogFilter(filter: LogKind | 'all'): void {
@@ -95,9 +101,10 @@ export class App {
     const view: ViewContext = { game: this.current, ui: this.ui };
     const panel = PANELS.find((p) => p.id === this.ui.panel) ?? PANELS[0]!;
     this.patch('ui-header', this.renderHeader(view));
-    this.patch('ui-nav', this.renderNav(view));
+    this.patch('ui-tabs', this.renderTabs(view));
+    this.patch('ui-subtabs', this.renderSubtabs(view));
+    this.patch('ui-ticker', this.renderTicker(view));
     this.patch('ui-main', html`${this.renderOffline()}${panel.render(view)}`);
-    this.patch('ui-aside', this.renderSidebar(view));
   }
 
   private patch(id: string, content: Raw): void {
@@ -105,6 +112,7 @@ export class App {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = content.html;
+    el.classList.toggle('empty', content.html.trim() === '');
     this.rendered.set(id, content.html);
   }
 
@@ -113,6 +121,7 @@ export class App {
     this.unsubscribe = [
       game.ctx.events.on('state:changed', () => this.markDirty()),
       game.ctx.events.on('skill:tierup', (e) => toast(`${content.skill(e.skill).name} reached tier ${e.tier}!`, 'good')),
+      game.ctx.events.on('progress:points', () => toast('Progression point earned.', 'good')),
       game.ctx.events.on('zone:unlocked', (e) => {
         if (content.zone(e.zoneId).unlock.length > 0) toast(`New area reachable: ${content.zone(e.zoneId).name}`, 'good');
       }),
@@ -127,53 +136,50 @@ export class App {
   }
 
   private renderHeader({ game }: ViewContext): Raw {
-    const zone = game.content.zone(game.state.player.zoneId);
-    const saved = this.lastSavedAt === null ? 'not saved yet' : `saved ${fmtDuration(Math.max(0, Date.now() - this.lastSavedAt))} ago`;
-    return html`
-      <div class="brand">Greenhollow <span class="muted small">idle rpg</span></div>
-      <div class="status">
-        <span>${game.state.player.name}</span><span class="sep">·</span>
-        <span>${zone.name}</span><span class="sep">·</span>
-        <span>Tiers ${game.totalTier()} / ${game.content.skillIds.length * 6}</span><span class="sep">·</span>
-        <span class="muted">${saved}</span>
-      </div>`;
-  }
-
-  private renderNav(view: ViewContext): Raw {
-    return html`${GROUPS.map((group) => html`
-      <div class="nav-group">
-        <div class="nav-title">${group}</div>
-        ${PANELS.filter((p) => p.group === group).map((p) => {
-          const badge = p.badge?.(view) ?? 0;
-          return html`<button class="nav-item ${p.id === this.ui.panel ? 'active' : ''}" data-action="panel" data-id="${p.id}">${p.title}${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
-        })}
-      </div>`)}`;
-  }
-
-  private renderSidebar({ game }: ViewContext): Raw {
     const state = game.state;
     const stats = game.stats();
     const activity = game.activityView();
-    const weapon = state.player.equipment.weapon;
-    const feed = state.log.slice(-8);
+    const zone = game.content.zone(state.player.zoneId);
+    const saved = this.lastSavedAt === null ? 'not saved' : `saved ${fmtDuration(Math.max(0, Date.now() - this.lastSavedAt))} ago`;
     return html`
-      <section class="card side-now">
-        <h3>Now</h3>
+      <div class="brand">Greenhollow</div>
+      <div class="chips">
+        <span class="chip" title="Current zone">${zone.name}</span>
+        <span class="chip" title="Skill tiers reached">T ${game.totalTier()}/${game.content.skillIds.length * 6}</span>
+        <span class="chip gold" title="Gold">${fmtNum(state.player.gold)} g</span>
+        <span class="chip" title="Inventory slots">Bag ${state.inventory.length}/${game.inventoryCapacity()}</span>
+        <span class="chip hp-chip" title="Hit points">${progressBar(state.player.hp / stats.maxHp, 'hp', `${state.player.hp}/${stats.maxHp}`)}</span>
+      </div>
+      <div class="now ${activity ? '' : 'idle'}">
         ${activity
-          ? html`<div><strong>${activity.label}</strong></div><div class="muted small">${activity.detail}</div>${progressBar(activity.progress, 'activity')}<div class="top-gap"><button class="btn btn-small" data-action="stop">Stop</button></div>`
-          : html`<div class="muted">Idle.</div><div class="muted small">Pick a rock, a recipe or a fight.</div>`}
-      </section>
-      <section class="card">
-        <h3>Vitals</h3>
-        ${progressBar(state.player.hp / stats.maxHp, 'hp', `${state.player.hp} / ${stats.maxHp} hp`)}
-        <div class="row"><span class="muted">Gold</span><span class="gold">${fmtNum(state.player.gold)}</span></div>
-        <div class="row"><span class="muted">Weapon</span><span>${weapon ? game.content.item(weapon).name : 'Fists'}</span></div>
-        <div class="row"><span class="muted">Inventory</span><span>${state.inventory.length}/${BALANCE.INVENTORY_SLOTS}</span></div>
-      </section>
-      <section class="card side-feed">
-        <h3>Recent</h3>
-        <ul class="feed">${feed.map((e) => html`<li class="log-${e.kind}">${e.text}</li>`)}</ul>
-      </section>`;
+          ? html`<span class="now-label" title="${activity.detail}">${activity.label}</span>${progressBar(activity.progress, 'activity')}<button class="btn btn-small" data-action="stop">Stop</button>`
+          : html`<span class="muted">Idle</span>`}
+      </div>
+      <div class="saved muted small">${saved}</div>`;
+  }
+
+  private renderTabs(view: ViewContext): Raw {
+    const active = tabOf(this.ui.panel).id;
+    return html`${TABS.map((tab) => {
+      const badge = tab.panels.reduce((sum, id) => sum + (PANELS.find((p) => p.id === id)?.badge?.(view) ?? 0), 0);
+      return html`<button class="tab ${tab.id === active ? 'active' : ''}" data-action="tab" data-id="${tab.id}">${tab.title}${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
+    })}`;
+  }
+
+  private renderSubtabs(view: ViewContext): Raw {
+    const tab = tabOf(this.ui.panel);
+    if (tab.panels.length < 2) return html``;
+    return html`${tab.panels.map((id) => {
+      const panel = PANELS.find((p) => p.id === id) as Panel;
+      const locked = panel.lock?.(view) ?? null;
+      const badge = panel.badge?.(view) ?? 0;
+      return html`<button class="subtab ${id === this.ui.panel ? 'active' : ''} ${locked ? 'locked' : ''}" data-action="panel" data-id="${id}" title="${locked ?? ''}">${locked ? '🔒 ' : ''}${panel.title}${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
+    })}`;
+  }
+
+  private renderTicker({ game }: ViewContext): Raw {
+    const recent = game.state.log.slice(-2);
+    return html`${recent.map((e) => html`<span class="tick log-${e.kind}" data-action="panel" data-id="log">${e.text}</span>`)}`;
   }
 
   private renderOffline(): Raw {

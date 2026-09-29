@@ -10,10 +10,12 @@ import { fail, ok, type Result } from '@/types/result';
 import type { Ctx } from './ctx';
 import * as inventory from './inventory';
 import { log } from './log';
+import * as progression from './progression';
 
 export type TradeKind = 'buy' | 'sell';
 
 export function isOpen(state: GameState, ctx: Ctx): Result {
+  if (!progression.hasFeature(state, ctx, 'market')) return fail('Unlock "Market Access" in the Progression tree to trade here.');
   const zone = ctx.content.zone(state.player.zoneId);
   return zone.market ? ok() : fail(`There is no market in ${zone.name}.`);
 }
@@ -65,7 +67,7 @@ export function buy(state: GameState, ctx: Ctx, itemId: ItemId, qty: number): Re
   if (!ctx.content.isMarketItem(itemId)) return fail(`The market doesn't trade ${item.name}.`);
   const wanted = Math.floor(qty);
   if (wanted < 1) return fail('Nothing to buy.');
-  if (!inventory.canAdd(state, itemId)) return fail('Inventory is full.');
+  if (!inventory.canAdd(state, ctx, itemId)) return fail('Inventory is full.');
   const q = quote(state, ctx, 'buy', itemId, wanted, state.player.gold);
   if (q.qty < 1) return fail(`Not enough gold: ${item.name} costs ${unitPrice('buy', priceOf(state, ctx, itemId))}.`);
 

@@ -1,19 +1,21 @@
 import { fmtDuration } from '@/util/format';
 import { stackList } from '../components/items';
+import { lockNotice } from '../components/lock';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
 
 export const tradersPanel: Panel = {
   id: 'traders',
   title: 'Traders',
-  group: 'World',
+  lock: ({ game }) => (game.hasFeature('traders') ? null : 'Unlock "Barter" in the Progression tree.'),
   render({ game }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const traders = game.tradersHere();
-    if (traders.length === 0) return html`<h2>Traders</h2><p class="muted">No traders in ${zone.name}. They wander the wilder zones.</p>`;
+    const lock = game.hasFeature('traders') ? null : 'Unlock "Barter" in the Progression tree to trade with wanderers.';
+    if (traders.length === 0) return html`<div class="panel-head"><h2>Traders</h2></div>${lock ? lockNotice(lock) : ''}<p class="muted">No traders in ${zone.name}. They wander the wilder zones.</p>`;
     return html`
-      <h2>Traders <span class="muted">in ${zone.name}</span></h2>
-      <p class="muted small">Barter only. Offers rotate on a timer and each can be taken a few times per rotation.</p>
+      <div class="panel-head"><h2>Traders</h2><span class="muted small">in ${zone.name} · barter only, offers rotate on a timer</span></div>
+      ${lock ? lockNotice(lock) : ''}
       ${traders.map((trader) => html`
         <section class="card">
           <div class="card-head"><strong>${trader.name}</strong><span class="tag">${trader.title}</span></div>

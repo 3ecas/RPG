@@ -12,6 +12,7 @@ export function meets(state: GameState, ctx: Ctx, req: Requirement): boolean {
     case 'any_tier': return ctx.content.skillIds.some((id) => skills.tier(state, id) >= req.tier);
     case 'quest': return state.quests.completed.includes(req.questId);
     case 'item': return inventory.count(state, req.itemId) >= req.qty;
+    case 'unlock': return state.progression.unlocked.includes(req.nodeId);
   }
 }
 
@@ -21,6 +22,7 @@ export function describe(ctx: Ctx, req: Requirement): string {
     case 'any_tier': return `Any skill at tier ${req.tier}`;
     case 'quest': return `Complete "${ctx.content.quest(req.questId).name}"`;
     case 'item': return `${req.qty}× ${ctx.content.item(req.itemId).name}`;
+    case 'unlock': return `Unlock "${ctx.content.progressNode(req.nodeId).name}" in the Progression tree`;
   }
 }
 

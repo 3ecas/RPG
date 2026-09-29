@@ -3,7 +3,7 @@ import { tableDefiner } from './define';
 
 const defineZones = tableDefiner<ZoneDef>();
 
-/** One zone per tier (two for tier 1). Zones from tier 2 up open when any skill reaches that tier. */
+/** One zone per tier (two for tier 1). Every zone past the first two is opened by a node of the progression tree. */
 export const ZONES = defineZones({
   greenhollow: {
     name: 'Greenhollow Village',
@@ -30,7 +30,7 @@ export const ZONES = defineZones({
   whispering_woods: {
     name: 'Whispering Woods',
     description: 'Willows, a fast river, potato patches gone wild, wolves, and people who would rather rob you than work.',
-    unlock: [{ type: 'quest', questId: 'goblin_menace' }],
+    unlock: [{ type: 'unlock', nodeId: 'whispering_woods' }],
     nodes: ['willow_tree', 'trout_spot', 'potato_field', 'sage_patch'],
     monsters: ['wolf', 'bandit'],
     npcs: [],
@@ -41,7 +41,7 @@ export const ZONES = defineZones({
   old_iron_mines: {
     name: 'Old Iron Mines',
     description: 'Abandoned shafts full of iron, coal, spiders and the miners who never left.',
-    unlock: [{ type: 'any_tier', tier: 2 }],
+    unlock: [{ type: 'unlock', nodeId: 'old_iron_mines' }],
     nodes: ['iron_rock', 'coal_seam'],
     monsters: ['cave_spider', 'skeleton'],
     npcs: [],
@@ -52,7 +52,7 @@ export const ZONES = defineZones({
   blackfen_marsh: {
     name: 'Blackfen Marsh',
     description: 'Maples on stilts, salmon in black water, and things that are mostly mud.',
-    unlock: [{ type: 'any_tier', tier: 3 }],
+    unlock: [{ type: 'unlock', nodeId: 'blackfen_marsh' }],
     nodes: ['maple_tree', 'salmon_spot', 'carrot_field', 'lavender_patch'],
     monsters: ['bear', 'bog_lurker'],
     npcs: [],
@@ -63,7 +63,7 @@ export const ZONES = defineZones({
   grey_peaks: {
     name: 'Grey Peaks',
     description: 'Mithril in the cliffs, yews on the ledges, terraced cabbage farms, and trolls who own all of it.',
-    unlock: [{ type: 'any_tier', tier: 4 }],
+    unlock: [{ type: 'unlock', nodeId: 'grey_peaks' }],
     nodes: ['mithril_rock', 'yew_tree', 'tuna_spot', 'cabbage_field', 'bloodroot_patch'],
     monsters: ['troll', 'harpy'],
     npcs: [],
@@ -74,7 +74,7 @@ export const ZONES = defineZones({
   ashen_wastes: {
     name: 'Ashen Wastes',
     description: 'A burned land. Adamant under the cinders, ash trees that grow anyway, and a cult that likes it here.',
-    unlock: [{ type: 'any_tier', tier: 5 }],
+    unlock: [{ type: 'unlock', nodeId: 'ashen_wastes' }],
     nodes: ['adamant_rock', 'ash_tree', 'lobster_spot', 'pumpkin_field', 'moonflower_patch'],
     monsters: ['wyvern', 'cultist'],
     npcs: [],
@@ -85,7 +85,7 @@ export const ZONES = defineZones({
   dragons_reach: {
     name: "Dragon's Reach",
     description: 'Rune in the rock, elder trees older than the kingdom, and the two things that rule here.',
-    unlock: [{ type: 'any_tier', tier: 6 }],
+    unlock: [{ type: 'unlock', nodeId: 'dragons_reach' }],
     nodes: ['rune_rock', 'elder_tree', 'swordfish_spot', 'sunfruit_field', 'dragonleaf_patch'],
     monsters: ['drake', 'lich'],
     npcs: [],

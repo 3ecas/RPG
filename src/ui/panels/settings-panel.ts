@@ -6,10 +6,10 @@ import type { Panel } from '../panel';
 export const settingsPanel: Panel = {
   id: 'settings',
   title: 'Settings',
-  group: 'System',
   render({ game, ui }) {
     return html`
-      <h2>Settings</h2>
+      <div class="panel-head"><h2>Settings</h2></div>
+      <div class="grid grid-2">
       <section class="card">
         <h3>Character</h3>
         <table class="table">
@@ -35,6 +35,7 @@ export const settingsPanel: Panel = {
         <h3>Danger</h3>
         <div class="row"><button class="btn btn-danger" data-action="reset">Delete character and start over</button></div>
       </section>
+      </div>
     `;
   },
 };

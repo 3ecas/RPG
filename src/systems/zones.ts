@@ -32,6 +32,5 @@ export function checkUnlocks(state: GameState, ctx: Ctx): void {
 }
 
 export const listeners: SystemListeners = {
-  'skill:tierup': (state, ctx) => checkUnlocks(state, ctx),
-  'quest:completed': (state, ctx) => checkUnlocks(state, ctx),
+  'progress:unlocked': (state, ctx) => checkUnlocks(state, ctx),
 };
