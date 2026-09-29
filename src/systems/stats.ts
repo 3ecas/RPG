@@ -1,23 +1,40 @@
-/** The one place where levels, equipment and buffs are added up. */
+/** The one place where skill tiers, equipment and buffs are added up. */
 import { BALANCE } from '@/content/balance';
-import { EQUIP_SLOTS } from '@/types/ids';
-import type { StatBlock } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type SkillId } from '@/types/ids';
+import type { StatBlock, WeaponType } from '@/types/content';
 import type { GameState } from '@/types/state';
 import type { Ctx } from './ctx';
-import { maxHpForLevel } from './formulas';
-import { level } from './skills';
+import { maxHpForTier } from './formulas';
+import { tier } from './skills';
 
 export interface DerivedStats extends StatBlock {
   attackIntervalMs: number;
 }
 
+const WEAPON_SKILL: Readonly<Record<WeaponType, SkillId>> = { sword: 'swords', axe: 'axes', dagger: 'daggers' };
+const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
+
+/** The combat skill trained by the equipped weapon, or null when fighting bare-handed. */
+export function weaponSkill(state: GameState, ctx: Ctx): SkillId | null {
+  const weapon = state.player.equipment.weapon;
+  const type = weapon ? ctx.content.item(weapon).equip?.weaponType : undefined;
+  return type ? WEAPON_SKILL[type] : null;
+}
+
+export function armorPiecesWorn(state: GameState): number {
+  return ARMOR_SLOTS.filter((slot) => state.player.equipment[slot] !== null).length;
+}
+
 export function derive(state: GameState, ctx: Ctx): DerivedStats {
+  const skill = weaponSkill(state, ctx);
+  const masteryTier = skill ? tier(state, skill) : 0;
+  const shieldTier = state.player.equipment.shield ? tier(state, 'shields') : 0;
   const stats: DerivedStats = {
-    attack: level(state, 'attack'),
-    strength: level(state, 'strength'),
-    defence: level(state, 'defence'),
+    attack: BALANCE.MASTERY_ATTACK_PER_TIER * masteryTier,
+    strength: BALANCE.MASTERY_STRENGTH_PER_TIER * masteryTier,
+    defence: BALANCE.ARMOR_DEFENCE_PER_TIER * tier(state, 'armor') + BALANCE.SHIELD_DEFENCE_PER_TIER * shieldTier,
     magic: 0,
-    maxHp: maxHpForLevel(level(state, 'hitpoints')),
+    maxHp: maxHpForTier(tier(state, 'vitality')),
     maxMana: 0,
     attackIntervalMs: BALANCE.UNARMED_ATTACK_INTERVAL_MS,
   };

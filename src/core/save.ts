@@ -11,7 +11,6 @@ import { migrate, SAVE_VERSION } from './migrations';
 type Raw = Record<string, unknown>;
 
 const LOG_KINDS: readonly LogKind[] = ['info', 'loot', 'combat', 'quest', 'level', 'warn', 'trade'];
-const COMBAT_STYLES = ['attack', 'strength', 'defence'] as const;
 
 export function serialize(state: GameState): string {
   return JSON.stringify(state);
@@ -46,9 +45,6 @@ function sanitize(raw: Raw, content: Registry, fresh: GameState): GameState {
     s.player.gold = Math.max(0, num(p.gold, 0));
     s.player.regenMs = Math.max(0, num(p.regenMs, 0));
     if (typeof p.zoneId === 'string' && content.hasZone(p.zoneId)) s.player.zoneId = p.zoneId;
-    if (typeof p.combatStyle === 'string' && (COMBAT_STYLES as readonly string[]).includes(p.combatStyle)) {
-      s.player.combatStyle = p.combatStyle as GameState['player']['combatStyle'];
-    }
     const skills = rec(p.skills);
     if (skills) {
       for (const skill of content.skillIds) {

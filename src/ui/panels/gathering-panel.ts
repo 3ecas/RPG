@@ -23,7 +23,7 @@ export const gatheringPanel: Panel = {
           const isActive = activeNode === node.id;
           return html`
             <div class="card ${isActive ? 'card-active' : ''}">
-              <div class="card-head"><strong>${node.name}</strong><span class="tag">${skill.name} ${node.level}</span></div>
+              <div class="card-head"><strong>${node.name}</strong><span class="tag">${skill.name} T${node.tier}</span></div>
               <p class="muted">${node.description}</p>
               <div class="row"><span>${itemName(game, node.itemId)}</span><span class="muted small">${node.xp} xp · ${fmtDuration(node.durationMs)}</span></div>
               <div class="row">

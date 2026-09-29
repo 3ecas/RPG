@@ -17,7 +17,7 @@ export function craftingPanel(station: StationId, title: string): Panel {
       return html`
         <h2>${def.name} <span class="muted">${def.description}</span></h2>
         <table class="table table-recipes">
-          <tr class="head"><th>Recipe</th><th>Lvl</th><th>Needs</th><th>Makes</th><th></th><th></th></tr>
+          <tr class="head"><th>Recipe</th><th>Tier</th><th>Needs</th><th>Makes</th><th></th><th></th></tr>
           ${recipes.map((recipe) => {
             const can = game.canCraft(recipe.id);
             const isActive = active?.recipeId === recipe.id;
@@ -25,7 +25,7 @@ export function craftingPanel(station: StationId, title: string): Panel {
             const skill = game.content.skill(recipe.skill);
             return html`<tr class="${isActive ? 'row-active' : ''} ${can.ok ? '' : 'row-dim'}">
               <td class="name"><strong>${game.content.recipeName(recipe)}</strong><div class="muted small">${recipe.xp} ${skill.name} xp · ${fmtDuration(recipe.durationMs)}</div></td>
-              <td class="num">${recipe.level}</td>
+              <td class="num">T${recipe.tier}</td>
               <td>${stackList(game, recipe.inputs)}</td>
               <td>${recipe.outputs.map((o, i) => html`${i > 0 ? ', ' : ''}${o.qty}× ${itemName(game, o.itemId)}`)}</td>
               <td class="actions">

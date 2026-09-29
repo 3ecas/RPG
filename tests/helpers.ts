@@ -2,7 +2,7 @@ import { CONTENT } from '@/content';
 import { Registry } from '@/core/registry';
 import { Game } from '@/game';
 import * as inventory from '@/systems/inventory';
-import { xpForLevel } from '@/systems/formulas';
+import { xpForTier } from '@/systems/formulas';
 import type { ItemId, SkillId } from '@/types/ids';
 
 export const registry = new Registry(CONTENT);
@@ -18,8 +18,8 @@ export function give(game: Game, itemId: ItemId, qty: number): void {
   if (!inventory.add(game.state, game.ctx, itemId, qty, 'test')) throw new Error('test inventory full');
 }
 
-export function setLevel(game: Game, skill: SkillId, level: number): void {
-  game.state.player.skills[skill].xp = xpForLevel(level);
+export function setTier(game: Game, skill: SkillId, tier: number): void {
+  game.state.player.skills[skill].xp = xpForTier(tier);
 }
 
 /** Advances the game in 100 ms ticks. */

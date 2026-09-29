@@ -1,23 +1,21 @@
-import type { RecipeDef } from '@/types/content';
-import { tableDefiner } from '../define';
+import type { ItemStack, RecipeDef } from '@/types/content';
+import { tieredDefiner } from '../define';
+import { type Metal, METALS, scaled } from '../tiers';
 
-const defineRecipes = tableDefiner<RecipeDef>();
+const defineTiered = tieredDefiner<RecipeDef>();
+
+/** What goes into each bar. Everything past iron needs coal. */
+const INPUTS: Readonly<Record<Metal, readonly Readonly<ItemStack>[]>> = {
+  bronze: [{ itemId: 'copper_ore', qty: 1 }, { itemId: 'tin_ore', qty: 1 }],
+  iron: [{ itemId: 'iron_ore', qty: 1 }],
+  steel: [{ itemId: 'iron_ore', qty: 1 }, { itemId: 'coal', qty: 2 }],
+  mithril: [{ itemId: 'mithril_ore', qty: 1 }, { itemId: 'coal', qty: 4 }],
+  adamant: [{ itemId: 'adamant_ore', qty: 1 }, { itemId: 'coal', qty: 6 }],
+  rune: [{ itemId: 'rune_ore', qty: 1 }, { itemId: 'coal', qty: 8 }],
+};
 
 /** Station: furnace. Ore in, bars out. */
-export const SMELTING = defineRecipes({
-  smelt_bronze_bar: {
-    station: 'furnace', skill: 'smithing', level: 1, durationMs: 3000, xp: 6,
-    inputs: [{ itemId: 'copper_ore', qty: 1 }, { itemId: 'tin_ore', qty: 1 }],
-    outputs: [{ itemId: 'bronze_bar', qty: 1 }],
-  },
-  smelt_iron_bar: {
-    station: 'furnace', skill: 'smithing', level: 15, durationMs: 3500, xp: 12,
-    inputs: [{ itemId: 'iron_ore', qty: 1 }],
-    outputs: [{ itemId: 'iron_bar', qty: 1 }],
-  },
-  smelt_steel_bar: {
-    station: 'furnace', skill: 'smithing', level: 30, durationMs: 4000, xp: 18,
-    inputs: [{ itemId: 'iron_ore', qty: 1 }, { itemId: 'coal', qty: 2 }],
-    outputs: [{ itemId: 'steel_bar', qty: 1 }],
-  },
-});
+export const SMELTING = defineTiered(METALS, 'smelt_', '_bar', (metal, tier) => ({
+  station: 'furnace', skill: 'blacksmithing', tier, durationMs: 3000 + 300 * (tier - 1), xp: scaled(8, tier, 1.6),
+  inputs: INPUTS[metal], outputs: [{ itemId: `${metal}_bar`, qty: 1 }],
+}));

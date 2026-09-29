@@ -4,6 +4,11 @@ import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, Sh
 /** A content definition whose `id` is narrowed to the table's id union. */
 export type Keyed<TDef, Id extends string> = TDef & { readonly id: Id };
 
+/** Every skill, item, node, recipe and monster sits on one of six tiers. */
+export type Tier = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type WeaponType = 'sword' | 'axe' | 'dagger';
+
 export type SkillGroup = 'gathering' | 'production' | 'combat';
 
 export interface SkillDef {
@@ -37,7 +42,7 @@ export type ItemCategory = 'material' | 'weapon' | 'armor' | 'food' | 'potion' |
 
 export interface SkillRequirement {
   readonly skill: SkillId;
-  readonly level: number;
+  readonly tier: Tier;
 }
 
 export interface EquipInfo {
@@ -45,6 +50,8 @@ export interface EquipInfo {
   readonly stats: Readonly<Partial<StatBlock>>;
   /** Weapons only: time between attacks. */
   readonly attackIntervalMs?: number;
+  /** Weapons only: which combat skill using it trains. */
+  readonly weaponType?: WeaponType;
   readonly requirements?: readonly SkillRequirement[];
 }
 
@@ -58,6 +65,7 @@ export interface ItemDef {
   readonly name: string;
   readonly description: string;
   readonly category: ItemCategory;
+  readonly tier: Tier;
   /** Base gold value. Shops and the market derive prices from it. */
   readonly value: number;
   readonly equip?: EquipInfo;
@@ -75,7 +83,7 @@ export interface RecipeDef {
   readonly name?: string;
   readonly station: StationId;
   readonly skill: SkillId;
-  readonly level: number;
+  readonly tier: Tier;
   readonly inputs: readonly Readonly<ItemStack>[];
   readonly outputs: readonly Readonly<ItemStack>[];
   readonly durationMs: number;
@@ -87,7 +95,7 @@ export interface GatherNodeDef {
   readonly name: string;
   readonly description: string;
   readonly skill: SkillId;
-  readonly level: number;
+  readonly tier: Tier;
   readonly itemId: ItemId;
   readonly durationMs: number;
   readonly xp: number;
@@ -105,7 +113,7 @@ export interface MonsterDef {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  readonly level: number;
+  readonly tier: Tier;
   readonly hp: number;
   readonly attack: number;
   readonly strength: number;
@@ -116,7 +124,9 @@ export interface MonsterDef {
 }
 
 export type Requirement =
-  | { readonly type: 'level'; readonly skill: SkillId; readonly level: number }
+  | { readonly type: 'tier'; readonly skill: SkillId; readonly tier: Tier }
+  /** At least one skill at this tier. Used for zone unlocks so any playstyle can progress. */
+  | { readonly type: 'any_tier'; readonly tier: Tier }
   | { readonly type: 'quest'; readonly questId: QuestId }
   | { readonly type: 'item'; readonly itemId: ItemId; readonly qty: number };
 
@@ -131,7 +141,7 @@ export type Objective =
   | { readonly type: 'kill'; readonly monsterId: MonsterId; readonly count: number }
   | { readonly type: 'collect'; readonly itemId: ItemId; readonly count: number }
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly count: number }
-  | { readonly type: 'reach_level'; readonly skill: SkillId; readonly level: number }
+  | { readonly type: 'reach_tier'; readonly skill: SkillId; readonly tier: Tier }
   | { readonly type: 'talk'; readonly npcId: NpcId };
 
 export type Reward =

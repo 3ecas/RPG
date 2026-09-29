@@ -13,7 +13,7 @@ export function canGather(state: GameState, ctx: Ctx, nodeId: NodeId): Result {
   const node = ctx.content.node(nodeId);
   const zone = ctx.content.zone(state.player.zoneId);
   if (!zone.nodes.includes(nodeId)) return fail(`There is no ${node.name} in ${zone.name}.`);
-  if (skills.level(state, node.skill) < node.level) return fail(`Requires ${ctx.content.skill(node.skill).name} level ${node.level}.`);
+  if (skills.tier(state, node.skill) < node.tier) return fail(`Requires ${ctx.content.skill(node.skill).name} tier ${node.tier}.`);
   if (!inventory.canAdd(state, node.itemId)) return fail('Inventory is full.');
   return ok();
 }

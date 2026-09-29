@@ -81,7 +81,8 @@ ul { margin: 6px 0; padding-left: 18px; }
 .table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
 .table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .table .name { font-weight: 500; }
-.table .level { font-size: 16px; font-weight: 700; width: 40px; }
+.table .level { font-size: 15px; font-weight: 700; width: 40px; }
+.table .tier-name { width: 90px; }
 .table .bar-cell { width: 35%; }
 .table .actions { text-align: right; white-space: nowrap; }
 .table .slot { text-transform: capitalize; width: 90px; }

@@ -112,7 +112,7 @@ export class App {
     const content = game.content;
     this.unsubscribe = [
       game.ctx.events.on('state:changed', () => this.markDirty()),
-      game.ctx.events.on('skill:levelup', (e) => toast(`${content.skill(e.skill).name} level ${e.level}!`, 'good')),
+      game.ctx.events.on('skill:tierup', (e) => toast(`${content.skill(e.skill).name} reached tier ${e.tier}!`, 'good')),
       game.ctx.events.on('zone:unlocked', (e) => {
         if (content.zone(e.zoneId).unlock.length > 0) toast(`New area reachable: ${content.zone(e.zoneId).name}`, 'good');
       }),
@@ -134,7 +134,7 @@ export class App {
       <div class="status">
         <span>${game.state.player.name}</span><span class="sep">·</span>
         <span>${zone.name}</span><span class="sep">·</span>
-        <span>Total level ${game.totalLevel()}</span><span class="sep">·</span>
+        <span>Tiers ${game.totalTier()} / ${game.content.skillIds.length * 6}</span><span class="sep">·</span>
         <span class="muted">${saved}</span>
       </div>`;
   }
@@ -183,9 +183,9 @@ export class App {
     const parts: string[] = [];
     for (const i of o.items) parts.push(`+${fmtNum(i.qty)} ${content.item(i.itemId).name}`);
     for (const x of o.xp) parts.push(`+${fmtNum(x.xp)} ${x.skill} xp`);
-    const lastLevel = new Map<string, number>();
-    for (const l of o.levelUps) lastLevel.set(l.skill, l.level);
-    for (const [skill, level] of lastLevel) parts.push(`${skill} level ${level}`);
+    const lastTier = new Map<string, number>();
+    for (const t of o.tierUps) lastTier.set(t.skill, t.tier);
+    for (const [skill, tier] of lastTier) parts.push(`${skill} tier ${tier}`);
     if (o.kills) parts.push(`${o.kills} kills`);
     if (o.deaths) parts.push(`${o.deaths} deaths`);
     if (o.stoppedReason) parts.push(`stopped: ${o.stoppedReason}`);

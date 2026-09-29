@@ -27,11 +27,11 @@ describe('quests', () => {
     const tails = inventory.count(game.state, 'rat_tail');
     if (tails < 3) give(game, 'rat_tail', 3 - tails);
     const goldBefore = game.state.player.gold;
-    const attackXpBefore = game.state.player.skills.attack.xp;
+    const vitalityBefore = game.state.player.skills.vitality.xp;
     const shrimpBefore = inventory.count(game.state, 'shrimp');
     expect(game.turnInQuest('rat_problem').ok).toBe(true);
     expect(game.state.player.gold).toBe(goldBefore + 50);
-    expect(game.state.player.skills.attack.xp).toBe(attackXpBefore + 100);
+    expect(game.state.player.skills.vitality.xp).toBe(vitalityBefore + 150);
     expect(inventory.count(game.state, 'shrimp')).toBe(shrimpBefore + 5);
     expect(inventory.count(game.state, 'rat_tail')).toBe(Math.max(0, tails - 3));
     expect(game.state.quests.completed).toEqual(['rat_problem']);

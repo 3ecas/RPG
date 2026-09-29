@@ -7,10 +7,10 @@ import { EventBus } from '@/core/events';
 import type { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
 import { deserialize, serialize } from '@/core/save';
-import type { Keyed, NpcDef, QuestDef, Requirement, ShopDef, TraderDef } from '@/types/content';
+import type { Keyed, NpcDef, QuestDef, Requirement, ShopDef, Tier, TraderDef } from '@/types/content';
 import type { GameEventName } from '@/types/events';
 import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from '@/types/ids';
-import type { CombatStyle, GameState } from '@/types/state';
+import type { GameState } from '@/types/state';
 import type { Result } from '@/types/result';
 import * as activity from '@/systems/activity';
 import * as combat from '@/systems/combat';
@@ -36,7 +36,7 @@ export interface OfflineSummary {
   elapsedMs: number;
   items: { itemId: ItemId; qty: number }[];
   xp: { skill: string; xp: number }[];
-  levelUps: { skill: string; level: number }[];
+  tierUps: { skill: string; tier: number }[];
   kills: number;
   deaths: number;
   stoppedReason: string | null;
@@ -93,13 +93,13 @@ export class Game {
       this.state.meta.lastTickAt = now;
       return null;
     }
-    const summary: OfflineSummary = { elapsedMs: elapsed, items: [], xp: [], levelUps: [], kills: 0, deaths: 0, stoppedReason: null };
+    const summary: OfflineSummary = { elapsedMs: elapsed, items: [], xp: [], tierUps: [], kills: 0, deaths: 0, stoppedReason: null };
     const items = new Map<ItemId, number>();
     const xp = new Map<string, number>();
     const off = [
       this.ctx.events.on('item:gained', (e) => { if (e.source !== 'unequip') items.set(e.itemId, (items.get(e.itemId) ?? 0) + e.qty); }),
       this.ctx.events.on('skill:xp', (e) => xp.set(e.skill, (xp.get(e.skill) ?? 0) + e.xp)),
-      this.ctx.events.on('skill:levelup', (e) => summary.levelUps.push({ skill: this.ctx.content.skill(e.skill).name, level: e.level })),
+      this.ctx.events.on('skill:tierup', (e) => summary.tierUps.push({ skill: this.ctx.content.skill(e.skill).name, tier: e.tier })),
       this.ctx.events.on('monster:killed', () => { summary.kills += 1; }),
       this.ctx.events.on('player:died', () => { summary.deaths += 1; }),
       this.ctx.events.on('activity:stopped', (e) => { summary.stoppedReason = e.reason; }),
@@ -141,7 +141,6 @@ export class Game {
     activity.stop(this.state, this.ctx, 'Stopped.');
     return this.command({ ok: true, value: undefined });
   }
-  setCombatStyle(style: CombatStyle): Result { return this.command(combat.setStyle(this.state, style)); }
   equip(itemId: ItemId): Result { return this.command(equipment.equip(this.state, this.ctx, itemId)); }
   unequip(slot: EquipSlot): Result { return this.command(equipment.unequip(this.state, this.ctx, slot)); }
   consume(itemId: ItemId): Result { return this.command(consumables.consume(this.state, this.ctx, itemId)); }
@@ -160,7 +159,10 @@ export class Game {
 
   stats(): stats.DerivedStats { return stats.derive(this.state, this.ctx); }
   skillView(skill: SkillId): skills.SkillView { return skills.view(this.state, this.ctx, skill); }
-  totalLevel(): number { return skills.totalLevel(this.state, this.ctx); }
+  skillTier(skill: SkillId): Tier { return skills.tier(this.state, skill); }
+  totalTier(): number { return skills.totalTier(this.state, this.ctx); }
+  /** The combat skill the equipped weapon trains, or null when unarmed. */
+  weaponSkill(): SkillId | null { return stats.weaponSkill(this.state, this.ctx); }
   activityView(): activity.ActivityView | null { return activity.describe(this.state, this.ctx); }
   itemCount(itemId: ItemId): number { return inventory.count(this.state, itemId); }
   freeSlots(): number { return inventory.freeSlots(this.state); }
@@ -170,7 +172,7 @@ export class Game {
   canFight(monsterId: MonsterId): Result { return combat.canFight(this.state, this.ctx, monsterId); }
   canEquip(itemId: ItemId): Result { return equipment.canEquip(this.state, this.ctx, itemId); }
   isZoneUnlocked(zoneId: ZoneId): Result { return zones.isUnlocked(this.state, this.ctx, zoneId); }
-  meetsRequirement(req: Requirement): boolean { return requirements.meets(this.state, req); }
+  meetsRequirement(req: Requirement): boolean { return requirements.meets(this.state, this.ctx, req); }
   describeRequirement(req: Requirement): string { return requirements.describe(this.ctx, req); }
   npcsHere(): Keyed<NpcDef, NpcId>[] { return npcs.here(this.state, this.ctx); }
   questStatus(questId: QuestId): quests.QuestStatus { return quests.status(this.state, this.ctx, questId); }

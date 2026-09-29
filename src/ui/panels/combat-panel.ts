@@ -1,15 +1,8 @@
-import type { CombatStyle } from '@/types/state';
 import { fmtDuration } from '@/util/format';
 import { itemName } from '../components/items';
 import { progressBar } from '../components/progress-bar';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
-
-const STYLES: { id: CombatStyle; label: string; hint: string }[] = [
-  { id: 'attack', label: 'Accurate', hint: 'Trains Attack' },
-  { id: 'strength', label: 'Aggressive', hint: 'Trains Strength' },
-  { id: 'defence', label: 'Defensive', hint: 'Trains Defence' },
-];
 
 export const combatPanel: Panel = {
   id: 'combat',
@@ -23,13 +16,17 @@ export const combatPanel: Panel = {
     const monster = combat ? game.content.monster(combat.monsterId) : null;
     const feed = state.log.filter((e) => e.kind === 'combat' || e.kind === 'loot' || e.kind === 'warn').slice(-12);
     const food = state.inventory.filter((s) => game.content.item(s.itemId).consume);
+    const weaponSkill = game.weaponSkill();
+    const training = [
+      weaponSkill ? `${game.content.skill(weaponSkill).name} T${game.skillTier(weaponSkill)}` : 'no weapon skill (unarmed)',
+      `Armor T${game.skillTier('armor')}`,
+      state.player.equipment.shield ? `Shields T${game.skillTier('shields')}` : 'Shields (equip a shield)',
+      `Vitality T${game.skillTier('vitality')}`,
+    ];
 
     return html`
       <h2>Combat <span class="muted">in ${zone.name}</span></h2>
-      <div class="row wrap">
-        <span class="muted small">Style:</span>
-        ${STYLES.map((s) => html`<button class="btn btn-small ${state.player.combatStyle === s.id ? 'btn-active' : ''}" data-action="style" data-id="${s.id}" title="${s.hint}">${s.label}</button>`)}
-      </div>
+      <p class="muted small">Training: ${training.join(' · ')}</p>
 
       ${combat && monster
         ? html`
@@ -42,7 +39,7 @@ export const combatPanel: Panel = {
                 ${food.length ? html`<div class="row wrap top-gap">${food.map((s) => html`<button class="btn btn-small" data-action="use" data-id="${s.itemId}">Eat ${game.content.item(s.itemId).name} (${s.qty})</button>`)}</div>` : ''}
               </div>
               <div>
-                <h3>${monster.name} <span class="muted small">lvl ${monster.level}</span></h3>
+                <h3>${monster.name} <span class="muted small">tier ${monster.tier}</span></h3>
                 ${progressBar(combat.monsterHp / monster.hp, 'monster', `${combat.monsterHp} / ${monster.hp} hp`)}
                 <div class="muted small">atk ${monster.attack} · str ${monster.strength} · def ${monster.defence} · ${fmtDuration(monster.attackIntervalMs)}/hit</div>
                 <div class="top-gap"><span class="tag">${combat.kills} kills this session</span> <button class="btn btn-small" data-action="stop">Retreat</button></div>
@@ -57,7 +54,7 @@ export const combatPanel: Panel = {
           const isActive = combat?.monsterId === id;
           return html`
             <div class="card ${isActive ? 'card-active' : ''}">
-              <div class="card-head"><strong>${m.name}</strong><span class="tag">lvl ${m.level}</span></div>
+              <div class="card-head"><strong>${m.name}</strong><span class="tag">tier ${m.tier}</span></div>
               <p class="muted">${m.description}</p>
               <div class="muted small">${m.hp} hp · atk ${m.attack} · str ${m.strength} · def ${m.defence}</div>
               <div class="muted small">Drops: ${m.loot.length ? m.loot.map((l, i) => html`${i > 0 ? ', ' : ''}${itemName(game, l.itemId)}`) : 'nothing'}${m.gold[1] > 0 ? html`, ${m.gold[0]}–${m.gold[1]} gold` : ''}</div>

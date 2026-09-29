@@ -55,7 +55,7 @@ export class Registry {
   }
 
   recipesByStation(station: StationId): Keyed<RecipeDef, RecipeId>[] {
-    return this.recipeIds.map((id) => this.recipe(id)).filter((r) => r.station === station).sort((a, b) => a.level - b.level);
+    return this.recipeIds.map((id) => this.recipe(id)).filter((r) => r.station === station).sort((a, b) => a.tier - b.tier);
   }
 
   questsByGiver(npcId: NpcId): Keyed<QuestDef, QuestId>[] {
@@ -74,9 +74,14 @@ export class Registry {
     const errors: string[] = [];
     const t = this.tables;
     const check = (cond: boolean, msg: string) => { if (!cond) errors.push(msg); };
+    const validTier = (tier: number) => Number.isInteger(tier) && tier >= 1 && tier <= 6;
     const checkReq = (owner: string, req: Requirement) => {
       switch (req.type) {
-        case 'level': check(req.skill in t.skills, `${owner}: unknown skill '${req.skill}' in requirement`); break;
+        case 'tier':
+          check(req.skill in t.skills, `${owner}: unknown skill '${req.skill}' in requirement`);
+          check(validTier(req.tier), `${owner}: bad tier ${req.tier} in requirement`);
+          break;
+        case 'any_tier': check(validTier(req.tier), `${owner}: bad tier ${req.tier} in requirement`); break;
         case 'quest': check(req.questId in t.quests, `${owner}: unknown quest '${req.questId}' in requirement`); break;
         case 'item': check(req.itemId in t.items, `${owner}: unknown item '${req.itemId}' in requirement`); break;
       }
@@ -85,13 +90,21 @@ export class Registry {
     for (const [id, def] of Object.entries(t.items)) {
       check(def.id === id, `item ${id}: id field is '${def.id}'`);
       check(def.value >= 0, `item ${id}: negative value`);
-      for (const r of def.equip?.requirements ?? []) check(r.skill in t.skills, `item ${id}: unknown skill '${r.skill}'`);
-      if (def.equip?.slot === 'weapon') check((def.equip.attackIntervalMs ?? 0) > 0, `weapon ${id}: needs attackIntervalMs`);
+      check(validTier(def.tier), `item ${id}: bad tier ${def.tier}`);
+      for (const r of def.equip?.requirements ?? []) {
+        check(r.skill in t.skills, `item ${id}: unknown skill '${r.skill}'`);
+        check(validTier(r.tier), `item ${id}: bad requirement tier ${r.tier}`);
+      }
+      if (def.equip?.slot === 'weapon') {
+        check((def.equip.attackIntervalMs ?? 0) > 0, `weapon ${id}: needs attackIntervalMs`);
+        check(def.equip.weaponType !== undefined, `weapon ${id}: needs weaponType`);
+      }
     }
     for (const [id, def] of Object.entries(t.recipes)) {
       check(def.id === id, `recipe ${id}: id field is '${def.id}'`);
       check(def.skill in t.skills, `recipe ${id}: unknown skill '${def.skill}'`);
       check(def.station in t.stations, `recipe ${id}: unknown station '${def.station}'`);
+      check(validTier(def.tier), `recipe ${id}: bad tier ${def.tier}`);
       check(def.durationMs > 0, `recipe ${id}: durationMs must be > 0`);
       check(def.inputs.length > 0 && def.outputs.length > 0, `recipe ${id}: needs inputs and outputs`);
       for (const s of [...def.inputs, ...def.outputs]) {
@@ -103,11 +116,13 @@ export class Registry {
       check(def.id === id, `node ${id}: id field is '${def.id}'`);
       check(def.skill in t.skills, `node ${id}: unknown skill '${def.skill}'`);
       check(def.itemId in t.items, `node ${id}: unknown item '${def.itemId}'`);
+      check(validTier(def.tier), `node ${id}: bad tier ${def.tier}`);
       check(def.durationMs > 0, `node ${id}: durationMs must be > 0`);
     }
     for (const [id, def] of Object.entries(t.monsters)) {
       check(def.id === id, `monster ${id}: id field is '${def.id}'`);
       check(def.hp > 0 && def.attackIntervalMs > 0, `monster ${id}: hp and attackIntervalMs must be > 0`);
+      check(validTier(def.tier), `monster ${id}: bad tier ${def.tier}`);
       check(def.gold[0] <= def.gold[1], `monster ${id}: gold min > max`);
       for (const l of def.loot) {
         check(l.itemId in t.items, `monster ${id}: unknown loot item '${l.itemId}'`);
@@ -125,7 +140,7 @@ export class Registry {
           case 'kill': check(o.monsterId in t.monsters, `quest ${id}: unknown monster '${o.monsterId}'`); break;
           case 'collect': check(o.itemId in t.items, `quest ${id}: unknown item '${o.itemId}'`); break;
           case 'craft': check(o.recipeId in t.recipes, `quest ${id}: unknown recipe '${o.recipeId}'`); break;
-          case 'reach_level': check(o.skill in t.skills, `quest ${id}: unknown skill '${o.skill}'`); break;
+          case 'reach_tier': check(o.skill in t.skills && validTier(o.tier), `quest ${id}: bad reach_tier objective`); break;
           case 'talk': check(o.npcId in t.npcs, `quest ${id}: unknown npc '${o.npcId}'`); break;
         }
       }

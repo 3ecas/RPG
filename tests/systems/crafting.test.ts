@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
-import { give, newGame, setLevel, tickFor } from '../helpers';
+import { give, newGame, setTier, tickFor } from '../helpers';
 
 describe('crafting', () => {
-  it('needs the materials and the level', () => {
+  it('needs the materials and the tier', () => {
     const game = newGame();
     expect(game.startCrafting('smelt_bronze_bar', 1)).toEqual({ ok: false, reason: 'Missing: 1× Copper Ore, 1× Tin Ore.' });
     give(game, 'iron_ore', 1);
-    expect(game.startCrafting('smelt_iron_bar', 1)).toEqual({ ok: false, reason: 'Requires Smithing level 15.' });
+    expect(game.startCrafting('smelt_iron_bar', 1)).toEqual({ ok: false, reason: 'Requires Blacksmithing tier 2.' });
+    setTier(game, 'blacksmithing', 2);
+    expect(game.startCrafting('smelt_iron_bar', 1).ok).toBe(true);
   });
 
   it('consumes inputs, produces outputs, grants xp, and stops when done or out of materials', () => {
@@ -23,7 +25,7 @@ describe('crafting', () => {
     expect(inventory.count(game.state, 'bronze_bar')).toBe(3);
     expect(inventory.count(game.state, 'copper_ore')).toBe(0);
     expect(inventory.count(game.state, 'tin_ore')).toBe(2);
-    expect(game.state.player.skills.smithing.xp).toBe(18);
+    expect(game.state.player.skills.blacksmithing.xp).toBe(3 * game.content.recipe('smelt_bronze_bar').xp);
     expect(crafted).toHaveLength(3);
     expect(game.state.activity).toBeNull();
   });
@@ -35,19 +37,31 @@ describe('crafting', () => {
     game.startCrafting('smelt_bronze_bar', 1);
     tickFor(game, 3000);
     expect(game.startCrafting('smith_bronze_dagger', 1).ok).toBe(true);
-    tickFor(game, 3000);
+    tickFor(game, game.content.recipe('smith_bronze_dagger').durationMs);
     expect(inventory.count(game.state, 'bronze_dagger')).toBe(1);
     expect(inventory.count(game.state, 'bronze_bar')).toBe(0);
   });
 
+  it('every tier has a full production chain', () => {
+    const game = newGame();
+    for (const metal of ['bronze', 'iron', 'steel', 'mithril', 'adamant', 'rune'] as const) {
+      const bar = game.content.recipe(`smelt_${metal}_bar`);
+      const sword = game.content.recipe(`smith_${metal}_sword`);
+      expect(sword.tier).toBe(bar.tier);
+      expect(sword.inputs[0]?.itemId).toBe(`${metal}_bar`);
+      expect(game.content.item(`${metal}_sword`).equip?.requirements?.[0]).toEqual({ skill: 'swords', tier: bar.tier });
+    }
+  });
+
   it('stops early if a recipe becomes unavailable mid-batch', () => {
     const game = newGame();
-    setLevel(game, 'cooking', 20);
+    setTier(game, 'cooking', 2);
     give(game, 'raw_trout', 2);
+    const duration = game.content.recipe('cook_trout').durationMs;
     game.startCrafting('cook_trout', 2);
-    tickFor(game, 2500);
+    tickFor(game, duration);
     game.state.inventory = game.state.inventory.filter((s) => s.itemId !== 'raw_trout'); // someone ate the bait
-    tickFor(game, 2500);
+    tickFor(game, duration);
     expect(inventory.count(game.state, 'trout')).toBe(1);
     expect(game.state.activity).toBeNull();
   });

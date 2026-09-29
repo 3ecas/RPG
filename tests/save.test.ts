@@ -69,6 +69,22 @@ describe('save / load', () => {
     expect(upgraded.marketView().every((r) => r.price === r.base)).toBe(true);
   });
 
+  it('upgrades a version 2 save: old skills carry over and renamed items survive', () => {
+    const v2 = {
+      version: 2,
+      player: { skills: { attack: { xp: 1600 }, hitpoints: { xp: 3000 }, mining: { xp: 50 } }, equipment: { shield: 'wooden_shield' }, combatStyle: 'strength' },
+      inventory: [{ itemId: 'wooden_shield', qty: 2 }, { itemId: 'copper_ore', qty: 5 }],
+    };
+    const loaded = Game.fromSave(registry, JSON.stringify(v2), NOW);
+    expect(loaded.state.version).toBe(SAVE_VERSION);
+    expect(loaded.state.player.skills.swords.xp).toBe(1600);
+    expect(loaded.state.player.skills.vitality.xp).toBe(3000);
+    expect(loaded.state.player.skills.mining.xp).toBe(50);
+    expect(loaded.state.player.equipment.shield).toBe('oak_shield');
+    expect(loaded.state.inventory).toEqual([{ itemId: 'oak_shield', qty: 2 }, { itemId: 'copper_ore', qty: 5 }]);
+    expect('combatStyle' in loaded.state.player).toBe(false);
+  });
+
   it('fills missing sections from a fresh state', () => {
     const loaded = Game.fromSave(registry, JSON.stringify({ version: SAVE_VERSION, player: { gold: 50 } }), NOW);
     expect(loaded.state.player.gold).toBe(50);

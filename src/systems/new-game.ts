@@ -4,11 +4,10 @@ import type { Registry } from '@/core/registry';
 import { SAVE_VERSION } from '@/core/migrations';
 import { EQUIP_SLOTS, type EquipSlot, type ItemId, type SkillId } from '@/types/ids';
 import type { GameState } from '@/types/state';
-import { maxHpForLevel, xpForLevel } from './formulas';
+import { maxHpForTier } from './formulas';
 
 export function createInitialState(content: Registry, seed: number, now: number): GameState {
   const skills = Object.fromEntries(content.skillIds.map((id) => [id, { xp: 0 }])) as Record<SkillId, { xp: number }>;
-  skills.hitpoints = { xp: xpForLevel(BALANCE.STARTING_HITPOINTS_LEVEL) };
   const equipment = Object.fromEntries(EQUIP_SLOTS.map((slot) => [slot, null])) as Record<EquipSlot, ItemId | null>;
   return {
     version: SAVE_VERSION,
@@ -16,14 +15,13 @@ export function createInitialState(content: Registry, seed: number, now: number)
     time: { nowMs: 0 },
     player: {
       name: STARTING_KIT.name,
-      hp: maxHpForLevel(BALANCE.STARTING_HITPOINTS_LEVEL),
+      hp: maxHpForTier(1),
       mana: 0,
       gold: STARTING_KIT.gold,
       zoneId: BALANCE.START_ZONE,
       skills,
       equipment,
       buffs: [],
-      combatStyle: 'attack',
       regenMs: 0,
     },
     inventory: STARTING_KIT.items.map((s) => ({ ...s })),

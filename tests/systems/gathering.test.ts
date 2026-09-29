@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
-import { newGame, setLevel, tickFor } from '../helpers';
+import { newGame, setTier, tickFor } from '../helpers';
 
 describe('gathering', () => {
   it('only works on nodes in the current zone', () => {
@@ -17,17 +17,18 @@ describe('gathering', () => {
     expect(inventory.count(game.state, 'copper_ore')).toBe(0);
     tickFor(game, 100);
     expect(inventory.count(game.state, 'copper_ore')).toBe(1);
-    expect(game.state.player.skills.mining.xp).toBe(17.5);
+    expect(game.state.player.skills.mining.xp).toBe(10);
     tickFor(game, 30_000);
     expect(inventory.count(game.state, 'copper_ore')).toBe(11);
     expect(game.state.activity?.kind).toBe('gather');
   });
 
-  it('enforces the skill level', () => {
+  it('enforces the skill tier: tier 2 unlocks iron, tier 3 coal', () => {
     const game = newGame();
-    setLevel(game, 'mining', 15);
-    game.travel('old_iron_mines');
-    expect(game.startGathering('coal_rock')).toEqual({ ok: false, reason: 'Requires Mining level 30.' });
+    expect(game.travel('old_iron_mines')).toEqual({ ok: false, reason: 'Requires: Any skill at tier 2.' });
+    setTier(game, 'mining', 2);
+    expect(game.travel('old_iron_mines').ok).toBe(true);
+    expect(game.startGathering('coal_seam')).toEqual({ ok: false, reason: 'Requires Mining tier 3.' });
     expect(game.startGathering('iron_rock').ok).toBe(true);
   });
 
@@ -46,13 +47,15 @@ describe('gathering', () => {
     expect(inventory.count(game.state, 'copper_ore')).toBe(11);
   });
 
-  it('a level up is announced once per level', () => {
+  it('filling a tier bar announces the next tier exactly once', () => {
     const game = newGame();
-    const levelUps: number[] = [];
-    game.ctx.events.on('skill:levelup', (e) => { if (e.skill === 'mining') levelUps.push(e.level); });
+    const tierUps: number[] = [];
+    game.ctx.events.on('skill:tierup', (e) => { if (e.skill === 'mining') tierUps.push(e.tier); });
+    game.state.player.skills.mining.xp = 1495;
     game.travel('copper_hills');
     game.startGathering('copper_rock');
-    tickFor(game, 60_000); // 20 ore = 350 xp: levels 2 (83), 3 (174), 4 (276)
-    expect(levelUps).toEqual([2, 3, 4]);
+    tickFor(game, 9000); // three ore: 1505, 1515, 1525 xp
+    expect(tierUps).toEqual([2]);
+    expect(game.skillView('mining')).toMatchObject({ tier: 2, tierName: 'Apprentice', xpIntoTier: 25, tierSize: 5500 });
   });
 });

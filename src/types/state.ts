@@ -2,8 +2,6 @@
 import type { ItemStack, StatBlock } from './content';
 import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
 
-export type CombatStyle = 'attack' | 'strength' | 'defence';
-
 export interface ActiveBuff {
   stat: keyof StatBlock;
   amount: number;
@@ -83,7 +81,6 @@ export interface GameState {
     skills: Record<SkillId, { xp: number }>;
     equipment: Record<EquipSlot, ItemId | null>;
     buffs: ActiveBuff[];
-    combatStyle: CombatStyle;
     /** Accumulator for passive hp regeneration. */
     regenMs: number;
   };

@@ -28,18 +28,20 @@ instead of staying blank.
 
 ## What is in the first slice
 
-- **Skills:** Mining, Woodcutting, Fishing, Smithing, Crafting, Cooking, Attack, Strength, Defence, Hitpoints.
-- **Zones:** Greenhollow Village, Copper Hills, Whispering Woods (quest-locked), Old Iron Mines (level-locked).
-- **Gathering:** rocks, trees and fishing spots per zone.
-- **Crafting:** furnace (smelting), anvil (weapons and armor), campfire (cooking), workbench (leather and wood).
-- **Combat:** idle auto-battle with a combat style, food, loot tables, death and respawn.
+- **Skills with tiers:** fifteen skills, each with its own six-tier progression. Fill a tier's bar to unlock the next tier of materials, recipes and gear. Gathering: mining, woodcutting, fishing, farming, harvesting. Production: blacksmithing, woodworking, leatherworking, cooking. Combat: swords, axes, daggers, shields, armor, vitality.
+- **Six material tiers:** bronze → iron → steel → mithril → adamant → rune, and the same ladder for wood, fish, crops, herbs and hides.
+- **Zones:** eight, from Greenhollow Village to Dragon's Reach; each opens when any skill reaches its tier (the woods need a quest).
+- **Gathering:** rocks, trees, fishing spots, fields and herb patches per zone.
+- **Crafting:** furnace (smelting), anvil (weapons and armor), sawbench (shields), tannery (leather armor), campfire (cooking).
+- **Combat:** idle auto-battle that trains the skill of the weapon you hold, plus Armor, Shields and Vitality; food, loot tables, death and respawn.
 - **Quests:** four quests given by village NPCs, tracked in the journal.
 - **Economy:** three shops with restocking stock, a market whose prices react to what you trade and drift back over time, and two barter traders with rotating offers.
 - **Persistence:** autosave, export/import, offline catch-up with a summary.
 
-Typical first hour: mine copper and tin in Copper Hills, smelt bronze at the
-furnace, forge a dagger and armor at the anvil, take Maren's rat quest, fight
-rats and goblins, unlock the woods.
+Typical first hour: mine copper and tin in Copper Hills until Mining reaches
+tier 2, smelt bronze at the furnace, forge a dagger and armor at the anvil,
+take Maren's rat quest, fight rats and goblins, unlock the woods and the iron
+mines.
 
 ## How the code is organized
 
@@ -62,6 +64,7 @@ ESLint fails the build if a layer imports something it should not.
 | Want to…        | Do                                                                              |
 |-----------------|---------------------------------------------------------------------------------|
 | Add an item     | Add a literal in `src/content/items/`. Panels and tooltips pick it up.          |
+| Add a tier of gear | Tiered items, recipes and nodes are generated from the ladders in `src/content/tiers.ts`; extend the ladder or the generator. |
 | Add a recipe    | Add a literal in `src/content/recipes/<station>.ts`.                            |
 | Add a monster   | `src/content/monsters.ts`, then list it in a zone.                              |
 | Add a quest     | Add the id to `QuestId` and the entry in `src/content/quests.ts`.               |

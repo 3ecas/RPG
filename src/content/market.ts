@@ -1,13 +1,19 @@
 import type { ItemId } from '@/types/ids';
+import { CROPS, DISHES, FISH, HERBS, HIDES, METALS, WOODS } from './tiers';
 
 /**
- * Items the market trades. Raw materials and food only: gear comes from
- * crafting, shops and traders, and quest items are not for sale.
+ * Items the market trades: raw materials and food of every tier. Gear comes
+ * from crafting, shops and traders, and quest items are not for sale.
  */
 export const MARKET_ITEMS: readonly ItemId[] = [
-  'copper_ore', 'tin_ore', 'iron_ore', 'coal',
-  'bronze_bar', 'iron_bar', 'steel_bar',
-  'oak_log', 'willow_log',
-  'raw_shrimp', 'raw_trout', 'shrimp', 'trout',
-  'cowhide', 'wolf_pelt', 'bone',
+  'copper_ore', 'tin_ore', 'iron_ore', 'coal', 'mithril_ore', 'adamant_ore', 'rune_ore',
+  ...METALS.map((m) => `${m}_bar` as const),
+  ...WOODS.map((w) => `${w}_log` as const),
+  ...FISH.map((f) => `raw_${f}` as const),
+  ...FISH,
+  ...CROPS,
+  ...DISHES,
+  ...HERBS,
+  ...HIDES,
+  'bone',
 ];

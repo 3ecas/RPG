@@ -1,6 +1,7 @@
 import { SMELTING } from './smelting';
-import { SMITHING } from './smithing';
+import { FORGING } from './forging';
+import { WOODWORKING } from './woodworking';
+import { LEATHERWORKING } from './leatherworking';
 import { COOKING } from './cooking';
-import { CRAFTING } from './crafting';
 
-export const RECIPES = { ...SMELTING, ...SMITHING, ...COOKING, ...CRAFTING };
+export const RECIPES = { ...SMELTING, ...FORGING, ...WOODWORKING, ...LEATHERWORKING, ...COOKING };

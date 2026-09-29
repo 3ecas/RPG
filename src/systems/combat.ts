@@ -2,15 +2,15 @@
 import { BALANCE } from '@/content/balance';
 import type { Keyed, MonsterDef } from '@/types/content';
 import type { MonsterId } from '@/types/ids';
-import type { Activity, CombatStyle, GameState } from '@/types/state';
+import type { Activity, GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
 import * as activity from './activity';
 import type { Ctx } from './ctx';
-import { combatXpForDamage, hitChance, maxHit } from './formulas';
+import { combatXpForDamage, defenceXpForAttack, hitChance, maxHit } from './formulas';
 import * as inventory from './inventory';
 import { log } from './log';
 import * as skills from './skills';
-import { derive, type DerivedStats } from './stats';
+import { armorPiecesWorn, derive, type DerivedStats, weaponSkill } from './stats';
 
 type CombatActivity = Extract<Activity, { kind: 'combat' }>;
 
@@ -26,11 +26,6 @@ export function start(state: GameState, ctx: Ctx, monsterId: MonsterId): Result 
   activity.begin(state, ctx, { kind: 'combat', zoneId: state.player.zoneId, monsterId });
   spawn(state, ctx.content.monster(monsterId), 0);
   log(state, ctx, 'combat', `You attack a ${ctx.content.monster(monsterId).name}.`);
-  return ok();
-}
-
-export function setStyle(state: GameState, style: CombatStyle): Result {
-  state.player.combatStyle = style;
   return ok();
 }
 
@@ -82,12 +77,16 @@ function playerAttack(state: GameState, ctx: Ctx, stats: DerivedStats, monster: 
   const damage = Math.min(combat.monsterHp, ctx.rng.int(1, maxHit(stats.strength)));
   combat.monsterHp -= damage;
   const xp = combatXpForDamage(damage);
-  skills.addXp(state, ctx, state.player.combatStyle, xp.style);
-  skills.addXp(state, ctx, 'hitpoints', xp.hitpoints);
+  const skill = weaponSkill(state, ctx);
+  if (skill) skills.addXp(state, ctx, skill, xp.weapon);
+  skills.addXp(state, ctx, 'vitality', xp.vitality);
   log(state, ctx, 'combat', `You hit the ${monster.name} for ${damage}.`);
 }
 
 function monsterAttack(state: GameState, ctx: Ctx, stats: DerivedStats, monster: Keyed<MonsterDef, MonsterId>): void {
+  const xp = defenceXpForAttack(monster.tier, armorPiecesWorn(state), state.player.equipment.shield !== null);
+  skills.addXp(state, ctx, 'armor', xp.armor);
+  skills.addXp(state, ctx, 'shields', xp.shields);
   if (!ctx.rng.chance(hitChance(monster.attack, stats.defence))) {
     log(state, ctx, 'combat', `The ${monster.name} misses you.`);
     return;

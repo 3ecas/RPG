@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { derive } from '@/systems/stats';
-import { newGame, setLevel, tickUntil } from '../helpers';
+import { give, newGame, setTier, tickUntil } from '../helpers';
 
 describe('combat', () => {
   it('only fights monsters that live in the current zone', () => {
@@ -10,25 +10,39 @@ describe('combat', () => {
     expect(game.state.combat).toMatchObject({ monsterId: 'rat', monsterHp: 5 });
   });
 
-  it('kills things, grants xp to the chosen style, and keeps fighting', () => {
+  it("kills things, trains the weapon's skill and vitality, and keeps fighting", () => {
     const game = newGame();
     game.equip('rusty_dagger');
-    game.setCombatStyle('strength');
+    expect(game.weaponSkill()).toBe('daggers');
     let kills = 0;
     game.ctx.events.on('monster:killed', () => { kills += 1; });
     game.startCombat('rat');
     tickUntil(game, () => kills >= 3);
     expect(kills).toBe(3);
-    expect(game.state.player.skills.strength.xp).toBeGreaterThan(0);
-    expect(game.state.player.skills.attack.xp).toBe(0);
-    expect(game.state.player.skills.hitpoints.xp).toBeGreaterThan(1154);
+    expect(game.state.player.skills.daggers.xp).toBeGreaterThan(0);
+    expect(game.state.player.skills.swords.xp).toBe(0);
+    expect(game.state.player.skills.vitality.xp).toBeGreaterThan(0);
+    expect(game.state.player.skills.armor.xp).toBe(0); // nothing worn, nothing learned
     expect(game.state.activity?.kind).toBe('combat');
     expect(game.state.combat?.kills).toBe(3);
   });
 
+  it('armor and shields train from attacks taken while wearing them', () => {
+    const game = newGame();
+    give(game, 'bronze_helmet', 1);
+    give(game, 'oak_shield', 1);
+    game.equip('bronze_helmet');
+    game.equip('oak_shield');
+    game.startCombat('cow');
+    tickUntil(game, () => game.state.player.skills.shields.xp > 0, 60_000);
+    expect(game.state.player.skills.shields.xp).toBeGreaterThan(0);
+    expect(game.state.player.skills.armor.xp).toBeGreaterThan(0);
+    expect(game.state.player.skills.armor.xp).toBeLessThan(game.state.player.skills.shields.xp); // one of five armor slots filled
+  });
+
   it('death sends you home at full health with nothing running', () => {
     const game = newGame();
-    setLevel(game, 'mining', 15);
+    setTier(game, 'mining', 2);
     game.travel('old_iron_mines');
     game.state.player.hp = 1;
     let died = false;

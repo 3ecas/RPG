@@ -6,7 +6,7 @@ export interface GameEvents {
   'item:gained': { itemId: ItemId; qty: number; source: string };
   'item:removed': { itemId: ItemId; qty: number };
   'skill:xp': { skill: SkillId; xp: number };
-  'skill:levelup': { skill: SkillId; level: number };
+  'skill:tierup': { skill: SkillId; tier: number };
   'recipe:crafted': { recipeId: RecipeId };
   'node:gathered': { nodeId: string; itemId: ItemId };
   'monster:killed': { monsterId: MonsterId; zoneId: ZoneId };

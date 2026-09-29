@@ -1,10 +1,18 @@
 import type { RecipeDef } from '@/types/content';
-import { tableDefiner } from '../define';
+import { tieredDefiner } from '../define';
+import { CROPS, DISHES, FISH, scaled } from '../tiers';
 
-const defineRecipes = tableDefiner<RecipeDef>();
+const defineTiered = tieredDefiner<RecipeDef>();
 
-/** Station: campfire. */
-export const COOKING = defineRecipes({
-  cook_shrimp: { station: 'campfire', skill: 'cooking', level: 1, durationMs: 2000, xp: 30, inputs: [{ itemId: 'raw_shrimp', qty: 1 }], outputs: [{ itemId: 'shrimp', qty: 1 }] },
-  cook_trout: { station: 'campfire', skill: 'cooking', level: 15, durationMs: 2500, xp: 70, inputs: [{ itemId: 'raw_trout', qty: 1 }], outputs: [{ itemId: 'trout', qty: 1 }] },
-});
+/** Station: campfire. Fish and crops each cook into the food of their tier. */
+export const COOK_FISH = defineTiered(FISH, 'cook_', '', (fish, tier) => ({
+  station: 'campfire', skill: 'cooking', tier, durationMs: 2000 + 300 * (tier - 1), xp: scaled(30, tier, 1.5),
+  inputs: [{ itemId: `raw_${fish}`, qty: 1 }], outputs: [{ itemId: fish, qty: 1 }],
+}));
+
+export const COOK_DISHES = defineTiered(DISHES, 'cook_', '', (dish, tier) => ({
+  station: 'campfire', skill: 'cooking', tier, durationMs: 2500 + 300 * (tier - 1), xp: scaled(25, tier, 1.5),
+  inputs: [{ itemId: CROPS[tier - 1]!, qty: 2 }], outputs: [{ itemId: dish, qty: 1 }],
+}));
+
+export const COOKING = { ...COOK_FISH, ...COOK_DISHES };

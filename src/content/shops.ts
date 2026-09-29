@@ -21,7 +21,7 @@ export const SHOPS = defineShops({
       { itemId: 'oak_log', qty: 'infinite' },
       { itemId: 'rusty_dagger', qty: 'infinite' },
       { itemId: 'leather_gloves', qty: 3 },
-      { itemId: 'wooden_shield', qty: 2 },
+      { itemId: 'oak_shield', qty: 2 },
       { itemId: 'copper_ring', qty: 1, price: 150 },
       { itemId: 'amulet_of_vigor', qty: 1, price: 600 },
     ],

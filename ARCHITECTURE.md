@@ -91,7 +91,7 @@ rpg/
 │  │  ├─ ctx.ts                  # Ctx { content, rng, events } and SystemListeners
 │  │  ├─ tick.ts                 # one simulation step: buffs, regen, then the current activity
 │  │  ├─ activity.ts             # begin / stop / describe the single current activity
-│  │  ├─ formulas.ts             # xp curve, hit chance, max hit, max hp
+│  │  ├─ formulas.ts             # tier thresholds, hit chance, max hit, max hp, xp splits
 │  │  ├─ stats.ts                # levels + equipment + buffs → DerivedStats
 │  │  ├─ skills.ts · inventory.ts · equipment.ts · consumables.ts
 │  │  ├─ gathering.ts            # mining, woodcutting, fishing (node data decides)
@@ -107,9 +107,10 @@ rpg/
 │  ├─ content/                   # data only
 │  │  ├─ define.ts               # tableDefiner(): stamps ids onto literals
 │  │  ├─ balance.ts · starting-kit.ts
+│  │  ├─ tiers.ts                # the six tiers + material ladders that generate tiered content
 │  │  ├─ skills.ts · stations.ts
 │  │  ├─ items/{materials,weapons,armor,food}.ts + index.ts
-│  │  ├─ recipes/{smelting,smithing,cooking,crafting}.ts + index.ts
+│  │  ├─ recipes/{smelting,forging,woodworking,leatherworking,cooking}.ts + index.ts
 │  │  ├─ gather-nodes.ts · monsters.ts · npcs.ts · quests.ts · zones.ts
 │  │  ├─ shops.ts · traders.ts · market.ts
 │  │  ├─ index.ts                # CONTENT: all tables
@@ -123,7 +124,7 @@ rpg/
 │  │  ├─ panel.ts · toast.ts
 │  │  ├─ components/{progress-bar,items}.ts
 │  │  └─ panels/                 # one file per panel + index.ts (nav order)
-│  │     skills · inventory · equipment · journal · gathering · crafting (×4 stations)
+│  │     skills · inventory · equipment · journal · gathering · crafting (×5 stations)
 │  │     combat · zones · people · shops · market · traders · log · settings
 │  │
 │  └─ util/{format,base64}.ts
@@ -364,7 +365,7 @@ Who listens:
 One function, one place: `systems/stats.ts`
 
 ```
-base (from skill levels)  +  equipment bonuses  +  active buffs  ×  multipliers  →  DerivedStats
+mastery (weapon skill tier, Armor tier, Shields tier, Vitality tier)  +  equipment  +  active buffs  →  DerivedStats
 ```
 
 Combat, spells and requirements all read `stats.derive(state, ctx)`. Nobody
@@ -407,12 +408,23 @@ else adds up bonuses. Recompute on demand; it is a few dozen additions.
 
 Design notes per feature:
 
-- **Skills.** Suggested set: Mining, Woodcutting, Fishing, Herbalism
-  (gathering); Smithing (covers smelting + forging), Crafting, Alchemy, Cooking,
-  Runecrafting (production); Attack, Strength, Defence, Hitpoints, Magic
-  (combat). Level = inverse of an exponential xp curve defined once in
-  `formulas.ts`. Levels gate recipes, nodes, equipment, zones and spells through
-  a shared `Requirement` type: `{ type: 'level' | 'quest' | 'item' | 'flag', … }`.
+- **Skills and tiers.** Every skill has its own six-tier progression:
+  filling a tier's xp bar (thresholds in `balance.TIER_XP`) unlocks the next
+  tier, and with it the nodes, recipes and gear of that tier. Gathering:
+  Mining, Woodcutting, Fishing, Farming, Harvesting. Production:
+  Blacksmithing (smelting + forging), Woodworking, Leatherworking, Cooking.
+  Combat: Swords, Axes, Daggers (trained by the weapon you hold), Shields and
+  Armor (trained by attacks you take while wearing them), Vitality (trained by
+  damage dealt; sets max hp). Requirements share one type:
+  `{ type: 'tier' | 'any_tier' | 'quest' | 'item', … }`; zones from tier 2 up
+  unlock with `any_tier`, so any playstyle opens the next area.
+- **Material ladders.** `content/tiers.ts` lists each family in tier order
+  (bronze → rune, oak → elder, shrimp → swordfish, wheat → sunfruit, nettle →
+  dragonleaf, cowhide → dragon scale). `tieredDefiner` in `content/define.ts`
+  generates one item, recipe or node per entry with the tier taken from the
+  position, and the generated ids stay literal types (`` `${metal}_sword` ``),
+  so they are checked like hand-written ones. Extending a family is one entry
+  in the list; adding a tier to a formula is one number in `balance.ts`.
 - **Items.** All stacks are `{ itemId, qty }`; two bronze swords are identical.
   This keeps inventory, shops, market and saves trivial. Per-instance data
   (enchantments, rolled stats) can be added later as a separate
@@ -616,13 +628,14 @@ Netlify or any static host. No server.
 ## 11. Status
 
 Done (steps 1–6 of the build order, all covered by tests and a browser run):
-tooling and layer boundaries, state / loop / save / offline catch-up, ten
-skills, four zones with unlock rules, gathering, four crafting stations,
-equipment and derived stats, food, idle combat with styles, loot, death and
-respawn, six NPCs, four quests with kill / collect / craft objectives, the
-journal, three shops with restocking stock, the market with player-driven
-prices, two barter traders with rotating offers, log, settings with
-export / import / reset, and all panels.
+tooling and layer boundaries, state / loop / save / offline catch-up, fifteen
+skills with six-tier progression, six material tiers of nodes, recipes,
+weapons and armor, eight zones with unlock rules, gathering, five crafting
+stations, equipment and derived stats, food, idle combat that trains the
+weapon's skill, loot, death and respawn, six NPCs, four quests, the journal,
+three shops with restocking stock, the market with player-driven prices,
+two barter traders with rotating offers, log, settings with export / import
+/ reset, and all panels.
 
 Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
 (step 8), then breadth and balance.

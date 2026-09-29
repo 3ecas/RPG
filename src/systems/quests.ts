@@ -52,7 +52,7 @@ export function objectives(state: GameState, ctx: Ctx, questId: QuestId): Object
       case 'kill': return view(`Defeat ${o.count}× ${ctx.content.monster(o.monsterId).name}`, counted, o.count);
       case 'craft': return view(`Craft ${o.count}× ${ctx.content.recipeName(ctx.content.recipe(o.recipeId))}`, counted, o.count);
       case 'collect': return view(`Bring ${o.count}× ${ctx.content.item(o.itemId).name}`, Math.min(inventory.count(state, o.itemId), o.count), o.count);
-      case 'reach_level': return view(`Reach ${ctx.content.skill(o.skill).name} level ${o.level}`, Math.min(skills.level(state, o.skill), o.level), o.level);
+      case 'reach_tier': return view(`Reach ${ctx.content.skill(o.skill).name} tier ${o.tier}`, Math.min(skills.tier(state, o.skill), o.tier), o.tier);
       case 'talk': return view(`Talk to ${ctx.content.npc(o.npcId).name}`, state.world.talkedTo.includes(o.npcId) ? 1 : 0, 1);
     }
   });
@@ -67,7 +67,7 @@ function target(o: Objective): number {
     case 'kill':
     case 'craft':
     case 'collect': return o.count;
-    case 'reach_level': return o.level;
+    case 'reach_tier': return o.tier;
     case 'talk': return 1;
   }
 }

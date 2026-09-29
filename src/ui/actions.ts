@@ -5,11 +5,10 @@
  */
 import type { App } from './app';
 import type { Result } from '@/types/result';
-import type { CombatStyle, LogKind } from '@/types/state';
+import type { LogKind } from '@/types/state';
 import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import { toast } from './toast';
 
-const STYLES: readonly CombatStyle[] = ['attack', 'strength', 'defence'];
 const LOG_FILTERS: readonly (LogKind | 'all')[] = ['all', 'info', 'loot', 'combat', 'quest', 'level', 'warn', 'trade'];
 
 export function handleAction(app: App, action: string, data: DOMStringMap): void {
@@ -31,7 +30,6 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
       break;
     }
     case 'fight': if (content.hasMonster(id)) result = game.startCombat(id); break;
-    case 'style': if ((STYLES as readonly string[]).includes(id)) result = game.setCombatStyle(id as CombatStyle); break;
     case 'equip': if (content.hasItem(id)) result = game.equip(id); break;
     case 'unequip': if ((EQUIP_SLOTS as readonly string[]).includes(id)) result = game.unequip(id as EquipSlot); break;
     case 'use': if (content.hasItem(id)) result = game.consume(id); break;

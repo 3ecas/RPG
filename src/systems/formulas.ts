@@ -1,34 +1,26 @@
 /** Every formula in the game. Numbers that are merely tuned live in content/balance.ts. */
 import { BALANCE } from '@/content/balance';
+import type { Tier } from '@/types/content';
 
-/** XP_TABLE[level] = total xp needed to reach that level. Classic exponential curve: level 2 = 83, 50 ≈ 101k, 99 ≈ 13M. */
-const XP_TABLE: number[] = (() => {
-  const table = [0, 0];
-  let points = 0;
-  for (let level = 1; level < BALANCE.MAX_LEVEL; level++) {
-    points += Math.floor(level + 300 * Math.pow(2, level / 7));
-    table[level + 1] = Math.floor(points / 4);
-  }
-  return table;
-})();
-
-export function xpForLevel(level: number): number {
-  const clamped = Math.min(BALANCE.MAX_LEVEL, Math.max(1, Math.floor(level)));
-  return XP_TABLE[clamped] ?? 0;
+/** The tier a skill is at for a given total xp. */
+export function tierForXp(xp: number): Tier {
+  let tier = 1;
+  while (tier < BALANCE.MAX_TIER && xp >= (BALANCE.TIER_XP[tier] ?? Infinity)) tier += 1;
+  return tier as Tier;
 }
 
-export function levelForXp(xp: number): number {
-  let level = 1;
-  while (level < BALANCE.MAX_LEVEL && xp >= (XP_TABLE[level + 1] ?? Infinity)) level++;
-  return level;
+/** Total xp needed to reach a tier. Tier 1 is 0. */
+export function xpForTier(tier: number): number {
+  const clamped = Math.min(BALANCE.MAX_TIER, Math.max(1, Math.floor(tier)));
+  return BALANCE.TIER_XP[clamped - 1] ?? 0;
 }
 
-/** Fraction of the way from the current level to the next, 0..1. */
-export function levelProgress(xp: number): number {
-  const level = levelForXp(xp);
-  if (level >= BALANCE.MAX_LEVEL) return 1;
-  const from = xpForLevel(level);
-  const to = xpForLevel(level + 1);
+/** Fraction of the current tier's bar that is filled, 0..1. Full at the max tier. */
+export function tierProgress(xp: number): number {
+  const tier = tierForXp(xp);
+  if (tier >= BALANCE.MAX_TIER) return 1;
+  const from = xpForTier(tier);
+  const to = xpForTier(tier + 1);
   return Math.min(1, Math.max(0, (xp - from) / (to - from)));
 }
 
@@ -43,10 +35,19 @@ export function maxHit(strength: number): number {
   return Math.max(1, Math.floor(1.5 + strength * 0.5));
 }
 
-export function maxHpForLevel(hitpointsLevel: number): number {
-  return hitpointsLevel * BALANCE.HP_PER_LEVEL;
+export function maxHpForTier(vitalityTier: number): number {
+  return BALANCE.HP_BASE + BALANCE.HP_PER_TIER * vitalityTier;
 }
 
-export function combatXpForDamage(damage: number): { style: number; hitpoints: number } {
-  return { style: damage * BALANCE.XP_PER_DAMAGE, hitpoints: damage * BALANCE.HITPOINTS_XP_PER_DAMAGE };
+/** Xp for dealing damage: the weapon's skill and Vitality. */
+export function combatXpForDamage(damage: number): { weapon: number; vitality: number } {
+  return { weapon: damage * BALANCE.XP_PER_DAMAGE, vitality: damage * BALANCE.VITALITY_XP_PER_DAMAGE };
+}
+
+/** Xp for taking an attack (hit or miss): Armor scales with how much of you is covered, Shields needs a shield. */
+export function defenceXpForAttack(monsterTier: number, armorPiecesWorn: number, hasShield: boolean): { armor: number; shields: number } {
+  return {
+    armor: BALANCE.ARMOR_XP_PER_ATTACK * monsterTier * (armorPiecesWorn / 5),
+    shields: hasShield ? BALANCE.SHIELD_XP_PER_ATTACK * monsterTier : 0,
+  };
 }

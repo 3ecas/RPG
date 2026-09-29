@@ -8,19 +8,29 @@ export const BALANCE = {
   OFFLINE_CAP_MS: 12 * 60 * 60 * 1000,
   /** Size of a catch-up step during offline simulation. */
   OFFLINE_STEP_MS: 1000,
-  MAX_LEVEL: 99,
+  /** Cumulative xp needed to reach each tier (index 0 = tier 1). Filling a tier's bar unlocks the next. */
+  TIER_XP: [0, 1500, 7000, 25000, 75000, 200000] as readonly number[],
+  MAX_TIER: 6,
   /** Distinct item stacks the inventory can hold. */
   INVENTORY_SLOTS: 40,
   /** One hit point regenerates every this many ms. */
   HP_REGEN_MS: 4000,
   UNARMED_ATTACK_INTERVAL_MS: 2400,
-  /** Hit points per Hitpoints level. */
-  HP_PER_LEVEL: 4,
-  /** Starting Hitpoints level (like classic RPGs, so a fresh character is not one-shot). */
-  STARTING_HITPOINTS_LEVEL: 10,
-  /** Combat xp granted to the chosen style per point of damage dealt. */
+  /** Max hp = HP_BASE + HP_PER_TIER × Vitality tier. */
+  HP_BASE: 30,
+  HP_PER_TIER: 10,
+  /** Mastery: each tier of the equipped weapon's skill adds this much accuracy and power. */
+  MASTERY_ATTACK_PER_TIER: 3,
+  MASTERY_STRENGTH_PER_TIER: 2,
+  /** Each tier of Armor adds this much defence; Shields likewise, but only with a shield equipped. */
+  ARMOR_DEFENCE_PER_TIER: 2,
+  SHIELD_DEFENCE_PER_TIER: 2,
+  /** Weapon-skill xp per point of damage dealt; Vitality xp per point of damage dealt. */
   XP_PER_DAMAGE: 4,
-  HITPOINTS_XP_PER_DAMAGE: 1.33,
+  VITALITY_XP_PER_DAMAGE: 1.33,
+  /** Armor / Shields xp per incoming attack, multiplied by the monster's tier. */
+  ARMOR_XP_PER_ATTACK: 3,
+  SHIELD_XP_PER_ATTACK: 4,
   START_ZONE: 'greenhollow' as ZoneId,
   LOG_CAP: 200,
   AUTOSAVE_MS: 30_000,

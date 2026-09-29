@@ -11,7 +11,7 @@ type CraftActivity = Extract<Activity, { kind: 'craft' }>;
 
 export function canCraft(state: GameState, ctx: Ctx, recipeId: RecipeId): Result {
   const recipe = ctx.content.recipe(recipeId);
-  if (skills.level(state, recipe.skill) < recipe.level) return fail(`Requires ${ctx.content.skill(recipe.skill).name} level ${recipe.level}.`);
+  if (skills.tier(state, recipe.skill) < recipe.tier) return fail(`Requires ${ctx.content.skill(recipe.skill).name} tier ${recipe.tier}.`);
   const missing = inventory.missing(state, recipe.inputs);
   if (missing.length > 0) return fail(`Missing: ${missing.map((m) => `${m.qty}× ${ctx.content.item(m.itemId).name}`).join(', ')}.`);
   if (!inventory.canAddAll(state, recipe.outputs)) return fail('Inventory is full.');

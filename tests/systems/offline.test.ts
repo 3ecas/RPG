@@ -15,8 +15,9 @@ describe('offline catch-up', () => {
     expect(summary?.elapsedMs).toBe(2 * HOUR);
     expect(inventory.count(game.state, 'copper_ore')).toBe(2400);
     expect(summary?.items).toEqual([{ itemId: 'copper_ore', qty: 2400 }]);
-    expect(summary?.xp).toEqual([{ skill: 'Mining', xp: 42000 }]);
-    expect(summary?.levelUps.at(-1)?.level).toBeGreaterThan(30);
+    expect(summary?.xp).toEqual([{ skill: 'Mining', xp: 24000 }]);
+    expect(summary?.tierUps.map((t) => t.tier)).toEqual([2, 3]);
+    expect(game.skillTier('mining')).toBe(3);
     expect(game.state.time.nowMs).toBe(2 * HOUR);
     expect(game.state.meta.lastTickAt).toBe(NOW + 2 * HOUR);
   });
@@ -44,7 +45,7 @@ describe('offline catch-up', () => {
     const stats = derive(game.state, game.ctx);
     expect(game.state.player.hp).toBeGreaterThanOrEqual(1);
     expect(game.state.player.hp).toBeLessThanOrEqual(stats.maxHp);
-    expect(Number.isFinite(game.state.player.skills.attack.xp)).toBe(true);
+    expect(Number.isFinite(game.state.player.skills.daggers.xp)).toBe(true);
     expect(game.state.inventory.every((s) => s.qty > 0)).toBe(true);
   });
 });

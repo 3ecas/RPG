@@ -1,31 +1,31 @@
 import type { ItemDef } from '@/types/content';
-import { tableDefiner } from '../define';
+import { tableDefiner, tieredDefiner } from '../define';
+import { METALS, scaled, titleCase } from '../tiers';
 
 const defineItems = tableDefiner<ItemDef>();
+const defineTiered = tieredDefiner<ItemDef>();
 
-export const WEAPONS = defineItems({
+/** Three weapon families, one per combat skill. Numbers grow with the tier. */
+export const SWORDS = defineTiered(METALS, '', '_sword', (metal, tier) => ({
+  name: `${titleCase(metal)} Sword`, description: 'A balanced blade.', category: 'weapon', tier, value: scaled(35, tier),
+  equip: { slot: 'weapon', weaponType: 'sword', stats: { attack: 4 * tier + 1, strength: 3 * tier + 1 }, attackIntervalMs: 2400, requirements: [{ skill: 'swords', tier }] },
+}));
+
+export const AXES = defineTiered(METALS, '', '_axe', (metal, tier) => ({
+  name: `${titleCase(metal)} Axe`, description: 'Slow, heavy, and final.', category: 'weapon', tier, value: scaled(45, tier),
+  equip: { slot: 'weapon', weaponType: 'axe', stats: { attack: 3 * tier, strength: 5 * tier + 1 }, attackIntervalMs: 3000, requirements: [{ skill: 'axes', tier }] },
+}));
+
+export const DAGGERS = defineTiered(METALS, '', '_dagger', (metal, tier) => ({
+  name: `${titleCase(metal)} Dagger`, description: 'Quick and cheap.', category: 'weapon', tier, value: scaled(20, tier),
+  equip: { slot: 'weapon', weaponType: 'dagger', stats: { attack: 5 * tier, strength: 2 * tier }, attackIntervalMs: 2000, requirements: [{ skill: 'daggers', tier }] },
+}));
+
+export const UNIQUE_WEAPONS = defineItems({
   rusty_dagger: {
-    name: 'Rusty Dagger', description: 'It was in the drawer. Better than fists.', category: 'weapon', value: 1,
-    equip: { slot: 'weapon', stats: { attack: 1, strength: 1 }, attackIntervalMs: 2400 },
-  },
-  bronze_dagger: {
-    name: 'Bronze Dagger', description: 'Quick and cheap.', category: 'weapon', value: 20,
-    equip: { slot: 'weapon', stats: { attack: 3, strength: 2 }, attackIntervalMs: 2000, requirements: [{ skill: 'attack', level: 1 }] },
-  },
-  bronze_sword: {
-    name: 'Bronze Sword', description: 'A proper blade.', category: 'weapon', value: 35,
-    equip: { slot: 'weapon', stats: { attack: 5, strength: 4 }, attackIntervalMs: 2400, requirements: [{ skill: 'attack', level: 1 }] },
-  },
-  iron_dagger: {
-    name: 'Iron Dagger', description: 'Holds an edge.', category: 'weapon', value: 60,
-    equip: { slot: 'weapon', stats: { attack: 7, strength: 5 }, attackIntervalMs: 2000, requirements: [{ skill: 'attack', level: 10 }] },
-  },
-  iron_sword: {
-    name: 'Iron Sword', description: 'Standard issue for the town guard.', category: 'weapon', value: 90,
-    equip: { slot: 'weapon', stats: { attack: 11, strength: 9 }, attackIntervalMs: 2400, requirements: [{ skill: 'attack', level: 10 }] },
-  },
-  steel_sword: {
-    name: 'Steel Sword', description: 'Bright, balanced, expensive.', category: 'weapon', value: 220,
-    equip: { slot: 'weapon', stats: { attack: 18, strength: 15 }, attackIntervalMs: 2400, requirements: [{ skill: 'attack', level: 20 }] },
+    name: 'Rusty Dagger', description: 'It was in the drawer. Better than fists.', category: 'weapon', tier: 1, value: 1,
+    equip: { slot: 'weapon', weaponType: 'dagger', stats: { attack: 1, strength: 1 }, attackIntervalMs: 2400 },
   },
 });
+
+export const WEAPONS = { ...SWORDS, ...AXES, ...DAGGERS, ...UNIQUE_WEAPONS };

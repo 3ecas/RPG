@@ -5,7 +5,7 @@ import { html, type Raw } from '../html';
 
 export function itemName(game: Game, itemId: ItemId): Raw {
   const item = game.content.item(itemId);
-  return html`<span class="item item-${item.category}" title="${item.description}">${item.name}</span>`;
+  return html`<span class="item item-${item.category}" title="Tier ${item.tier} · ${item.description}">${item.name}</span>`;
 }
 
 /** "1× Copper Ore" with have/need coloring. */

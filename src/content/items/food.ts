@@ -1,15 +1,20 @@
 import type { ItemDef } from '@/types/content';
-import { tableDefiner } from '../define';
+import { tieredDefiner } from '../define';
+import { DISHES, FISH, scaled, titleCase } from '../tiers';
 
-const defineItems = tableDefiner<ItemDef>();
+const defineTiered = tieredDefiner<ItemDef>();
 
-export const FOOD = defineItems({
-  shrimp: {
-    name: 'Shrimp', description: 'Pink and crunchy. Heals 4.', category: 'food', value: 6,
-    consume: { effects: [{ type: 'heal', amount: 4 }] },
-  },
-  trout: {
-    name: 'Trout', description: 'Pan-fried. Heals 9.', category: 'food', value: 18,
-    consume: { effects: [{ type: 'heal', amount: 9 }] },
-  },
-});
+const FISH_HEAL = [4, 9, 14, 20, 28, 40];
+const DISH_HEAL = [3, 7, 12, 18, 25, 35];
+
+export const COOKED_FISH = defineTiered(FISH, '', '', (fish, tier) => ({
+  name: titleCase(fish), description: `Cooked. Heals ${FISH_HEAL[tier - 1]}.`, category: 'food', tier, value: scaled(6, tier),
+  consume: { effects: [{ type: 'heal', amount: FISH_HEAL[tier - 1]! }] },
+}));
+
+export const DISH_ITEMS = defineTiered(DISHES, '', '', (dish, tier) => ({
+  name: titleCase(dish), description: `Home cooking. Heals ${DISH_HEAL[tier - 1]}.`, category: 'food', tier, value: scaled(5, tier),
+  consume: { effects: [{ type: 'heal', amount: DISH_HEAL[tier - 1]! }] },
+}));
+
+export const FOOD = { ...COOKED_FISH, ...DISH_ITEMS };
