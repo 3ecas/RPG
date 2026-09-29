@@ -1,0 +1,26 @@
+/** Everything systems tell each other and the UI. Payloads are plain data. */
+import type { Activity, LogKind } from './state';
+import type { ItemId, MonsterId, NpcId, QuestId, RecipeId, SkillId, ZoneId } from './ids';
+
+export interface GameEvents {
+  'item:gained': { itemId: ItemId; qty: number; source: string };
+  'item:removed': { itemId: ItemId; qty: number };
+  'skill:xp': { skill: SkillId; xp: number };
+  'skill:levelup': { skill: SkillId; level: number };
+  'recipe:crafted': { recipeId: RecipeId };
+  'node:gathered': { nodeId: string; itemId: ItemId };
+  'monster:killed': { monsterId: MonsterId; zoneId: ZoneId };
+  'player:died': { by: MonsterId };
+  'quest:accepted': { questId: QuestId };
+  'quest:progress': { questId: QuestId };
+  'quest:completed': { questId: QuestId };
+  'zone:unlocked': { zoneId: ZoneId };
+  'zone:travelled': { zoneId: ZoneId };
+  'npc:talked': { npcId: NpcId };
+  'activity:started': { activity: Activity };
+  'activity:stopped': { reason: string };
+  'log': { text: string; kind: LogKind };
+  'state:changed': Record<string, never>;
+}
+
+export type GameEventName = keyof GameEvents;

@@ -59,127 +59,82 @@ rewritten without touching a single rule.
 
 ## 3. Folder layout
 
+What exists today (the first playable slice) and, marked *(planned)*, where the
+remaining features go. Every path below follows the layering rule in §2.
+
 ```
 rpg/
 ├─ index.html
-├─ package.json
-├─ tsconfig.json
-├─ vite.config.ts
-├─ eslint.config.js
-├─ styles/
-│  └─ main.css
+├─ package.json · tsconfig.json · vite.config.ts · eslint.config.js
+├─ styles/main.css
 ├─ src/
-│  ├─ main.ts                    # bootstrap: build registry, load save, start loop, mount UI
-│  ├─ game.ts                    # Game facade: owns state, wires systems, exposes commands
+│  ├─ main.ts                    # bootstrap: registry → save → offline catch-up → UI → loop → autosave
+│  ├─ game.ts                    # Game facade: owns state + ctx, wires listeners, commands + read-only queries
 │  │
 │  ├─ types/                     # shared types only
-│  │  ├─ ids.ts                  # ItemId, RecipeId, MonsterId, ... (derived from content)
-│  │  ├─ content.ts              # ItemDef, RecipeDef, MonsterDef, ZoneDef, QuestDef, ...
-│  │  ├─ state.ts                # GameState and its sub-shapes
+│  │  ├─ ids.ts                  # ItemId, RecipeId, … derived from the content tables
+│  │  ├─ content.ts              # ItemDef, RecipeDef, MonsterDef, ZoneDef, QuestDef, …
+│  │  ├─ state.ts                # GameState, Activity, CombatState, …
 │  │  ├─ events.ts               # GameEvents map
-│  │  └─ result.ts               # Result<T>
+│  │  └─ result.ts               # Result<T>, ok(), fail()
 │  │
-│  ├─ core/                      # engine plumbing, no RPG knowledge
+│  ├─ core/                      # engine plumbing, no RPG rules
 │  │  ├─ events.ts               # typed EventBus
-│  │  ├─ loop.ts                 # fixed-timestep ticker + offline catch-up
-│  │  ├─ rng.ts                  # seeded PRNG (mulberry32 / sfc32)
-│  │  ├─ registry.ts             # content lookup by id + boot-time validation
-│  │  ├─ save.ts                 # serialize / deserialize / autosave / export
-│  │  └─ migrations.ts           # saveVersion N → N+1 functions
+│  │  ├─ loop.ts                 # fixed-timestep ticker on requestAnimationFrame
+│  │  ├─ rng.ts                  # seeded PRNG (mulberry32)
+│  │  ├─ registry.ts             # typed content lookup + validate()
+│  │  ├─ save.ts                 # serialize / deserialize + sanitize
+│  │  ├─ migrations.ts           # SAVE_VERSION and version upgrades
+│  │  └─ storage.ts              # the only localStorage adapter
 │  │
-│  ├─ systems/                   # all game rules; pure functions over state
-│  │  ├─ activity.ts             # the current-action scheduler (idle core)
-│  │  ├─ formulas.ts             # xp curve, damage, hit chance, prices — every formula
-│  │  ├─ stats.ts                # derived stats: levels + equipment + buffs
-│  │  ├─ skills.ts               # xp gain, level ups
-│  │  ├─ inventory.ts            # add / remove / has / count
-│  │  ├─ equipment.ts            # equip / unequip, requirements
-│  │  ├─ gathering.ts            # mining, woodcutting, fishing, herbalism (one system, data decides)
-│  │  ├─ crafting.ts             # smelting, smithing, alchemy, cooking, … (one system, recipes decide)
-│  │  ├─ consumables.ts          # potions, food → heals and timed buffs
-│  │  ├─ magic.ts                # mana, spellbook, casting
+│  ├─ systems/                   # game rules; pure functions over state
+│  │  ├─ ctx.ts                  # Ctx { content, rng, events } and SystemListeners
+│  │  ├─ tick.ts                 # one simulation step: buffs, regen, then the current activity
+│  │  ├─ activity.ts             # begin / stop / describe the single current activity
+│  │  ├─ formulas.ts             # xp curve, hit chance, max hit, max hp
+│  │  ├─ stats.ts                # levels + equipment + buffs → DerivedStats
+│  │  ├─ skills.ts · inventory.ts · equipment.ts · consumables.ts
+│  │  ├─ gathering.ts            # mining, woodcutting, fishing (node data decides)
+│  │  ├─ crafting.ts             # smelting, forging, cooking, leatherwork (recipe data decides)
 │  │  ├─ combat.ts               # auto-battle tick, loot, death
-│  │  ├─ dungeons.ts             # floors, encounters, boss, run rewards
-│  │  ├─ zones.ts                # unlock rules, travel
-│  │  ├─ npcs.ts                 # dialogue trees, actions
-│  │  ├─ quests.ts               # journal: objectives, progress, rewards
-│  │  ├─ shops.ts                # fixed-price stock, restock timers
-│  │  ├─ market.ts               # simulated supply/demand prices
-│  │  └─ trading.ts              # NPC barter offers
+│  │  ├─ requirements.ts         # shared Requirement evaluation
+│  │  ├─ zones.ts · npcs.ts · quests.ts
+│  │  ├─ log.ts · new-game.ts
+│  │  ├─ magic.ts                (planned) mana, spellbook, casting
+│  │  ├─ dungeons.ts             (planned) floors, boss, run rewards
+│  │  ├─ shops.ts · market.ts · trading.ts   (planned) economy
 │  │
 │  ├─ content/                   # data only
-│  │  ├─ balance.ts              # tunable constants (tick, offline cap, xp curve params, …)
-│  │  ├─ skills.ts
-│  │  ├─ items/
-│  │  │  ├─ materials.ts         # ores, bars, logs, herbs, hides, runes
-│  │  │  ├─ weapons.ts
-│  │  │  ├─ armor.ts
-│  │  │  ├─ potions.ts
-│  │  │  ├─ food.ts
-│  │  │  ├─ misc.ts              # quest items, spellbooks, keys
-│  │  │  └─ index.ts             # ITEMS = { ...materials, ...weapons, ... }
-│  │  ├─ recipes/
-│  │  │  ├─ smelting.ts          # station: furnace
-│  │  │  ├─ smithing.ts          # station: anvil
-│  │  │  ├─ alchemy.ts           # station: alchemy_table
-│  │  │  ├─ cooking.ts           # station: campfire
-│  │  │  ├─ crafting.ts          # station: workbench (leather, jewelry, bows)
-│  │  │  └─ index.ts
-│  │  ├─ gather-nodes.ts         # copper rock, oak tree, trout pool, …
-│  │  ├─ monsters.ts
-│  │  ├─ bosses.ts
-│  │  ├─ spells.ts
-│  │  ├─ npcs.ts
-│  │  ├─ dialogue/               # one file per NPC with long dialogue
-│  │  ├─ shops.ts
-│  │  ├─ traders.ts
-│  │  ├─ quests.ts
-│  │  ├─ dungeons.ts
-│  │  ├─ zones.ts
-│  │  └─ index.ts                # assembles everything into the Registry
+│  │  ├─ define.ts               # tableDefiner(): stamps ids onto literals
+│  │  ├─ balance.ts · starting-kit.ts
+│  │  ├─ skills.ts · stations.ts
+│  │  ├─ items/{materials,weapons,armor,food}.ts + index.ts
+│  │  ├─ recipes/{smelting,smithing,cooking,crafting}.ts + index.ts
+│  │  ├─ gather-nodes.ts · monsters.ts · npcs.ts · quests.ts · zones.ts
+│  │  ├─ index.ts                # CONTENT: all tables
+│  │  ├─ items/potions.ts · recipes/alchemy.ts · spells.ts   (planned)
+│  │  ├─ bosses.ts · dungeons.ts · shops.ts · traders.ts     (planned)
 │  │
 │  ├─ ui/                        # DOM only
-│  │  ├─ app.ts                  # layout shell, nav, panel switching, render scheduling
-│  │  ├─ html.ts                 # `html` tagged template with escaping
-│  │  ├─ actions.ts              # single delegated click handler → game commands
-│  │  ├─ components/             # reusable fragments: item-row, progress-bar, stat-table, tooltip
-│  │  └─ panels/                 # one file per panel
-│  │     ├─ skills-panel.ts
-│  │     ├─ inventory-panel.ts
-│  │     ├─ equipment-panel.ts
-│  │     ├─ gathering-panel.ts
-│  │     ├─ crafting-panel.ts    # generic; one instance per station
-│  │     ├─ spellbook-panel.ts
-│  │     ├─ combat-panel.ts
-│  │     ├─ zones-panel.ts
-│  │     ├─ dungeons-panel.ts
-│  │     ├─ journal-panel.ts
-│  │     ├─ npc-panel.ts
-│  │     ├─ shop-panel.ts
-│  │     ├─ market-panel.ts
-│  │     ├─ trader-panel.ts
-│  │     ├─ log-panel.ts
-│  │     └─ settings-panel.ts    # save / export / import / reset
+│  │  ├─ app.ts                  # shell: header, nav, panel, sidebar; string-memoized re-render
+│  │  ├─ actions.ts              # one delegated click handler → Game commands
+│  │  ├─ html.ts                 # escaping tagged template
+│  │  ├─ panel.ts · toast.ts
+│  │  ├─ components/{progress-bar,items}.ts
+│  │  └─ panels/                 # one file per panel + index.ts (nav order)
+│  │     skills · inventory · equipment · journal · gathering · crafting (×4 stations)
+│  │     combat · zones · people · log · settings
 │  │
-│  └─ util/
-│     ├─ format.ts               # numbers (1.2k), durations, percentages
-│     └─ collections.ts
+│  └─ util/{format,base64}.ts
 │
 └─ tests/
-   ├─ content.test.ts            # every id referenced anywhere exists, no cycles, …
-   ├─ save.test.ts               # round-trip + migrations
-   └─ systems/
-      ├─ crafting.test.ts
-      ├─ combat.test.ts
-      ├─ quests.test.ts
-      └─ …
+   ├─ helpers.ts · content.test.ts · formulas.test.ts · save.test.ts
+   └─ systems/{gathering,crafting,combat,equipment,quests,offline}.test.ts
 ```
 
 Rule of thumb for growth: when a system file passes ~400 lines, split it into a
 folder (`systems/combat/{tick,loot,abilities}.ts`) with an `index.ts`. Same for
 content files.
-
----
 
 ## 4. Core model
 
@@ -245,9 +200,11 @@ export const ITEMS = { ...MATERIALS, ...WEAPONS, ...ARMOR, ...POTIONS, ...FOOD, 
 export type ItemId = keyof typeof ITEMS;        // 'copper_ore' | 'tin_ore' | ...
 ```
 
-`defineItems` just stamps the key onto each definition as `id` (a `const` type
-parameter keeps the literal keys). Do the same for recipes, monsters, spells,
-zones, quests, npcs, shops, dungeons.
+`defineItems` (from `content/define.ts`) stamps the key onto each definition
+as `id` and keeps the literal keys. The same helper builds every other table.
+One exception: a table whose entries refer to *their own* table (quests
+requiring other quests) cannot have its id union inferred, so `QuestId` is
+declared by hand in `content/quests.ts` and the table is checked against it.
 
 The `Registry` (`core/registry.ts`) wraps all tables with `get(kind, id)`
 helpers and a `validate()` that runs once on boot and in the content test:
@@ -303,7 +260,9 @@ export type Activity =
   | { kind: 'dungeon'; dungeonId: DungeonId };                         // details in state.dungeonRun
 ```
 
-`systems/activity.ts` dispatches each tick to the owning system:
+`systems/tick.ts` dispatches each tick to the owning system (`activity.ts`
+only starts, stops and describes activities, so the two never import each
+other):
 
 ```ts
 export function tick(state: GameState, ctx: Ctx, dtMs: number): void {
@@ -537,8 +496,8 @@ Design notes per feature:
   maps `action` → `game.<command>()` and shows `Result.reason` as a toast on
   failure. Listeners never need re-binding after a re-render.
 - **The UI never computes rules.** Whether a button is enabled comes from a
-  system query (`crafting.canCraft`), never from the panel re-implementing the
-  check.
+  query on the facade (`game.canCraft(id)`), which forwards to the system;
+  panels never re-implement a check and never import `systems/`.
 - **Keyboard / accessibility for free:** it is all real buttons and lists.
   Add number formatting (`1.2k`, `3m 20s`) in `util/format.ts` and use it
   everywhere.
@@ -650,3 +609,17 @@ Netlify or any static host. No server.
 | Add a spell | `content/spells.ts`; if it is a new *kind* of effect, add the effect handler in `magic.ts`. |
 | Add a panel | `ui/panels/<name>-panel.ts` implementing `Panel`, register it in `ui/app.ts`. |
 | Add a mechanic | `systems/<name>.ts` (+ test), extend `GameState` and `GameEvents`, wire it in `game.ts` and `activity.tick` if it runs over time. |
+
+---
+
+## 11. Status
+
+Done (steps 1–5 of the build order, all covered by tests and a browser run):
+tooling and layer boundaries, state / loop / save / offline catch-up, ten
+skills, four zones with unlock rules, gathering, four crafting stations,
+equipment and derived stats, food, idle combat with styles, loot, death and
+respawn, four NPCs, four quests with kill / collect / craft objectives, the
+journal, log, settings with export / import / reset, and all panels.
+
+Next (in order): shops + market + traders (step 6), magic + potions via
+alchemy (step 7), dungeons + bosses (step 8), then breadth and balance.
