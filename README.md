@@ -14,9 +14,13 @@ npm run build     # produces ONE self-contained file: dist/index.html
 npm run check     # typecheck + lint (enforces layer boundaries) + tests
 ```
 
-**Just want to play?** Run `npm run build` once and double-click
-`dist/index.html`. Everything (script, styles) is inlined into that single
-file, so it works from disk, from a USB stick, or from any static host.
+**Play online:** every push to `main` runs `.github/workflows/static.yml`,
+which builds the game and publishes `dist/` to GitHub Pages at
+https://3ecas.github.io/RPG/ (the repository's Pages source must be set to
+"GitHub Actions" under Settings → Pages).
+
+**Play offline:** run `npm run build` once and double-click `dist/index.html`.
+Everything (script, styles) is inlined into that single file.
 
 Opening the source `index.html` directly does *not* work: browsers cannot run
 TypeScript, and the dev server is what compiles it. That page now says so
