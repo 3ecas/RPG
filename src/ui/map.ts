@@ -4,7 +4,7 @@
  */
 import type { ZoneId } from '@/types/ids';
 import { html, type Raw } from './html';
-import { MONSTER_ICONS, NODE_ICONS, PLACE_ICONS, STATION_ICONS } from './icons';
+import { type IconName, iconUse, MONSTER_ICONS, NODE_ICONS, PLACE_ICONS, STATION_ICONS } from './icons';
 import type { ViewContext } from './panel';
 
 const W = 1000;
@@ -30,11 +30,14 @@ interface Poi {
   kind: 'node' | 'station' | 'shop' | 'market' | 'trader' | 'npc' | 'monster' | 'signpost';
   id: string;
   label: string;
-  icon: string;
+  icon: IconName;
   x: number;
   y: number;
   state: PoiState;
+  /** A short text badge (a tier), or an icon badge with an optional colour class. */
   badge?: string;
+  badgeIcon?: IconName;
+  badgeClass?: string;
   title: string;
   /** Present when the marker shows a progress bar; the fraction is applied in place by the app. */
   progress?: boolean;
@@ -62,7 +65,7 @@ export function renderMap(view: ViewContext): Raw {
     const active = activity?.kind === 'gather' && activity.nodeId === id;
     const tierShort = game.skillTier(node.skill) < node.tier;
     pois.push({
-      kind: 'node', id, label: node.name, icon: NODE_ICONS[node.skill] ?? '•',
+      kind: 'node', id, label: node.name, icon: NODE_ICONS[node.skill] ?? 'dot',
       x: 110 + (i % 2) * 120, y: 95 + i * 88,
       state: active ? 'active' : tierShort ? 'tier' : 'ok',
       badge: tierShort ? `T${node.tier}` : undefined,
@@ -81,18 +84,18 @@ export function renderMap(view: ViewContext): Raw {
   for (const id of zone.shops) settlement.push({ kind: 'shop', id, label: game.content.shop(id).name, icon: PLACE_ICONS.shop, state: 'ok', title: game.content.shop(id).description });
   if (zone.market) {
     const locked = !game.hasFeature('market');
-    settlement.push({ kind: 'market', id: 'market', label: 'Market', icon: PLACE_ICONS.market, state: locked ? 'locked' : 'ok', badge: locked ? '🔒' : undefined, title: locked ? 'Unlock Market Access in the Progression tree.' : 'Buy and sell at moving prices.' });
+    settlement.push({ kind: 'market', id: 'market', label: 'Market', icon: PLACE_ICONS.market, state: locked ? 'locked' : 'ok', badgeIcon: locked ? 'lock' : undefined, title: locked ? 'Unlock Market Access in the Progression tree.' : 'Buy and sell at moving prices.' });
   }
   for (const id of zone.traders) {
     const locked = !game.hasFeature('traders');
-    settlement.push({ kind: 'trader', id, label: game.content.trader(id).name, icon: PLACE_ICONS.trader, state: locked ? 'locked' : 'ok', badge: locked ? '🔒' : undefined, title: locked ? 'Unlock Barter in the Progression tree.' : game.content.trader(id).title });
+    settlement.push({ kind: 'trader', id, label: game.content.trader(id).name, icon: PLACE_ICONS.trader, state: locked ? 'locked' : 'ok', badgeIcon: locked ? 'lock' : undefined, title: locked ? 'Unlock Barter in the Progression tree.' : game.content.trader(id).title });
   }
   for (const id of zone.npcs) {
     const npc = game.content.npc(id);
     const quests = game.questsByGiver(id);
     const ready = quests.some((q) => q.status === 'active' && game.canTurnIn(q.quest.id).ok);
     const available = quests.some((q) => q.status === 'available');
-    settlement.push({ kind: 'npc', id, label: npc.name, icon: PLACE_ICONS.npc, state: 'ok', badge: ready ? '❗' : available ? '❕' : undefined, title: `${npc.name}, ${npc.title}` });
+    settlement.push({ kind: 'npc', id, label: npc.name, icon: PLACE_ICONS.npc, state: 'ok', badgeIcon: ready || available ? 'alert' : undefined, badgeClass: ready ? 'badge-ready' : 'badge-quest', title: `${npc.name}, ${npc.title}` });
   }
   const cols = 3;
   settlement.forEach((poi, i) => {
@@ -138,9 +141,9 @@ export function renderMap(view: ViewContext): Raw {
       <title>${poi.title}</title>
       ${poi.state === 'active' ? html`<circle r="34" class="poi-glow"/>` : ''}
       <circle r="27" class="poi-bg"/>
-      <text y="9" text-anchor="middle" class="poi-icon">${poi.icon}</text>
+      ${iconUse(poi.icon, 30, 'poi-icon')}
       <text y="46" text-anchor="middle" class="poi-label">${poi.label}</text>
-      ${poi.badge ? html`<g transform="translate(20,-20)"><circle r="11" class="poi-badge-bg"/><text y="4" text-anchor="middle" class="poi-badge">${poi.badge}</text></g>` : ''}
+      ${poi.badgeIcon ? html`<g transform="translate(20,-20)" class="poi-badge-wrap ${poi.badgeClass ?? ''}"><circle r="11" class="poi-badge-bg"/>${iconUse(poi.badgeIcon, 14, 'poi-badge-icon')}</g>` : poi.badge ? html`<g transform="translate(20,-20)"><circle r="11" class="poi-badge-bg"/><text y="4" text-anchor="middle" class="poi-badge">${poi.badge}</text></g>` : ''}
       ${poi.progress ? html`<rect x="-26" y="52" width="52" height="5" rx="2" class="poi-track"/><rect x="-26" y="52" width="0" height="5" rx="2" class="poi-fill" data-poi="${poi.kind}:${poi.id}"/>` : ''}
     </g>`)}
   </svg>`;

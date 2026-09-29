@@ -2,6 +2,7 @@ import type { Game } from '@/game';
 import type { Keyed, NpcDef, QuestDef } from '@/types/content';
 import type { NpcId, QuestId } from '@/types/ids';
 import { attr, html, type Raw } from '../html';
+import { icon } from '../icons';
 import { itemName, requirementList } from './items';
 
 function rewardText(game: Game, quest: Keyed<QuestDef, QuestId>): Raw {
@@ -34,7 +35,7 @@ export function npcCard(game: Game, npc: Keyed<NpcDef, NpcId>, standalone = fals
           ${status === 'active' ? (() => {
             const can = game.canTurnIn(quest.id);
             return html`
-              <ul class="objectives">${game.questObjectives(quest.id).map((o) => html`<li class="${o.done ? 'ok' : ''}">${o.done ? '✓' : '○'} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
+              <ul class="objectives">${game.questObjectives(quest.id).map((o) => html`<li class="${o.done ? 'ok' : ''}">${icon(o.done ? 'check' : 'circle', o.done ? 'icon-ok' : 'icon-muted')} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
               <div class="row"><button class="btn btn-small btn-primary" data-action="turn-in" data-id="${quest.id}" ${attr(!can.ok, 'disabled')} title="${can.ok ? '' : can.reason}">Turn in</button>${can.ok ? '' : html`<span class="muted small">${can.reason}</span>`}</div>`;
           })() : ''}
           ${status === 'completed' ? html`<div class="ok small">Completed</div>` : ''}

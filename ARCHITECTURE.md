@@ -125,7 +125,7 @@ rpg/
 │  ├─ ui/                        # DOM only
 │  │  ├─ app.ts                  # shell: status bar, ticker, stage (map + windows), hotbar; window manager
 │  │  ├─ map.ts                  # the zone map: markers for everything interactive
-│  │  ├─ menubar.ts · icons.ts · groups.ts
+│  │  ├─ menubar.ts · icons.ts (the SVG icon set) · groups.ts
 │  │  ├─ actions.ts              # one delegated click handler → Game commands
 │  │  ├─ html.ts                 # escaping tagged template
 │  │  ├─ panel.ts · toast.ts
@@ -531,6 +531,11 @@ Design notes per feature:
   the hotbar opens the character menus (bag with the paper-doll gear figure,
   world map, missions, log, skills, progression tree, settings). Windows are
   draggable, stack, and close with Escape; positions persist per session.
+- **Icons:** every pictogram is a line icon from `ui/icons.ts`: paths on a
+  24×24 grid, rendered once as a hidden SVG sprite and referenced with
+  `<use>` from HTML (`icon()`) and from inside the map and tree scenes
+  (`iconUse()`). No emoji and no icon font, so the game looks the same on
+  every OS and the build stays self-contained.
 - **Catalogues:** crafting, market and shop windows show an ordered category
   list (Swords, Helmets, Ore, Fish…) that filters the table, and every item
   name opens the item card (`panels/item-panel.ts`): tier, stats,

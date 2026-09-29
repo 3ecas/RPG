@@ -4,7 +4,7 @@ import { fmtDuration, fmtNum } from '@/util/format';
 import { itemLink } from '../components/catalogue';
 import { itemName } from '../components/items';
 import { attr, html, type Raw } from '../html';
-import { SLOT_ICONS } from '../icons';
+import { icon, SLOT_ICONS } from '../icons';
 import type { Panel, ViewContext } from '../panel';
 
 const ORDER: ItemCategory[] = ['weapon', 'armor', 'food', 'potion', 'material', 'misc'];
@@ -21,7 +21,7 @@ function paperDoll({ game }: ViewContext): Raw {
     const item = itemId ? game.content.item(itemId) : null;
     const stats = item?.equip ? Object.entries(item.equip.stats).map(([k, v]) => `+${v} ${k}`).join(' ') : '';
     return html`<button class="doll-slot doll-${id} ${item ? 'filled' : ''}" data-action="unequip" data-id="${id}" ${attr(!item, 'disabled')} title="${item ? `${item.name} (${stats}). Click to unequip.` : SLOT_LABELS[id]}">
-      <span class="doll-icon">${item ? '' : SLOT_ICONS[id]}</span>
+      <span class="doll-icon">${item ? '' : icon(SLOT_ICONS[id])}</span>
       <span class="doll-text">${item ? html`${itemName(game, item.id)}` : html`<span class="muted">${SLOT_LABELS[id]}</span>`}</span>
     </button>`;
   };
@@ -61,11 +61,11 @@ export const inventoryPanel: Panel = {
           <h3>Gear <span class="muted">click a slot to unequip</span></h3>
           ${paperDoll(view)}
           <div class="stat-row">
-            <span title="Hit points">❤️ ${game.state.player.hp}/${stats.maxHp}</span>
-            <span title="Attack (accuracy)">🎯 ${stats.attack}</span>
-            <span title="Strength (power)">💪 ${stats.strength}</span>
-            <span title="Defence">🛡️ ${stats.defence}</span>
-            <span title="Attack speed">⏱ ${fmtDuration(stats.attackIntervalMs)}</span>
+            <span title="Hit points">${icon('heart')} ${game.state.player.hp}/${stats.maxHp}</span>
+            <span title="Attack (accuracy)">${icon('crosshair')} ${stats.attack}</span>
+            <span title="Strength (power)">${icon('dumbbell')} ${stats.strength}</span>
+            <span title="Defence">${icon('shield')} ${stats.defence}</span>
+            <span title="Attack speed">${icon('clock')} ${fmtDuration(stats.attackIntervalMs)}</span>
           </div>
           <div class="muted small">${weaponSkill ? `${game.content.skill(weaponSkill).name} T${game.skillTier(weaponSkill)} mastery` : 'No weapon skill in use'} · ${game.hasShield() ? 'shield up' : 'no shield'} · ${EQUIP_SLOTS.filter((s) => game.state.player.equipment[s]).length}/${EQUIP_SLOTS.length} slots</div>
         </section>

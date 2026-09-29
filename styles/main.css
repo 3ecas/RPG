@@ -45,12 +45,22 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .menu-btn { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .menu-btn:hover { color: var(--text); background: var(--bg-3); }
 .menu-btn.active { color: var(--accent); border-color: var(--border); background: var(--bg-3); }
-.menu-icon { font-size: 15px; line-height: 1; }
+.menu-icon { display: inline-flex; line-height: 1; }
+.menu-icon .icon { width: 16px; height: 16px; }
 .badge { background: var(--accent-2); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 0 5px; line-height: 15px; }
 
 .ticker { display: flex; gap: 14px; padding: 3px 12px; font-size: 12px; overflow: hidden; white-space: nowrap; cursor: pointer; }
 .ticker.empty { display: none; }
 .tick { overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+
+/* ---- icons: one hidden sprite, <use> everywhere ---- */
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.icon { width: 1.1em; height: 1.1em; vertical-align: -0.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.icon-ok { color: var(--ok); }
+.icon-bad { color: var(--bad); }
+.icon-muted { color: var(--muted); }
+.stat-row .icon { color: var(--muted); }
+.window-close .icon { width: 14px; height: 14px; vertical-align: -2px; }
 
 /* ---- stage: the map with windows over it ---- */
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
@@ -62,7 +72,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .poi { cursor: pointer; outline: none; }
 .poi-bg { fill: var(--bg-2); stroke: var(--border); stroke-width: 2; transition: stroke 0.1s, fill 0.1s; }
 .poi:hover .poi-bg, .poi:focus .poi-bg { stroke: var(--accent); fill: var(--bg-3); }
-.poi-icon { font-size: 26px; pointer-events: none; }
+.poi-icon { color: var(--text); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .poi-label { fill: var(--text); font-size: 12.5px; font-weight: 600; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 .poi-locked .poi-bg, .poi-tier .poi-bg { stroke-dasharray: 4 3; }
 .poi-locked .poi-icon, .poi-tier .poi-icon { opacity: 0.45; }
@@ -72,6 +82,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 @keyframes glow { 0%, 100% { opacity: 0.15; r: 32; } 50% { opacity: 0.4; r: 36; } }
 .poi-badge-bg { fill: var(--bg-3); stroke: var(--border); }
 .poi-badge { fill: var(--text); font-size: 10px; font-weight: 700; pointer-events: none; }
+.poi-badge-icon { color: var(--text); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.badge-ready .poi-badge-bg { fill: var(--gold); stroke: var(--gold); }
+.badge-ready .poi-badge-icon { color: #0d1117; }
+.badge-quest .poi-badge-bg { stroke: var(--gold); }
+.badge-quest .poi-badge-icon { color: var(--gold); }
 .poi-track { fill: var(--bg-3); }
 .poi-fill { fill: var(--accent); }
 .banner-slot { position: absolute; left: 12px; right: 12px; top: 8px; z-index: 5; pointer-events: none; }
@@ -133,10 +148,11 @@ ul { margin: 4px 0; padding-left: 16px; }
 .banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #2a3341; border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 8px; }
 
 /* ---- skills ---- */
-.skill-row { display: grid; grid-template-columns: minmax(80px, 1.2fr) 30px minmax(60px, 2fr) auto; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.skill-row { display: grid; grid-template-columns: minmax(120px, 1.3fr) 30px minmax(60px, 2fr) auto; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
 .skill-row:last-child { border-bottom: 0; }
 .skill-row .bar { margin: 0; height: 12px; }
 .skill-row .tier { font-weight: 700; }
+.skill-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .skill-row.locked { grid-template-columns: minmax(80px, 1.2fr) auto 1fr; opacity: 0.7; }
 .lock-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -263,7 +279,8 @@ ul { margin: 4px 0; padding-left: 16px; }
 .doll-slot.filled { border-style: solid; border-color: var(--accent-2); cursor: pointer; }
 .doll-slot.filled:hover { border-color: var(--accent); background: var(--bg-4); }
 .doll-slot[disabled] { opacity: 0.8; }
-.doll-icon { font-size: 18px; line-height: 1; }
+.doll-icon { display: inline-flex; line-height: 1; color: var(--muted); }
+.doll-icon .icon { width: 20px; height: 20px; }
 .doll-text { font-size: 11px; text-align: center; line-height: 1.2; }
 .stat-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 2px; font-weight: 600; }
 
@@ -279,12 +296,12 @@ ul { margin: 4px 0; padding-left: 16px; }
 .tnode-unlocked .tnode-bg { fill: #1d2a20; stroke: var(--ok); }
 .tnode-available .tnode-bg { stroke: var(--accent-2); stroke-width: 3; }
 .tnode-locked .tnode-icon, .tnode-locked .tnode-label { opacity: 0.45; }
-.tnode-icon { font-size: 18px; pointer-events: none; }
+.tnode-icon { color: var(--text); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .tnode-label { fill: var(--text); font-size: 10.5px; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: var(--bg-2); stroke-width: 3px; stroke-linejoin: round; }
 .tnode-cost-bg { fill: var(--bg-2); stroke: var(--border); }
 .tnode-cost { fill: var(--gold); font-size: 10px; font-weight: 700; pointer-events: none; }
 .tnode-check-bg { fill: var(--ok); }
-.tnode-check { fill: #0d1117; font-size: 10px; font-weight: 700; pointer-events: none; }
+.tnode-check { color: #0d1117; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .tree-details { background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 8px; min-height: 40px; }
 .tree .branch { padding-bottom: 4px; }
 

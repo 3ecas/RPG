@@ -1,19 +1,20 @@
 import { BRANCHES } from '@/content/progression';
 import type { ProgressNodeDef } from '@/types/content';
 import { attr, html, type Raw } from '../html';
+import { type IconName, icon, iconUse } from '../icons';
 import type { Panel, ViewContext } from '../panel';
 
 const COL = 118;
 const ROW = 72;
 const R = 22;
 
-function nodeIcon(node: ProgressNodeDef): string {
+function nodeIcon(node: ProgressNodeDef): IconName {
   const first = node.unlocks[0];
-  if (!first) return '•';
+  if (!first) return 'dot';
   switch (first.type) {
-    case 'zone': return '🗺️';
-    case 'feature': return first.feature === 'market' ? '⚖️' : first.feature === 'traders' ? '🧳' : first.feature === 'auto_eat' ? '🍖' : '🗡️';
-    case 'perk': return first.perk === 'inventory_slots' ? '🎒' : first.perk === 'max_hp' ? '❤️' : first.perk === 'gold_find' || first.perk === 'sell_bonus' ? '💰' : first.perk.endsWith('_xp') ? '📈' : '⚡';
+    case 'zone': return 'map';
+    case 'feature': return first.feature === 'market' ? 'scales' : first.feature === 'traders' ? 'cart' : first.feature === 'auto_eat' ? 'utensils' : 'crossed';
+    case 'perk': return first.perk === 'inventory_slots' ? 'backpack' : first.perk === 'max_hp' ? 'heart' : first.perk === 'gold_find' || first.perk === 'sell_bonus' ? 'coins' : first.perk.endsWith('_xp') ? 'trend' : 'bolt';
   }
 }
 
@@ -51,9 +52,9 @@ function branchGraph(view: ViewContext, branch: (typeof BRANCHES)[number]): Raw 
       return html`<g class="tnode tnode-${n.status} ${ui.selectedNode === n.node.id ? 'tnode-selected' : ''}" transform="translate(${p.x},${p.y})" data-action="select-node" data-id="${n.node.id}" tabindex="0" role="button" aria-label="${n.node.name}">
         <title>${n.node.name}: ${n.node.description}</title>
         <circle r="${R}" class="tnode-bg"/>
-        <text y="7" text-anchor="middle" class="tnode-icon">${nodeIcon(n.node)}</text>
+        ${iconUse(nodeIcon(n.node), 22, 'tnode-icon')}
         <text y="${R + 14}" text-anchor="middle" class="tnode-label">${n.node.name}</text>
-        ${n.status === 'unlocked' ? html`<g transform="translate(16,-16)"><circle r="8" class="tnode-check-bg"/><text y="3.5" text-anchor="middle" class="tnode-check">✓</text></g>` : n.node.cost > 0 ? html`<g transform="translate(17,-16)"><circle r="9" class="tnode-cost-bg"/><text y="3.5" text-anchor="middle" class="tnode-cost">${n.node.cost}</text></g>` : ''}
+        ${n.status === 'unlocked' ? html`<g transform="translate(16,-16)"><circle r="8" class="tnode-check-bg"/>${iconUse('check', 11, 'tnode-check')}</g>` : n.node.cost > 0 ? html`<g transform="translate(17,-16)"><circle r="9" class="tnode-cost-bg"/><text y="3.5" text-anchor="middle" class="tnode-cost">${n.node.cost}</text></g>` : ''}
       </g>`;
     })}
   </svg>`;
@@ -62,7 +63,7 @@ function branchGraph(view: ViewContext, branch: (typeof BRANCHES)[number]): Raw 
 function details(view: ViewContext): Raw {
   const { game, ui } = view;
   const id = ui.selectedNode && game.content.hasProgressNode(ui.selectedNode) ? ui.selectedNode : null;
-  if (!id) return html`<div class="tree-details muted small">Select a node to see what it unlocks. ✓ unlocked · blue ring = can unlock now · grey = locked.</div>`;
+  if (!id) return html`<div class="tree-details muted small">Select a node to see what it unlocks. ${icon('check', 'icon-ok')} unlocked · blue ring = can unlock now · grey = locked.</div>`;
   const { node, status, can, unlocks } = game.progressNodeView(id);
   return html`
     <div class="tree-details">

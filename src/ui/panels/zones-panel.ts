@@ -1,5 +1,6 @@
 import { requirementList } from '../components/items';
 import { html } from '../html';
+import { icon } from '../icons';
 import type { Panel } from '../panel';
 
 export const zonesPanel: Panel = {
@@ -17,7 +18,7 @@ export const zonesPanel: Panel = {
           const here = id === current;
           return html`
             <div class="card ${here ? 'card-active' : ''} ${unlocked.ok ? '' : 'card-dim'}">
-              <div class="card-head"><strong>${zone.name}</strong>${here ? html`<span class="tag tag-accent">here</span>` : unlocked.ok ? html`<button class="btn btn-small btn-primary" data-action="travel" data-id="${id}">Travel</button>` : html`<span class="tag tag-locked">🔒</span>`}</div>
+              <div class="card-head"><strong>${zone.name}</strong>${here ? html`<span class="tag tag-accent">here</span>` : unlocked.ok ? html`<button class="btn btn-small btn-primary" data-action="travel" data-id="${id}">Travel</button>` : html`<span class="tag tag-locked">${icon('lock')}</span>`}</div>
               <div class="small muted">${zone.description}</div>
               <div class="small"><span class="muted">Gather:</span> ${zone.nodes.length ? zone.nodes.map((n) => game.content.node(n).name).join(', ') : '—'}</div>
               <div class="small"><span class="muted">Monsters:</span> ${zone.monsters.length ? zone.monsters.map((m) => `${game.content.monster(m).name} (T${game.content.monster(m).tier})`).join(', ') : '—'}</div>

@@ -2,6 +2,7 @@ import type { Game } from '@/game';
 import type { ItemStack, Requirement } from '@/types/content';
 import type { ItemId } from '@/types/ids';
 import { html, type Raw } from '../html';
+import { icon } from '../icons';
 
 export function itemName(game: Game, itemId: ItemId): Raw {
   const item = game.content.item(itemId);
@@ -21,6 +22,6 @@ export function requirementList(game: Game, reqs: readonly Requirement[]): Raw {
   if (reqs.length === 0) return html`<span class="muted">none</span>`;
   return html`${reqs.map((r, i) => {
     const met = game.meetsRequirement(r);
-    return html`${i > 0 ? ' · ' : ''}<span class="${met ? 'ok' : 'bad'}">${met ? '✓' : '✗'} ${game.describeRequirement(r)}</span>`;
+    return html`${i > 0 ? ' · ' : ''}<span class="${met ? 'ok' : 'bad'}">${icon(met ? 'check' : 'x')} ${game.describeRequirement(r)}</span>`;
   })}`;
 }

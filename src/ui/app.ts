@@ -11,6 +11,7 @@ import { fmtDuration, fmtNum } from '@/util/format';
 import { handleAction } from './actions';
 import { progressBar } from './components/progress-bar';
 import { html, type Raw } from './html';
+import { icon, iconSprite } from './icons';
 import { mapProgress, renderMap } from './map';
 import { MENUS } from './menubar';
 import type { Panel, UiState, ViewContext, WindowState } from './panel';
@@ -49,6 +50,7 @@ export class App {
 
   mount(): void {
     this.root.innerHTML =
+      iconSprite().html +
       '<header class="topbar" id="ui-header"></header><div class="ticker" id="ui-ticker"></div>' +
       '<main class="stage" id="ui-stage"><div class="map" id="ui-map"></div><div class="banner-slot" id="ui-banner"></div><div class="windows" id="ui-windows"></div></main>' +
       '<nav class="hotbar" id="ui-hotbar"></nav>';
@@ -204,7 +206,7 @@ export class App {
         el = document.createElement('section');
         el.className = `window window-${win.panel}`;
         el.dataset.window = win.id;
-        el.innerHTML = '<header class="window-head"><span class="window-title"></span><button class="window-close" data-action="close-window" title="Close (Esc)">×</button></header><div class="window-body"></div>';
+        el.innerHTML = '<header class="window-head"><span class="window-title"></span><button class="window-close" data-action="close-window" title="Close (Esc)">' + icon('x').html + '</button></header><div class="window-body"></div>';
         host.appendChild(el);
       }
       const width = Math.min(panel.width ?? DEFAULT_WIDTH, Math.max(280, bounds.width - 16));
@@ -313,12 +315,12 @@ export class App {
     const button = (menu: (typeof MENUS)[number]) => {
       const panel = PANELS.find((p) => p.id === menu.panel);
       const badge = panel?.badge?.(view) ?? 0;
-      return html`<button class="menu-btn ${open.has(menu.panel) ? 'active' : ''}" data-action="toggle-window" data-id="${menu.panel}" title="${menu.title}"><span class="menu-icon">${menu.icon}</span><span class="menu-title">${menu.title}</span>${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
+      return html`<button class="menu-btn ${open.has(menu.panel) ? 'active' : ''}" data-action="toggle-window" data-id="${menu.panel}" title="${menu.title}"><span class="menu-icon">${icon(menu.icon)}</span><span class="menu-title">${menu.title}</span>${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
     };
     return html`
       <div class="hotbar-group">${MENUS.filter((m) => m.side === 'left').map(button)}</div>
       <div class="hotbar-group hotbar-right">
-        ${this.ui.windows.length ? html`<button class="menu-btn menu-close" data-action="close-all" title="Close all windows (Esc closes one)">✕ Close all</button>` : ''}
+        ${this.ui.windows.length ? html`<button class="menu-btn menu-close" data-action="close-all" title="Close all windows (Esc closes one)">${icon('x')} Close all</button>` : ''}
         ${MENUS.filter((m) => m.side === 'right').map(button)}
       </div>`;
   }

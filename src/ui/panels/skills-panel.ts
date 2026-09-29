@@ -2,6 +2,7 @@ import type { SkillGroup } from '@/types/content';
 import { fmtNum } from '@/util/format';
 import { progressBar } from '../components/progress-bar';
 import { html } from '../html';
+import { icon, SKILL_ICONS } from '../icons';
 import type { Panel } from '../panel';
 
 const GROUPS: { id: SkillGroup; title: string; hint: string }[] = [
@@ -25,7 +26,7 @@ export const skillsPanel: Panel = {
             ${skills.filter((s) => s.group === group.id).map((skill) => {
               const v = game.skillView(skill.id);
               return html`<div class="skill-row" title="${skill.description}">
-                    <span class="name">${v.name}</span>
+                    <span class="name">${icon(SKILL_ICONS[skill.id], 'icon-muted')} ${v.name}</span>
                     <span class="tier" title="${v.tierName}">T${v.tier}</span>
                     ${progressBar(v.progress, 'xp')}
                     <span class="muted small num">${v.tierSize === null ? 'max' : `${fmtNum(v.xpIntoTier)}/${fmtNum(v.tierSize)}`}</span>

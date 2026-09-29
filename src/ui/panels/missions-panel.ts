@@ -1,5 +1,6 @@
 import type { QuestId } from '@/types/ids';
 import { attr, html } from '../html';
+import { icon } from '../icons';
 import type { Panel } from '../panel';
 
 /** The campaign: chapters of missions, plus the quests people have given you. */
@@ -24,8 +25,8 @@ export const missionsPanel: Panel = {
             const status = game.chapterStatus(chapter.number);
             const missions = game.missionsInChapter(chapter.number);
             const claimed = missions.filter((m) => game.isMissionClaimed(m.id)).length;
-            if (status === 'locked') return html`<div class="chapter chapter-locked"><div class="row"><strong>🔒 ${chapter.number}. ${chapter.name}</strong><span class="muted small">${missions.length} missions</span></div><div class="muted small">${chapter.blurb}</div></div>`;
-            if (status === 'done') return html`<div class="chapter chapter-done"><div class="row"><strong>✓ ${chapter.number}. ${chapter.name}</strong><span class="muted small">${claimed}/${missions.length}</span></div></div>`;
+            if (status === 'locked') return html`<div class="chapter chapter-locked"><div class="row"><strong>${icon('lock')} ${chapter.number}. ${chapter.name}</strong><span class="muted small">${missions.length} missions</span></div><div class="muted small">${chapter.blurb}</div></div>`;
+            if (status === 'done') return html`<div class="chapter chapter-done"><div class="row"><strong>${icon('check', 'icon-ok')} ${chapter.number}. ${chapter.name}</strong><span class="muted small">${claimed}/${missions.length}</span></div></div>`;
             return html`
               <div class="chapter chapter-current">
                 <div class="row"><strong>${chapter.number}. ${chapter.name}</strong><span class="muted small">${claimed}/${missions.length} claimed</span></div>
@@ -36,10 +37,10 @@ export const missionsPanel: Panel = {
                   const can = game.canClaimMission(mission.id);
                   return html`
                     <div class="quest ${done ? 'quest-done' : can.ok ? 'quest-ready' : ''}">
-                      <div class="row"><strong>${done ? '✓ ' : ''}${mission.name}</strong>${done ? html`<span class="tag">claimed</span>` : html`<button class="btn btn-small ${can.ok ? 'btn-primary' : ''}" data-action="claim-mission" data-id="${mission.id}" ${attr(!can.ok, 'disabled')} title="${can.ok ? '' : can.reason}">Claim</button>`}</div>
+                      <div class="row"><strong>${done ? html`${icon('check', 'icon-ok')} ` : ''}${mission.name}</strong>${done ? html`<span class="tag">claimed</span>` : html`<button class="btn btn-small ${can.ok ? 'btn-primary' : ''}" data-action="claim-mission" data-id="${mission.id}" ${attr(!can.ok, 'disabled')} title="${can.ok ? '' : can.reason}">Claim</button>`}</div>
                       ${done ? '' : html`
                         <div class="muted small">${mission.description}</div>
-                        <ul class="objectives">${objectives.map((o) => html`<li class="${o.done ? 'ok' : ''}">${o.done ? '✓' : '○'} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
+                        <ul class="objectives">${objectives.map((o) => html`<li class="${o.done ? 'ok' : ''}">${icon(o.done ? 'check' : 'circle', o.done ? 'icon-ok' : 'icon-muted')} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
                         <div class="small"><span class="muted">Reward:</span> ${mission.rewards.map((r) => (r.type === 'gold' ? `${r.amount} gold` : r.type === 'xp' ? `${r.amount} ${game.content.skill(r.skill).name} xp` : r.type === 'item' ? `${r.qty}× ${game.content.item(r.itemId).name}` : `${r.amount} progression point${r.amount === 1 ? '' : 's'}`)).join(', ')}</div>`}
                     </div>`;
                 })}
@@ -58,11 +59,11 @@ export const missionsPanel: Panel = {
               <div class="quest ${done ? 'quest-ready' : ''}">
                 <div class="row"><strong>${quest.name}</strong><span class="muted small">${giver.name}, ${giver.title}</span></div>
                 <div class="muted small">${quest.description}</div>
-                <ul class="objectives">${objectives.map((o) => html`<li class="${o.done ? 'ok' : ''}">${o.done ? '✓' : '○'} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
+                <ul class="objectives">${objectives.map((o) => html`<li class="${o.done ? 'ok' : ''}">${icon(o.done ? 'check' : 'circle', o.done ? 'icon-ok' : 'icon-muted')} ${o.text} <span class="muted small">${o.current}/${o.target}</span></li>`)}</ul>
                 ${done ? html`<div class="ok small">Ready: return to ${giver.name}.</div>` : ''}
               </div>`;
           })}
-          ${game.state.quests.completed.length ? html`<h3>Completed quests</h3><ul class="small">${game.state.quests.completed.map((id) => html`<li>✓ ${game.content.quest(id).name}</li>`)}</ul>` : ''}
+          ${game.state.quests.completed.length ? html`<h3>Completed quests</h3><ul class="small">${game.state.quests.completed.map((id) => html`<li>${icon('check', 'icon-ok')} ${game.content.quest(id).name}</li>`)}</ul>` : ''}
         </section>
       </div>
     `;
