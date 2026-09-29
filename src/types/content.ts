@@ -283,6 +283,49 @@ export interface ZoneDef {
   readonly stations: readonly StationId[];
 }
 
+// ---- zone maps ----------------------------------------------------------------
+
+/** Ground of one map cell. */
+export type Terrain = 'grass' | 'path' | 'tallgrass' | 'flowers' | 'dirt' | 'floor' | 'bridge' | 'water' | 'rock' | 'trees' | 'fence' | 'void';
+
+/** Characters a map row may use for terrain. Letters and digits are legend keys instead. */
+export const TERRAIN_CHARS: Readonly<Record<string, Terrain>> = {
+  '.': 'grass', ',': 'path', '"': 'tallgrass', '*': 'flowers', ':': 'dirt', '=': 'floor', '+': 'bridge',
+  '~': 'water', '#': 'rock', '^': 'trees', '-': 'fence', ' ': 'void',
+};
+
+/** The look of a zone; the world renderer picks a palette per biome. */
+export type Biome = 'meadow' | 'hills' | 'city' | 'forest' | 'cave' | 'marsh' | 'mountain' | 'ash' | 'reach';
+
+/** Something placed on a zone map. Ids must belong to the zone the map is for. */
+export type MapObjectDef =
+  | { readonly kind: 'node'; readonly id: NodeId }
+  | { readonly kind: 'station'; readonly id: StationId }
+  | { readonly kind: 'shop'; readonly id: ShopId }
+  | { readonly kind: 'market' }
+  | { readonly kind: 'trader'; readonly id: TraderId }
+  | { readonly kind: 'npc'; readonly id: NpcId }
+  | { readonly kind: 'monster'; readonly id: MonsterId }
+  | { readonly kind: 'exit'; readonly zone: ZoneId }
+  | { readonly kind: 'spawn' }
+  | { readonly kind: 'signpost' };
+
+export type MapObjectKind = MapObjectDef['kind'];
+
+/** Kinds drawn as one building over a 2×2 block of cells; their legend key must fill the whole block. */
+export const BIG_KINDS: readonly MapObjectKind[] = ['shop', 'market'];
+
+/**
+ * A zone's tile map: rows of equal length. Letters and digits are legend keys
+ * (one object per occurrence, or one per 2×2 block for BIG_KINDS); every other
+ * character is terrain from TERRAIN_CHARS. Exactly one spawn per map.
+ */
+export interface ZoneMapDef {
+  readonly biome: Biome;
+  readonly rows: readonly string[];
+  readonly legend: Readonly<Record<string, MapObjectDef>>;
+}
+
 /** Everything the registry is built from. */
 export interface ContentTables {
   readonly skills: Readonly<Record<string, SkillDef>>;
@@ -301,4 +344,6 @@ export interface ContentTables {
   readonly progression: Readonly<Record<string, ProgressNodeDef>>;
   readonly chapters: readonly ChapterDef[];
   readonly missions: Readonly<Record<string, MissionDef>>;
+  /** One tile map per zone, keyed by zone id. */
+  readonly maps: Readonly<Record<string, ZoneMapDef>>;
 }

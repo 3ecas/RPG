@@ -20,7 +20,7 @@ build order, setup and conventions.
 | Language     | TypeScript, `strict: true`                                    | Content-heavy games die from typos in ids and mismatched shapes. The compiler catches those for free. |
 | Build / dev  | Vite                                                          | Zero-config dev server, native ES modules, bundling, tiny footprint. |
 | UI           | Vanilla DOM, one module per panel                             | Text panels don't need a framework. The UI layer is isolated, so Preact/Svelte could be dropped in later without touching game logic. |
-| Game engine  | None                                                          | No graphics, no physics, no scene graph. |
+| World        | A small canvas renderer of our own (`ui/world/`)              | Tile maps and 16-pixel sprites drawn as text are all the world needs: no Phaser, no physics, no asset pipeline, one small page. |
 | State        | One plain, serializable `GameState` object                    | Saving is `JSON.stringify`. Tests build a state and call a function. No class instances in state. |
 | Rules        | "Systems": modules of functions `(state, ctx, args) → Result` | Pure, testable, DOM-free. |
 | Content      | Data files under `src/content/`, validated on boot            | Adding an item, recipe or quest is adding an object literal, never writing code. |
@@ -36,9 +36,9 @@ build order, setup and conventions.
 
 ```
 ui  ──►  game.ts (facade)  ──►  systems  ──►  core
-                                   │
-                                   ▼
-                                content  ──►  types
+ │                                 │
+ ▼                                 ▼
+world (grid + paths)            content  ──►  types
 ```
 
 | Layer      | May import                        | Must never                                   |
@@ -47,6 +47,7 @@ ui  ──►  game.ts (facade)  ──►  systems  ──►  core
 | `content/` | `types/`                          | contain game logic or reference `systems/`   |
 | `core/`    | `types/`                          | know any RPG rule (it is generic plumbing)   |
 | `systems/` | `types/`, `core/`, `content/`     | import `ui/`, touch `document` / `window`    |
+| `world/`   | `types/`                          | touch the DOM or know a rule (pure geometry over map content) |
 | `game.ts`  | everything except `ui/`           | contain formulas                             |
 | `ui/`      | `game.ts`, `types/`, `util/`      | mutate state, contain formulas               |
 
@@ -118,13 +119,18 @@ rpg/
 │  │  ├─ shops.ts · traders.ts · market.ts
 │  │  ├─ progression.ts          # the tree (zones, features, perks)
 │  │  ├─ missions.ts             # chapters and missions
+│  │  ├─ maps.ts                 # one tile map per zone: terrain rows + a legend placing everything the zone lists
 │  │  ├─ index.ts                # CONTENT: all tables
 │  │  ├─ items/potions.ts · recipes/alchemy.ts · spells.ts   (planned)
 │  │  ├─ bosses.ts · dungeons.ts                             (planned)
 │  │
 │  ├─ ui/                        # DOM only
-│  │  ├─ app.ts                  # shell: status bar, ticker, stage (map + windows), hotbar; window manager
-│  │  ├─ map.ts                  # the zone map: markers for everything interactive
+│  │  ├─ app.ts                  # shell: status bar, ticker, stage (world + windows), hotbar; window manager
+│  │  ├─ world/                  # the walkable zone on a canvas
+│  │  │  ├─ scene.ts             # movement, camera, taps and keys, interaction prompt, ties to activities and windows
+│  │  │  ├─ art.ts               # pixel art as text (people, creatures, spots, stations, buildings, ground tiles)
+│  │  │  ├─ palettes.ts          # biome colours, material tints, outfits
+│  │  │  └─ sprites.ts           # rasterizes art to cached canvases, pre-renders a zone's ground
 │  │  ├─ menubar.ts · icons.ts (the SVG icon set) · groups.ts
 │  │  ├─ actions.ts              # one delegated click handler → Game commands
 │  │  ├─ html.ts                 # escaping tagged template
@@ -134,11 +140,16 @@ rpg/
 │  │     skills · tree · inventory (bag + gear figure) · missions · node · npc · people
 │  │     gathering · crafting (×5 stations) · item · combat · zones · shops · market · traders · log · settings
 │  │
+│  ├─ world/                     # pure model of a zone map
+│  │  ├─ grid.ts                 # parseMap(): terrain, placed objects with footprints, walkability, adjacency
+│  │  └─ path.ts                 # breadth-first paths
+│  │
 │  └─ util/{format,base64}.ts
 │
 └─ tests/
    ├─ helpers.ts · content.test.ts · formulas.test.ts · save.test.ts
-   └─ systems/{gathering,crafting,combat,equipment,quests,offline,economy}.test.ts
+   ├─ systems/{gathering,crafting,combat,equipment,quests,offline,economy,progression,missions}.test.ts
+   └─ world/{grid,art}.test.ts     # maps parse, everything reachable on foot, exits connect the world, art is well formed
 ```
 
 Rule of thumb for growth: when a system file passes ~400 lines, split it into a
@@ -523,14 +534,33 @@ Design notes per feature:
 
 - **Layout:** a one-line status bar (zone, tiers, gold, bag, hp, the current
   activity with its progress bar and a Stop button, save age), a two-line
-  event ticker, the stage, and a bottom hotbar. The stage is the **zone map**
-  (`ui/map.ts`): an SVG scene with one marker per thing you can interact with
-  (gathering spots, stations, shops, market, traders, people, monsters, a
-  signpost), and **windows** floating over it. Clicking a marker opens the
-  matching panel as a window (a monster starts the fight and opens combat);
-  the hotbar opens the character menus (bag with the paper-doll gear figure,
+  event ticker, the stage, and a bottom hotbar. The stage is the **world**
+  (`ui/world/scene.ts`): the zone's tile map on a canvas, with the player,
+  the people and the creatures on it, and **windows** floating over it. The
+  hotbar opens the character menus (bag with the paper-doll gear figure,
   world map, missions, log, skills, progression tree, settings). Windows are
   draggable, stack, and close with Escape; positions persist per session.
+- **The world:** every zone has a 40×24 tile map in `content/maps.ts`
+  (terrain characters plus a legend that places every gathering spot,
+  station, shop, market, trader, person, monster spawn, exit, signpost and
+  the spawn point; the registry refuses a map that forgets anything the zone
+  lists, and a test walks every map to prove everything is reachable).
+  `world/grid.ts` turns a map into terrain, footprints (shops and the market
+  are 2×2) and walkability; `world/path.ts` finds paths. The scene moves the
+  player cell by cell with WASD / arrows or a tap (tapping a thing walks up
+  to it and interacts), shows a prompt for what is in front of you, and
+  keeps the rules where they are: **E on a tree** calls `startGathering`,
+  **E on a monster** calls `startCombat` and opens the combat window, **E on
+  a person** talks and opens their window, buildings and stations open their
+  windows. Creatures wander near their spawn; the one you fight stands
+  still, flashes on hits, shows an hp bar and fades out when it dies (the
+  fight continues with the next, as before). Walking away from what you were
+  doing stops the activity and closes its window; starting an activity from
+  a window walks you to its spot instead. Exits at the map edges lead to the
+  neighbouring zone (locked ones say why); the world map fast-travels only
+  to zones you have walked to. Where you stand is UI state (`rpg.ui`), never
+  part of the save. Sprites are pixel art written as text in
+  `ui/world/art.ts`, rasterized once and tinted per material or biome.
 - **Icons:** every pictogram is a line icon from `ui/icons.ts`: paths on a
   24×24 grid, rendered once as a hidden SVG sprite and referenced with
   `<use>` from HTML (`icon()`) and from inside the map and tree scenes
@@ -691,8 +721,9 @@ five crafting stations placed in zones, nine-slot equipment with a paper
 doll, food and auto-eat, dual wield, idle combat, loot, death and respawn,
 eleven NPCs, four quests, seven shops with restocking stock, the market with
 player-driven prices, two barter traders, log, settings with export /
-import / reset, and a map-centred UI with windows, hotbar, catalogues and
-item cards.
+import / reset, a UI of windows, hotbar, catalogues and item cards, and a
+walkable world: nine tile maps with pixel-art sprites, keyboard and
+tap-to-move, people to talk to, creatures to fight, exits between zones.
 
 Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
 (step 8), then breadth and balance.

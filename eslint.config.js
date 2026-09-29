@@ -44,6 +44,14 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noGame] }] },
   },
   {
+    // The world model is pure geometry over map content: types only, no DOM.
+    files: ['src/world/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
+      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+    },
+  },
+  {
     // The UI reads state and calls the facade; it never reaches into systems.
     files: ['src/ui/**'],
     rules: { 'no-restricted-imports': ['error', { patterns: [noSystems, noCore] }] },

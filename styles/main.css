@@ -64,31 +64,15 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 
 /* ---- stage: the map with windows over it ---- */
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
-.map { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-.map-svg { width: 100%; height: 100%; }
-.map-title { fill: var(--text); font-size: 20px; font-weight: 700; }
-.map-sub { fill: var(--muted); font-size: 12px; }
-.map-region { fill: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
-.poi { cursor: pointer; outline: none; }
-.poi-bg { fill: var(--bg-2); stroke: var(--border); stroke-width: 2; transition: stroke 0.1s, fill 0.1s; }
-.poi:hover .poi-bg, .poi:focus .poi-bg { stroke: var(--accent); fill: var(--bg-3); }
-.poi-icon { color: var(--text); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.poi-label { fill: var(--text); font-size: 12.5px; font-weight: 600; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
-.poi-locked .poi-bg, .poi-tier .poi-bg { stroke-dasharray: 4 3; }
-.poi-locked .poi-icon, .poi-tier .poi-icon { opacity: 0.45; }
-.poi-locked .poi-label, .poi-tier .poi-label { fill: var(--muted); }
-.poi-active .poi-bg { stroke: var(--accent); stroke-width: 3; }
-.poi-glow { fill: var(--accent-2); opacity: 0.25; animation: glow 1.6s ease-in-out infinite; }
-@keyframes glow { 0%, 100% { opacity: 0.15; r: 32; } 50% { opacity: 0.4; r: 36; } }
-.poi-badge-bg { fill: var(--bg-3); stroke: var(--border); }
-.poi-badge { fill: var(--text); font-size: 10px; font-weight: 700; pointer-events: none; }
-.poi-badge-icon { color: var(--text); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.badge-ready .poi-badge-bg { fill: var(--gold); stroke: var(--gold); }
-.badge-ready .poi-badge-icon { color: #0d1117; }
-.badge-quest .poi-badge-bg { stroke: var(--gold); }
-.badge-quest .poi-badge-icon { color: var(--gold); }
-.poi-track { fill: var(--bg-3); }
-.poi-fill { fill: var(--accent); }
+.world { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.world-canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.world-zone { position: absolute; left: 12px; top: 10px; padding: 3px 10px; border-radius: 6px; background: rgba(18, 20, 24, 0.75); border: 1px solid var(--border); font-weight: 700; font-size: 13px; pointer-events: none; }
+.world-hud { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none; }
+.world-prompt { pointer-events: auto; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px; background: rgba(26, 29, 35, 0.92); border: 1px solid var(--accent-2); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); display: inline-flex; align-items: center; gap: 8px; }
+.world-prompt[hidden] { display: none; }
+.world-prompt kbd { font: inherit; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; background: var(--accent-2); color: #fff; }
+.world-hint { position: absolute; right: 12px; bottom: 14px; padding: 3px 10px; border-radius: 6px; background: rgba(18, 20, 24, 0.75); border: 1px solid var(--border); color: var(--muted); font-size: 11px; pointer-events: none; transition: opacity 0.4s; }
+.world-hint.hidden { opacity: 0; }
 .banner-slot { position: absolute; left: 12px; right: 12px; top: 8px; z-index: 5; pointer-events: none; }
 .banner-slot .banner { pointer-events: auto; }
 .banner-slot.empty { display: none; }

@@ -3,7 +3,7 @@ import { itemName } from '../components/items';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
 
-/** All gathering spots in the zone. The map opens single spots; this is the list view. */
+/** All gathering spots in the zone as a list; picking one walks you there. */
 export const gatheringPanel: Panel = {
   id: 'gathering',
   title: 'Gathering',

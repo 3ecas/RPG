@@ -47,7 +47,7 @@ export const combatPanel: Panel = {
 
       <div class="grid grid-2 grid-combat">
         <section class="card">
-          <h3>Targets in ${zone.name} <span class="muted">until you stop, die or leave</span></h3>
+          <h3>Targets in ${zone.name} <span class="muted">walk up to one and press E, or pick one here and you will walk over</span></h3>
           <div class="grid grid-auto-sm">
             ${zone.monsters.map((id) => {
               const m = game.content.monster(id);

@@ -32,26 +32,7 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
     case 'panel': app.openWindow(id); return;
     case 'close-window': app.closeWindow(id); return;
     case 'close-all': app.ui.windows = []; app.markDirty(); return;
-    case 'poi': {
-      switch (data.kind) {
-        case 'node': app.openExclusive('node', { id }); return;
-        case 'station': if (content.hasStation(id)) app.openWindow(id); return;
-        case 'shop': app.openShop(id); return;
-        case 'market': app.openWindow('market'); return;
-        case 'trader': app.openWindow('traders'); return;
-        case 'npc': app.openExclusive('npc', { id }); return;
-        case 'signpost': app.openWindow('zones'); return;
-        case 'monster': {
-          if (!content.hasMonster(id)) return;
-          const fighting = game.state.combat?.monsterId === id;
-          if (!fighting) result = game.startCombat(id);
-          app.openWindow('combat');
-          break;
-        }
-        default: return;
-      }
-      break;
-    }
+    case 'interact': app.world.interact(); return;
     case 'unlock': if (content.hasProgressNode(id)) result = game.unlockNode(id); break;
     case 'claim-mission': if (content.hasMission(id)) result = game.claimMission(id); break;
     case 'log-filter': if ((LOG_FILTERS as readonly string[]).includes(id)) app.setLogFilter(id as LogKind | 'all'); return;

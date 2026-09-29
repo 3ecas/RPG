@@ -20,6 +20,7 @@ import type { Ctx, SystemListeners } from '@/systems/ctx';
 import * as equipment from '@/systems/equipment';
 import * as gathering from '@/systems/gathering';
 import * as inventory from '@/systems/inventory';
+import { log } from '@/systems/log';
 import * as market from '@/systems/market';
 import * as missions from '@/systems/missions';
 import { createInitialState } from '@/systems/new-game';
@@ -144,8 +145,9 @@ export class Game {
   startGathering(nodeId: NodeId): Result { return this.command(gathering.start(this.state, this.ctx, nodeId)); }
   startCrafting(recipeId: RecipeId, count: number): Result { return this.command(crafting.start(this.state, this.ctx, recipeId, count)); }
   startCombat(monsterId: MonsterId): Result { return this.command(combat.start(this.state, this.ctx, monsterId)); }
-  stopActivity(): Result {
-    activity.stop(this.state, this.ctx, 'Stopped.');
+  stopActivity(reason = 'Stopped.'): Result {
+    if (this.state.activity && reason !== 'Stopped.') log(this.state, this.ctx, 'info', reason);
+    activity.stop(this.state, this.ctx, reason);
     return this.command({ ok: true, value: undefined });
   }
   equip(itemId: ItemId, slot?: EquipSlot): Result { return this.command(equipment.equip(this.state, this.ctx, itemId, slot)); }

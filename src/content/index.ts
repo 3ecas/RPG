@@ -14,6 +14,7 @@ import { TRADERS } from './traders';
 import { MARKET_ITEMS } from './market';
 import { PROGRESSION } from './progression';
 import { CHAPTERS, MISSIONS } from './missions';
+import { MAPS } from './maps';
 
 export const CONTENT = {
   skills: SKILLS,
@@ -31,4 +32,5 @@ export const CONTENT = {
   progression: PROGRESSION,
   chapters: CHAPTERS,
   missions: MISSIONS,
+  maps: MAPS,
 } satisfies ContentTables;

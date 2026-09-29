@@ -2,8 +2,9 @@
  * Typed lookup over the content tables, plus boot-time validation of every
  * cross-reference. If validate() returns errors the game refuses to start.
  */
-import type {
-  ChapterDef, ContentTables, GatherNodeDef, ItemDef, Keyed, MissionDef, MonsterDef, NpcDef, Objective, ProgressNodeDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
+import {
+  BIG_KINDS, TERRAIN_CHARS,
+  type ChapterDef, type ContentTables, type GatherNodeDef, type ItemDef, type Keyed, type MapObjectDef, type MissionDef, type MonsterDef, type NpcDef, type Objective, type ProgressNodeDef, type QuestDef, type RecipeDef, type Requirement, type ShopDef, type SkillDef, type StationDef, type TraderDef, type ZoneDef, type ZoneMapDef,
 } from '@/types/content';
 import type { ItemId, MissionId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 
@@ -30,6 +31,33 @@ export class Registry {
   progressNode(id: ProgressNodeId): Keyed<ProgressNodeDef, ProgressNodeId> { return must(this.tables.progression, id, 'progression node'); }
   mission(id: MissionId): Keyed<MissionDef, MissionId> { return must(this.tables.missions, id, 'mission'); }
   get chapters(): readonly ChapterDef[] { return this.tables.chapters; }
+  /** The tile map of a zone. */
+  map(id: ZoneId): ZoneMapDef {
+    const def = this.tables.maps[id];
+    if (!def) throw new Error(`Unknown zone map: ${id}`);
+    return def;
+  }
+  /** Zones reachable on foot from this one, in map order. */
+  exits(id: ZoneId): ZoneId[] {
+    const out: ZoneId[] = [];
+    for (const obj of Object.values(this.map(id).legend)) if (obj.kind === 'exit' && !out.includes(obj.zone)) out.push(obj.zone);
+    return out;
+  }
+  /** Zones visited on foot from `from` to `to`, exits only; null when unreachable. */
+  route(from: ZoneId, to: ZoneId): ZoneId[] | null {
+    const previous = new Map<ZoneId, ZoneId | null>([[from, null]]);
+    const queue: ZoneId[] = [from];
+    while (queue.length) {
+      const zone = queue.shift()!;
+      if (zone === to) {
+        const path: ZoneId[] = [];
+        for (let step: ZoneId | null = zone; step !== null; step = previous.get(step) ?? null) path.unshift(step);
+        return path;
+      }
+      for (const next of this.exits(zone)) if (!previous.has(next)) { previous.set(next, zone); queue.push(next); }
+    }
+    return null;
+  }
   get missionIds(): MissionId[] { return Object.keys(this.tables.missions) as MissionId[]; }
   hasMission(id: string): id is MissionId { return id in this.tables.missions; }
   missionsInChapter(chapter: number): Keyed<MissionDef, MissionId>[] { return this.missionIds.map((id) => this.mission(id)).filter((m) => m.chapter === chapter); }
@@ -246,8 +274,86 @@ export class Registry {
     for (const id of Object.keys(t.shops)) check(referencedShops.has(id), `shop ${id}: not placed in any zone`);
     for (const id of Object.keys(t.traders)) check(referencedTraders.has(id), `trader ${id}: not placed in any zone`);
     for (const id of Object.keys(t.stations)) check(referencedStations.has(id), `station ${id}: not placed in any zone`);
+    errors.push(...this.validateMaps());
 
     return errors;
+  }
+
+  /** Every zone has a well-formed map that places exactly what the zone lists, with a spawn and symmetric exits. */
+  private validateMaps(): string[] {
+    const errors: string[] = [];
+    const t = this.tables;
+    const check = (cond: boolean, msg: string) => { if (!cond) errors.push(msg); };
+    for (const zoneId of Object.keys(t.zones)) check(zoneId in t.maps, `zone ${zoneId}: has no map`);
+    for (const [zoneId, map] of Object.entries(t.maps)) {
+      const owner = `map ${zoneId}`;
+      const zone = t.zones[zoneId];
+      if (!zone) { errors.push(`${owner}: not a zone`); continue; }
+      const width = map.rows[0]?.length ?? 0;
+      check(map.rows.length > 0 && width > 0, `${owner}: empty`);
+      check(map.rows.every((r) => r.length === width), `${owner}: rows differ in length`);
+      const counts = new Map<string, number>();
+      map.rows.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const ch = row[x]!;
+          if (ch in TERRAIN_CHARS) continue;
+          if (!(ch in map.legend)) { errors.push(`${owner}: unknown character '${ch}' at ${x},${y}`); continue; }
+          counts.set(ch, (counts.get(ch) ?? 0) + 1);
+        }
+      });
+      const placed = { node: new Set<string>(), station: new Set<string>(), shop: new Set<string>(), trader: new Set<string>(), npc: new Set<string>(), monster: new Set<string>(), exit: new Set<string>() };
+      let spawns = 0;
+      let market = 0;
+      for (const [key, obj] of Object.entries(map.legend) as [string, MapObjectDef][]) {
+        check(/^[A-Za-z0-9]$/.test(key), `${owner}: legend key '${key}' must be one letter or digit`);
+        const n = counts.get(key) ?? 0;
+        check(n > 0, `${owner}: legend key '${key}' is never used`);
+        if (BIG_KINDS.includes(obj.kind)) check(this.wellFormedBlocks(map, key), `${owner}: '${key}' must fill 2×2 blocks`);
+        switch (obj.kind) {
+          case 'node': check(zone.nodes.includes(obj.id), `${owner}: node '${obj.id}' is not in the zone`); placed.node.add(obj.id); break;
+          case 'station': check(zone.stations.includes(obj.id), `${owner}: station '${obj.id}' is not in the zone`); placed.station.add(obj.id); break;
+          case 'shop': check(zone.shops.includes(obj.id), `${owner}: shop '${obj.id}' is not in the zone`); placed.shop.add(obj.id); break;
+          case 'trader': check(zone.traders.includes(obj.id), `${owner}: trader '${obj.id}' is not in the zone`); placed.trader.add(obj.id); break;
+          case 'npc': check(zone.npcs.includes(obj.id), `${owner}: npc '${obj.id}' is not in the zone`); placed.npc.add(obj.id); break;
+          case 'monster': check(zone.monsters.includes(obj.id), `${owner}: monster '${obj.id}' is not in the zone`); placed.monster.add(obj.id); break;
+          case 'market': check(zone.market, `${owner}: has a market but the zone has none`); market += n; break;
+          case 'spawn': spawns += n; break;
+          case 'exit': {
+            check(obj.zone in t.zones, `${owner}: exit to unknown zone '${obj.zone}'`);
+            check(obj.zone !== zoneId, `${owner}: exit leads to itself`);
+            const back = Object.values(t.maps[obj.zone]?.legend ?? {}).some((o) => o.kind === 'exit' && o.zone === zoneId);
+            check(back, `${owner}: exit to '${obj.zone}' has no exit back`);
+            placed.exit.add(obj.zone);
+            break;
+          }
+          case 'signpost': break;
+        }
+      }
+      check(spawns === 1, `${owner}: needs exactly one spawn, has ${spawns}`);
+      if (zone.market) check(market === 4, `${owner}: the market must be one 2×2 block`);
+      for (const id of zone.nodes) check(placed.node.has(id), `${owner}: node '${id}' is not on the map`);
+      for (const id of zone.stations) check(placed.station.has(id), `${owner}: station '${id}' is not on the map`);
+      for (const id of zone.shops) check(placed.shop.has(id), `${owner}: shop '${id}' is not on the map`);
+      for (const id of zone.traders) check(placed.trader.has(id), `${owner}: trader '${id}' is not on the map`);
+      for (const id of zone.npcs) check(placed.npc.has(id), `${owner}: npc '${id}' is not on the map`);
+      for (const id of zone.monsters) check(placed.monster.has(id), `${owner}: monster '${id}' is not on the map`);
+    }
+    return errors;
+  }
+
+  /** True when every occurrence of `key` belongs to a full 2×2 block of `key`. */
+  private wellFormedBlocks(map: ZoneMapDef, key: string): boolean {
+    const at = (x: number, y: number) => map.rows[y]?.[x] === key;
+    let cells = 0;
+    let blocks = 0;
+    map.rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        if (!at(x, y)) continue;
+        cells += 1;
+        if (!at(x - 1, y) && !at(x, y - 1) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1) && !at(x + 2, y) && !at(x, y + 2)) blocks += 1;
+      }
+    });
+    return cells > 0 && cells === blocks * 4;
   }
 
   private validateProgression(): string[] {

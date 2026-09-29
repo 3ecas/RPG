@@ -1,8 +1,8 @@
 /**
- * The page shell: a status bar, a menu bar of icons, an event ticker, and the
- * stage: the zone map with windows floating over it. Windows are the panels;
- * each is re-rendered only when its HTML changed, and can be dragged by its
- * title bar.
+ * The page shell: a status bar, an event ticker, the stage (the world you walk
+ * through, with windows floating over it) and the hotbar. Windows are the
+ * panels; each is re-rendered only when its HTML changed, and can be dragged
+ * by its title bar.
  */
 import type { Game, OfflineSummary } from '@/game';
 import type { Result } from '@/types/result';
@@ -12,11 +12,11 @@ import { handleAction } from './actions';
 import { progressBar } from './components/progress-bar';
 import { html, type Raw } from './html';
 import { icon, iconSprite } from './icons';
-import { mapProgress, renderMap } from './map';
 import { MENUS } from './menubar';
 import type { Panel, UiState, ViewContext, WindowState } from './panel';
 import { PANELS } from './panels';
 import { toast } from './toast';
+import { WorldScene } from './world/scene';
 
 export interface AppHooks {
   save(): void;
@@ -37,10 +37,13 @@ export class App {
   private dirty = true;
   private readonly rendered = new Map<string, string>();
   private unsubscribe: (() => void)[] = [];
+  /** The walkable zone on the stage. */
+  readonly world: WorldScene;
 
   constructor(private readonly root: HTMLElement, game: Game, readonly hooks: AppHooks) {
     this.current = game;
-    this.ui = { windows: [], logFilter: 'all', exportText: '', shopId: null, selectedNode: null, ...loadPrefs() };
+    this.ui = { windows: [], logFilter: 'all', exportText: '', shopId: null, selectedNode: null, positions: {}, ...loadPrefs() };
+    this.world = new WorldScene(this);
     this.ui.windows = this.ui.windows.filter((w) => PANELS.some((p) => p.id === w.panel));
   }
 
@@ -52,7 +55,7 @@ export class App {
     this.root.innerHTML =
       iconSprite().html +
       '<header class="topbar" id="ui-header"></header><div class="ticker" id="ui-ticker"></div>' +
-      '<main class="stage" id="ui-stage"><div class="map" id="ui-map"></div><div class="banner-slot" id="ui-banner"></div><div class="windows" id="ui-windows"></div></main>' +
+      '<main class="stage" id="ui-stage"><div class="world" id="ui-world"></div><div class="banner-slot" id="ui-banner"></div><div class="windows" id="ui-windows"></div></main>' +
       '<nav class="hotbar" id="ui-hotbar"></nav>';
     this.root.addEventListener('click', (event) => {
       const el = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
@@ -60,18 +63,12 @@ export class App {
       event.preventDefault();
       handleAction(this, el.dataset.action ?? '', el.dataset);
     });
-    this.root.addEventListener('keydown', (event) => {
-      const el = event.target as HTMLElement | null;
-      if ((event.key === 'Enter' || event.key === ' ') && el?.matches('.poi')) {
-        event.preventDefault();
-        handleAction(this, 'poi', el.dataset);
-      }
-    });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && this.ui.windows.length > 0 && !(event.target instanceof HTMLTextAreaElement)) this.closeTop();
     });
     this.installDragging();
     this.attach(this.current);
+    this.world.mount(document.getElementById('ui-world')!);
   }
 
   /** Swap in a new game (import, reset). */
@@ -81,7 +78,14 @@ export class App {
     this.attach(game);
     this.rendered.clear();
     this.offline = null;
+    this.ui.positions = {};
+    this.world.reset();
     this.markDirty();
+  }
+
+  /** Writes the UI preferences (open windows, positions) to storage. */
+  persistUi(): void {
+    savePrefs(this.ui);
   }
 
   markDirty(): void {
@@ -154,27 +158,17 @@ export class App {
 
   // ---- rendering --------------------------------------------------------------
 
-  /** Called every frame by the loop. Cheap when nothing changed. */
+  /** Called every frame by the loop. The world animates every frame; the DOM is patched only when something changed. */
   render(): void {
+    this.world.frame(performance.now());
     if (!this.dirty) return;
     this.dirty = false;
     const view: ViewContext = { game: this.current, ui: this.ui, params: {}, windowId: '' };
     this.patch('ui-header', this.renderHeader(view));
     this.patch('ui-hotbar', this.renderHotbar(view));
     this.patch('ui-ticker', this.renderTicker(view));
-    this.patch('ui-map', renderMap(view));
-    this.fillMapProgress(view);
     this.patch('ui-banner', this.renderOffline());
     this.renderWindows();
-  }
-
-  /** Progress bars on the map are updated in place so the SVG is not rebuilt ten times a second. */
-  private fillMapProgress(view: ViewContext): void {
-    const fractions = mapProgress(view);
-    for (const el of document.querySelectorAll<SVGRectElement>('#ui-map .poi-fill')) {
-      const fraction = fractions[el.dataset.poi ?? ''] ?? 0;
-      el.setAttribute('width', (52 * Math.min(1, Math.max(0, fraction))).toFixed(1));
-    }
   }
 
   private patch(id: string, content: Raw): void {
@@ -368,6 +362,14 @@ function loadPrefs(): Partial<UiState> {
     const prefs = parsed as Record<string, unknown>;
     const out: Partial<UiState> = {};
     if (typeof prefs.logFilter === 'string') out.logFilter = prefs.logFilter as LogKind | 'all';
+    if (typeof prefs.positions === 'object' && prefs.positions !== null) {
+      out.positions = {};
+      for (const [zone, value] of Object.entries(prefs.positions as Record<string, unknown>)) {
+        if (typeof value !== 'object' || value === null) continue;
+        const r = value as Record<string, unknown>;
+        if (typeof r.x === 'number' && typeof r.y === 'number') out.positions[zone] = { x: r.x, y: r.y, d: r.d === 1 || r.d === 2 || r.d === 3 ? r.d : 0 };
+      }
+    }
     if (Array.isArray(prefs.windows)) {
       out.windows = prefs.windows.flatMap((w: unknown): WindowState[] => {
         if (typeof w !== 'object' || w === null) return [];
@@ -385,7 +387,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(ui: UiState): void {
   try {
-    localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ logFilter: ui.logFilter, windows: ui.windows }));
+    localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ logFilter: ui.logFilter, windows: ui.windows, positions: ui.positions }));
   } catch {
     /* preferences are a convenience */
   }

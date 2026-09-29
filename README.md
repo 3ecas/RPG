@@ -1,9 +1,11 @@
 # Greenhollow – a text-based idle RPG for the browser
 
-Single-player, runs entirely in the browser, no graphics. The game is a set of
-panels: skills, inventory, equipment, journal, gathering, crafting stations,
-combat, zones, people, log and settings. It saves to `localStorage` and
-simulates up to 12 hours of progress while the tab is closed.
+Single-player, runs entirely in the browser. You walk a pixel-art world of
+nine zones, talk to people, chop and mine and fish, fight what wanders there,
+and manage it all in windows: skills, bag and gear, missions, crafting
+stations, shops, the market, traders, a progression tree, log and settings.
+It saves to `localStorage` and simulates up to 12 hours of progress while the
+tab is closed.
 
 ## Run it
 
@@ -28,7 +30,7 @@ instead of staying blank.
 
 ## What is in the first slice
 
-- **A map you play on:** each zone is a map with markers. Click a rock to mine, an anvil to forge, a person to talk, a monster to fight, the signpost to travel. Menus open as draggable windows; a bottom hotbar holds bag, world map, missions, log, skills, progression and settings.
+- **A world you walk through:** each zone is a tile map. Move with WASD / arrows or tap where you want to go; tap a tree, a rock, a person, a building or a monster to walk up and use it, or press E when you stand next to it. Exits at the edges lead to the next zone. Menus open as draggable windows; a bottom hotbar holds bag, world map, missions, log, skills, progression and settings.
 - **Missions:** an eight-chapter campaign with tracked objectives that pays gold, xp, items and progression points; finishing a chapter opens the next.
 - **Progression tree:** points from tier-ups, quests and missions buy nodes in four branches: zones, the Kingsport market, barter, auto-eat, dual wield and perks. Skills and stations are never gated; skills grow only by use.
 - **Specialized zones:** the village is social and farming, Copper Hills the first forge, Kingsport the trade city with the only market, the Woods the lumber camp, the Mines the second forge, the Marsh the tannery. Resources are exclusive to their zone.
@@ -58,9 +60,10 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) for the full design. The short version:
 | `src/content/`  | Items, recipes, monsters, zones, quests…    | types                   |
 | `src/core/`     | Event bus, loop, RNG, registry, save/load   | types                   |
 | `src/systems/`  | All game rules, as pure functions on state  | types, core, content    |
+| `src/world/`    | Tile map model: grid, footprints, paths     | types                   |
 | `src/game.ts`   | The facade the UI calls                     | everything but ui       |
-| `src/ui/`       | DOM only: one file per panel                | game, types, util       |
-| `tests/`        | Vitest: systems, content validation, saves  |                         |
+| `src/ui/`       | DOM only: one file per panel, the world canvas | game, world, types, util |
+| `tests/`        | Vitest: systems, content validation, maps, art, saves |               |
 
 ESLint fails the build if a layer imports something it should not.
 

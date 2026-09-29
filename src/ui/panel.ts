@@ -21,6 +21,8 @@ export interface UiState {
   shopId: string | null;
   /** Selected node in the Progression tree. */
   selectedNode: string | null;
+  /** Where the player last stood in each zone (cell and facing), so the world resumes in place. */
+  positions: Record<string, { x: number; y: number; d: 0 | 1 | 2 | 3 }>;
 }
 
 export interface ViewContext {
