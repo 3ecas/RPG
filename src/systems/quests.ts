@@ -1,5 +1,5 @@
 /** The journal. Objectives advance by listening to events; nothing else knows quests exist. */
-import type { Keyed, Objective, QuestDef } from '@/types/content';
+import type { Keyed, QuestDef } from '@/types/content';
 import type { NpcId, QuestId } from '@/types/ids';
 import type { GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
@@ -7,6 +7,7 @@ import type { Ctx, SystemListeners } from './ctx';
 import * as inventory from './inventory';
 import { log } from './log';
 import * as npcs from './npcs';
+import * as objectives from './objectives';
 import * as requirements from './requirements';
 import * as skills from './skills';
 
@@ -36,44 +37,16 @@ export function accept(state: GameState, ctx: Ctx, questId: QuestId): Result {
   return ok();
 }
 
-export interface ObjectiveView {
-  text: string;
-  current: number;
-  target: number;
-  done: boolean;
-}
+export type ObjectiveView = objectives.ObjectiveView;
 
-export function objectives(state: GameState, ctx: Ctx, questId: QuestId): ObjectiveView[] {
+export function objectiveViews(state: GameState, ctx: Ctx, questId: QuestId): ObjectiveView[] {
   const quest = ctx.content.quest(questId);
   const counts = state.quests.active[questId]?.counts ?? quest.objectives.map(() => 0);
-  return quest.objectives.map((o, i) => {
-    const counted = Math.min(counts[i] ?? 0, target(o));
-    switch (o.type) {
-      case 'kill': return view(`Defeat ${o.count}× ${ctx.content.monster(o.monsterId).name}`, counted, o.count);
-      case 'craft': return view(`Craft ${o.count}× ${ctx.content.recipeName(ctx.content.recipe(o.recipeId))}`, counted, o.count);
-      case 'collect': return view(`Bring ${o.count}× ${ctx.content.item(o.itemId).name}`, Math.min(inventory.count(state, o.itemId), o.count), o.count);
-      case 'reach_tier': return view(`Reach ${ctx.content.skill(o.skill).name} tier ${o.tier}`, Math.min(skills.tier(state, o.skill), o.tier), o.tier);
-      case 'talk': return view(`Talk to ${ctx.content.npc(o.npcId).name}`, state.world.talkedTo.includes(o.npcId) ? 1 : 0, 1);
-    }
-  });
-}
-
-function view(text: string, current: number, targetValue: number): ObjectiveView {
-  return { text, current, target: targetValue, done: current >= targetValue };
-}
-
-function target(o: Objective): number {
-  switch (o.type) {
-    case 'kill':
-    case 'craft':
-    case 'collect': return o.count;
-    case 'reach_tier': return o.tier;
-    case 'talk': return 1;
-  }
+  return quest.objectives.map((o, i) => objectives.view(state, ctx, o, counts[i] ?? 0));
 }
 
 export function isComplete(state: GameState, ctx: Ctx, questId: QuestId): boolean {
-  return !!state.quests.active[questId] && objectives(state, ctx, questId).every((o) => o.done);
+  return !!state.quests.active[questId] && objectiveViews(state, ctx, questId).every((o) => o.done);
 }
 
 export function canTurnIn(state: GameState, ctx: Ctx, questId: QuestId): Result {
@@ -110,8 +83,8 @@ export function turnIn(state: GameState, ctx: Ctx, questId: QuestId): Result {
   return ok();
 }
 
-/** Bumps the counter of every active objective that `matches`, and announces quests that just became complete. */
-function advance(state: GameState, ctx: Ctx, matches: (o: Objective) => boolean): void {
+/** Bumps the counter of every active objective the event matches, and announces quests that just became complete. */
+function advance(state: GameState, ctx: Ctx, tick: objectives.Tick): void {
   for (const [id, progress] of Object.entries(state.quests.active)) {
     const questId = id as QuestId;
     if (!progress) continue;
@@ -119,9 +92,9 @@ function advance(state: GameState, ctx: Ctx, matches: (o: Objective) => boolean)
     const wasComplete = isComplete(state, ctx, questId);
     let changed = false;
     quest.objectives.forEach((o, i) => {
-      if (!matches(o)) return;
+      if (!objectives.matches(o, tick)) return;
       const current = progress.counts[i] ?? 0;
-      if (current >= target(o)) return;
+      if (current >= objectives.target(o)) return;
       progress.counts[i] = current + 1;
       changed = true;
     });
@@ -131,8 +104,4 @@ function advance(state: GameState, ctx: Ctx, matches: (o: Objective) => boolean)
   }
 }
 
-export const listeners: SystemListeners = {
-  'monster:killed': (state, ctx, e) => advance(state, ctx, (o) => o.type === 'kill' && o.monsterId === e.monsterId),
-  'recipe:crafted': (state, ctx, e) => advance(state, ctx, (o) => o.type === 'craft' && o.recipeId === e.recipeId),
-  'npc:talked': (state, ctx, e) => advance(state, ctx, (o) => o.type === 'talk' && o.npcId === e.npcId),
-};
+export const listeners: SystemListeners = objectives.listenersFor(advance);

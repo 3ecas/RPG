@@ -1,6 +1,6 @@
 /** The whole game is this one plain, serializable object. Store facts; derive the rest. */
 import type { ItemStack, StatBlock } from './content';
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
+import type { EquipSlot, ItemId, MissionId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
 
 export interface ActiveBuff {
   stat: keyof StatBlock;
@@ -92,13 +92,20 @@ export interface GameState {
     completed: QuestId[];
   };
   progression: {
-    /** Points ever granted. Available points = granted − cost of unlocked nodes. Reconciled from tier-ups and quests. */
+    /** Points ever granted. Available points = granted − cost of unlocked nodes. Reconciled from tier-ups, quests and missions. */
     granted: number;
     unlocked: ProgressNodeId[];
+  };
+  missions: {
+    /** Counted objective progress per mission, in objective order. */
+    counts: Partial<Record<MissionId, number[]>>;
+    claimed: MissionId[];
   };
   world: {
     /** Zones the player has been told about; unlock rules are evaluated live. */
     unlockedZones: ZoneId[];
+    /** Zones the player has stood in. */
+    visitedZones: ZoneId[];
     flags: Record<string, boolean>;
     talkedTo: NpcId[];
     /** Created on first visit; a missing shop is at full stock. */

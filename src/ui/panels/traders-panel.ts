@@ -7,14 +7,15 @@ import type { Panel } from '../panel';
 export const tradersPanel: Panel = {
   id: 'traders',
   title: 'Traders',
+  width: 720,
   lock: ({ game }) => (game.hasFeature('traders') ? null : 'Unlock "Barter" in the Progression tree.'),
   render({ game }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const traders = game.tradersHere();
     const lock = game.hasFeature('traders') ? null : 'Unlock "Barter" in the Progression tree to trade with wanderers.';
-    if (traders.length === 0) return html`<div class="panel-head"><h2>Traders</h2></div>${lock ? lockNotice(lock) : ''}<p class="muted">No traders in ${zone.name}. They wander the wilder zones.</p>`;
+    if (traders.length === 0) return html`${lock ? lockNotice(lock) : ''}<p class="muted">No traders in ${zone.name}. They wander the wilder zones.</p>`;
     return html`
-      <div class="panel-head"><h2>Traders</h2><span class="muted small">in ${zone.name} · barter only, offers rotate on a timer</span></div>
+      <div class="panel-head"><span class="muted small">${zone.name} · barter only, offers rotate on a timer</span></div>
       ${lock ? lockNotice(lock) : ''}
       ${traders.map((trader) => html`
         <section class="card">

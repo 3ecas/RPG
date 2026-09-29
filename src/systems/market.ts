@@ -15,7 +15,7 @@ import * as progression from './progression';
 export type TradeKind = 'buy' | 'sell';
 
 export function isOpen(state: GameState, ctx: Ctx): Result {
-  if (!progression.hasFeature(state, ctx, 'market')) return fail('Unlock "Market Access" in the Progression tree to trade here.');
+  if (!progression.hasFeature(state, ctx, 'market')) return fail('Unlock "Kingsport" in the Progression tree to reach the market.');
   const zone = ctx.content.zone(state.player.zoneId);
   return zone.market ? ok() : fail(`There is no market in ${zone.name}.`);
 }

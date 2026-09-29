@@ -1,5 +1,5 @@
 /** Save format versioning. migrations[n] upgrades a version-n save to n+1. Each gets a test with a fixture. */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 6;
 
 type RawSave = Record<string, unknown>;
 type Migration = (raw: RawSave) => RawSave;
@@ -39,6 +39,23 @@ export const migrations: Record<number, Migration> = {
     if (!raw.progression) raw.progression = { granted: 0, unlocked: [] };
     return raw;
   },
+  // 4 → 5: equipment slots became hands and trinkets.
+  4: (raw) => {
+    const player = raw.player as Record<string, unknown> | undefined;
+    const equipment = player?.equipment as Record<string, unknown> | undefined;
+    if (equipment) {
+      const renames: Record<string, string> = { weapon: 'main_hand', shield: 'off_hand', ring: 'trinket_1', amulet: 'trinket_2' };
+      for (const [from, to] of Object.entries(renames)) {
+        if (from in equipment) {
+          if (!(to in equipment)) equipment[to] = equipment[from];
+          delete equipment[from];
+        }
+      }
+    }
+    return raw;
+  },
+  // 5 → 6: missions and visited zones. Missing sections get fresh defaults from the sanitizer.
+  5: (raw) => raw,
 };
 
 export function migrate(raw: RawSave): RawSave {

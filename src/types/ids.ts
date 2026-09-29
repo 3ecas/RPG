@@ -13,6 +13,7 @@ import type { NPCS } from '@/content/npcs';
 import type { ZONES } from '@/content/zones';
 import type { SHOPS } from '@/content/shops';
 import type { TRADERS } from '@/content/traders';
+import type { MISSIONS } from '@/content/missions';
 
 export type SkillId = keyof typeof SKILLS;
 export type StationId = keyof typeof STATIONS;
@@ -24,9 +25,15 @@ export type NpcId = keyof typeof NPCS;
 export type ZoneId = keyof typeof ZONES;
 export type ShopId = keyof typeof SHOPS;
 export type TraderId = keyof typeof TRADERS;
+export type MissionId = keyof typeof MISSIONS;
 export type { QuestId } from '@/content/quests';
 export type { ProgressNodeId } from '@/content/progression';
 
 
-export type EquipSlot = 'weapon' | 'shield' | 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'ring' | 'amulet';
-export const EQUIP_SLOTS: readonly EquipSlot[] = ['weapon', 'shield', 'head', 'body', 'legs', 'hands', 'feet', 'ring', 'amulet'];
+/** Where gear is worn. Two hands and two trinket slots; the rest is armor. */
+export type EquipSlot = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'main_hand' | 'off_hand' | 'trinket_1' | 'trinket_2';
+export const EQUIP_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet', 'main_hand', 'off_hand', 'trinket_1', 'trinket_2'];
+export const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
+
+/** What kind of gear an item is; decides which slots accept it. */
+export type GearKind = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'weapon' | 'shield' | 'trinket';

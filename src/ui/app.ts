@@ -1,6 +1,8 @@
 /**
- * The page shell: a status bar, tabs, sub-tabs, a two-line event ticker and
- * the active panel. Each region is re-rendered only when its HTML changed.
+ * The page shell: a status bar, a menu bar of icons, an event ticker, and the
+ * stage: the zone map with windows floating over it. Windows are the panels;
+ * each is re-rendered only when its HTML changed, and can be dragged by its
+ * title bar.
  */
 import type { Game, OfflineSummary } from '@/game';
 import type { Result } from '@/types/result';
@@ -9,9 +11,10 @@ import { fmtDuration, fmtNum } from '@/util/format';
 import { handleAction } from './actions';
 import { progressBar } from './components/progress-bar';
 import { html, type Raw } from './html';
-import type { Panel, UiState, ViewContext } from './panel';
+import { mapProgress, renderMap } from './map';
+import { MENUS } from './menubar';
+import type { Panel, UiState, ViewContext, WindowState } from './panel';
 import { PANELS } from './panels';
-import { TABS, tabOf } from './tabs';
 import { toast } from './toast';
 
 export interface AppHooks {
@@ -22,6 +25,8 @@ export interface AppHooks {
 }
 
 const UI_PREFS_KEY = 'rpg.ui';
+const MAX_WINDOWS = 4;
+const DEFAULT_WIDTH = 640;
 
 export class App {
   ui: UiState;
@@ -34,8 +39,8 @@ export class App {
 
   constructor(private readonly root: HTMLElement, game: Game, readonly hooks: AppHooks) {
     this.current = game;
-    this.ui = { panel: 'skills', lastPanelByTab: {}, logFilter: 'all', exportText: '', shopId: null, ...loadPrefs() };
-    if (!PANELS.some((p) => p.id === this.ui.panel)) this.ui.panel = 'skills';
+    this.ui = { windows: [], logFilter: 'all', exportText: '', shopId: null, selectedNode: null, ...loadPrefs() };
+    this.ui.windows = this.ui.windows.filter((w) => PANELS.some((p) => p.id === w.panel));
   }
 
   get game(): Game {
@@ -44,13 +49,26 @@ export class App {
 
   mount(): void {
     this.root.innerHTML =
-      '<header class="topbar" id="ui-header"></header><nav class="tabs" id="ui-tabs"></nav><nav class="subtabs" id="ui-subtabs"></nav><div class="ticker" id="ui-ticker"></div><main class="content" id="ui-main"></main>';
+      '<header class="topbar" id="ui-header"></header><div class="ticker" id="ui-ticker"></div>' +
+      '<main class="stage" id="ui-stage"><div class="map" id="ui-map"></div><div class="banner-slot" id="ui-banner"></div><div class="windows" id="ui-windows"></div></main>' +
+      '<nav class="hotbar" id="ui-hotbar"></nav>';
     this.root.addEventListener('click', (event) => {
       const el = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
       if (!el || el.hasAttribute('disabled')) return;
       event.preventDefault();
       handleAction(this, el.dataset.action ?? '', el.dataset);
     });
+    this.root.addEventListener('keydown', (event) => {
+      const el = event.target as HTMLElement | null;
+      if ((event.key === 'Enter' || event.key === ' ') && el?.matches('.poi')) {
+        event.preventDefault();
+        handleAction(this, 'poi', el.dataset);
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.ui.windows.length > 0 && !(event.target instanceof HTMLTextAreaElement)) this.closeTop();
+    });
+    this.installDragging();
     this.attach(this.current);
   }
 
@@ -68,19 +86,57 @@ export class App {
     this.dirty = true;
   }
 
-  setPanel(id: string): void {
-    if (!PANELS.some((p) => p.id === id)) return;
-    this.ui.panel = id;
-    this.ui.lastPanelByTab[tabOf(id).id] = id;
+  // ---- windows ---------------------------------------------------------------
+
+  openWindow(panelId: string, params: Record<string, string> = {}): void {
+    const panel = PANELS.find((p) => p.id === panelId);
+    if (!panel) return;
+    const id = params.id ? `${panelId}:${params.id}` : panelId;
+    const existing = this.ui.windows.find((w) => w.id === id);
+    if (existing) {
+      existing.params = params;
+      this.bringToFront(id);
+    } else {
+      const n = this.ui.windows.length;
+      this.ui.windows.push({ id, panel: panelId, params, x: 60 + n * 32, y: 28 + n * 32 });
+      while (this.ui.windows.length > MAX_WINDOWS) this.ui.windows.shift();
+    }
     savePrefs(this.ui);
     this.markDirty();
   }
 
-  setTab(id: string): void {
-    const tab = TABS.find((t) => t.id === id);
-    if (!tab) return;
-    const remembered = this.ui.lastPanelByTab[id];
-    this.setPanel(remembered && tab.panels.includes(remembered) ? remembered : tab.panels[0]!);
+  closeWindow(id: string): void {
+    this.ui.windows = this.ui.windows.filter((w) => w.id !== id);
+    savePrefs(this.ui);
+    this.markDirty();
+  }
+
+  closeTop(): void {
+    const top = this.ui.windows.at(-1);
+    if (top) this.closeWindow(top.id);
+  }
+
+  bringToFront(id: string): void {
+    const index = this.ui.windows.findIndex((w) => w.id === id);
+    if (index < 0 || index === this.ui.windows.length - 1) return;
+    const [win] = this.ui.windows.splice(index, 1);
+    this.ui.windows.push(win!);
+    this.markDirty();
+  }
+
+  /** Updates a parameter of an open window (category filters). */
+  setWindowParam(windowId: string, key: string, value: string): void {
+    const win = this.ui.windows.find((w) => w.id === windowId);
+    if (!win) return;
+    win.params = { ...win.params, [key]: value };
+    savePrefs(this.ui);
+    this.markDirty();
+  }
+
+  /** Same panel with a different `id` param replaces the old window (one shop window, one node window, …). */
+  openExclusive(panelId: string, params: Record<string, string>): void {
+    this.ui.windows = this.ui.windows.filter((w) => w.panel !== panelId);
+    this.openWindow(panelId, params);
   }
 
   setLogFilter(filter: LogKind | 'all'): void {
@@ -91,20 +147,32 @@ export class App {
 
   openShop(shopId: string): void {
     this.ui.shopId = shopId;
-    this.setPanel('shops');
+    this.openWindow('shops', { shop: shopId });
   }
+
+  // ---- rendering --------------------------------------------------------------
 
   /** Called every frame by the loop. Cheap when nothing changed. */
   render(): void {
     if (!this.dirty) return;
     this.dirty = false;
-    const view: ViewContext = { game: this.current, ui: this.ui };
-    const panel = PANELS.find((p) => p.id === this.ui.panel) ?? PANELS[0]!;
+    const view: ViewContext = { game: this.current, ui: this.ui, params: {}, windowId: '' };
     this.patch('ui-header', this.renderHeader(view));
-    this.patch('ui-tabs', this.renderTabs(view));
-    this.patch('ui-subtabs', this.renderSubtabs(view));
+    this.patch('ui-hotbar', this.renderHotbar(view));
     this.patch('ui-ticker', this.renderTicker(view));
-    this.patch('ui-main', html`${this.renderOffline()}${panel.render(view)}`);
+    this.patch('ui-map', renderMap(view));
+    this.fillMapProgress(view);
+    this.patch('ui-banner', this.renderOffline());
+    this.renderWindows();
+  }
+
+  /** Progress bars on the map are updated in place so the SVG is not rebuilt ten times a second. */
+  private fillMapProgress(view: ViewContext): void {
+    const fractions = mapProgress(view);
+    for (const el of document.querySelectorAll<SVGRectElement>('#ui-map .poi-fill')) {
+      const fraction = fractions[el.dataset.poi ?? ''] ?? 0;
+      el.setAttribute('width', (52 * Math.min(1, Math.max(0, fraction))).toFixed(1));
+    }
   }
 
   private patch(id: string, content: Raw): void {
@@ -114,6 +182,86 @@ export class App {
     el.innerHTML = content.html;
     el.classList.toggle('empty', content.html.trim() === '');
     this.rendered.set(id, content.html);
+  }
+
+  private renderWindows(): void {
+    const host = document.getElementById('ui-windows');
+    const stage = document.getElementById('ui-stage');
+    if (!host || !stage) return;
+    const open = new Set(this.ui.windows.map((w) => w.id));
+    for (const el of [...host.children] as HTMLElement[]) {
+      if (!open.has(el.dataset.window ?? '')) {
+        el.remove();
+        this.rendered.delete(`win:${el.dataset.window}`);
+      }
+    }
+    const bounds = stage.getBoundingClientRect();
+    this.ui.windows.forEach((win, index) => {
+      const panel = PANELS.find((p) => p.id === win.panel) as Panel;
+      const view: ViewContext = { game: this.current, ui: this.ui, params: win.params, windowId: win.id };
+      let el = host.querySelector<HTMLElement>(`[data-window="${CSS.escape(win.id)}"]`);
+      if (!el) {
+        el = document.createElement('section');
+        el.className = `window window-${win.panel}`;
+        el.dataset.window = win.id;
+        el.innerHTML = '<header class="window-head"><span class="window-title"></span><button class="window-close" data-action="close-window" title="Close (Esc)">×</button></header><div class="window-body"></div>';
+        host.appendChild(el);
+      }
+      const width = Math.min(panel.width ?? DEFAULT_WIDTH, Math.max(280, bounds.width - 16));
+      win.x = Math.max(0, Math.min(win.x, bounds.width - Math.min(width, 200)));
+      win.y = Math.max(0, Math.min(win.y, Math.max(0, bounds.height - 60)));
+      el.style.left = `${win.x}px`;
+      el.style.top = `${win.y}px`;
+      el.style.width = `${width}px`;
+      el.style.zIndex = String(10 + index);
+      el.classList.toggle('window-top', index === this.ui.windows.length - 1);
+      el.querySelector<HTMLElement>('.window-close')!.dataset.id = win.id;
+      const title = typeof panel.title === 'function' ? panel.title(view) : panel.title;
+      const titleEl = el.querySelector<HTMLElement>('.window-title')!;
+      if (titleEl.textContent !== title) titleEl.textContent = title;
+      const body = panel.render(view).html;
+      const key = `win:${win.id}`;
+      if (this.rendered.get(key) !== body) {
+        el.querySelector<HTMLElement>('.window-body')!.innerHTML = body;
+        this.rendered.set(key, body);
+      }
+      if (host.lastElementChild !== el && index === this.ui.windows.length - 1) host.appendChild(el);
+    });
+  }
+
+  private installDragging(): void {
+    let drag: { id: string; el: HTMLElement; dx: number; dy: number } | null = null;
+    this.root.addEventListener('pointerdown', (event) => {
+      const target = event.target as HTMLElement | null;
+      const win = target?.closest<HTMLElement>('.window');
+      if (!win) return;
+      const id = win.dataset.window ?? '';
+      this.bringToFront(id);
+      this.renderWindows();
+      const head = target?.closest<HTMLElement>('.window-head');
+      if (!head || target?.closest('button')) return;
+      const state = this.ui.windows.find((w) => w.id === id);
+      if (!state) return;
+      drag = { id, el: win, dx: event.clientX - state.x, dy: event.clientY - state.y };
+      head.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    this.root.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      const state = this.ui.windows.find((w) => w.id === drag!.id);
+      if (!state) return;
+      state.x = Math.max(0, event.clientX - drag.dx);
+      state.y = Math.max(0, event.clientY - drag.dy);
+      drag.el.style.left = `${state.x}px`;
+      drag.el.style.top = `${state.y}px`;
+    });
+    const end = () => {
+      if (!drag) return;
+      drag = null;
+      savePrefs(this.ui);
+    };
+    this.root.addEventListener('pointerup', end);
+    this.root.addEventListener('pointercancel', end);
   }
 
   private attach(game: Game): void {
@@ -126,6 +274,8 @@ export class App {
         if (content.zone(e.zoneId).unlock.length > 0) toast(`New area reachable: ${content.zone(e.zoneId).name}`, 'good');
       }),
       game.ctx.events.on('quest:completed', (e) => toast(`Quest complete: ${content.quest(e.questId).name}`, 'good')),
+      game.ctx.events.on('mission:claimed', (e) => toast(`Mission complete: ${content.mission(e.missionId).name}`, 'good')),
+      game.ctx.events.on('chapter:opened', (e) => { const c = content.chapters[e.chapter - 1]; if (c) toast(`Chapter ${c.number} opened: ${c.name}`, 'good', 5000); }),
       game.ctx.events.on('player:died', () => toast('You died. Back to the village.', 'warn')),
     ];
   }
@@ -158,28 +308,32 @@ export class App {
       <div class="saved muted small">${saved}</div>`;
   }
 
-  private renderTabs(view: ViewContext): Raw {
-    const active = tabOf(this.ui.panel).id;
-    return html`${TABS.map((tab) => {
-      const badge = tab.panels.reduce((sum, id) => sum + (PANELS.find((p) => p.id === id)?.badge?.(view) ?? 0), 0);
-      return html`<button class="tab ${tab.id === active ? 'active' : ''}" data-action="tab" data-id="${tab.id}">${tab.title}${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
-    })}`;
+  private renderHotbar(view: ViewContext): Raw {
+    const open = new Set(this.ui.windows.map((w) => w.panel));
+    const button = (menu: (typeof MENUS)[number]) => {
+      const panel = PANELS.find((p) => p.id === menu.panel);
+      const badge = panel?.badge?.(view) ?? 0;
+      return html`<button class="menu-btn ${open.has(menu.panel) ? 'active' : ''}" data-action="toggle-window" data-id="${menu.panel}" title="${menu.title}"><span class="menu-icon">${menu.icon}</span><span class="menu-title">${menu.title}</span>${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
+    };
+    return html`
+      <div class="hotbar-group">${MENUS.filter((m) => m.side === 'left').map(button)}</div>
+      <div class="hotbar-group hotbar-right">
+        ${this.ui.windows.length ? html`<button class="menu-btn menu-close" data-action="close-all" title="Close all windows (Esc closes one)">✕ Close all</button>` : ''}
+        ${MENUS.filter((m) => m.side === 'right').map(button)}
+      </div>`;
   }
 
-  private renderSubtabs(view: ViewContext): Raw {
-    const tab = tabOf(this.ui.panel);
-    if (tab.panels.length < 2) return html``;
-    return html`${tab.panels.map((id) => {
-      const panel = PANELS.find((p) => p.id === id) as Panel;
-      const locked = panel.lock?.(view) ?? null;
-      const badge = panel.badge?.(view) ?? 0;
-      return html`<button class="subtab ${id === this.ui.panel ? 'active' : ''} ${locked ? 'locked' : ''}" data-action="panel" data-id="${id}" title="${locked ?? ''}">${locked ? '🔒 ' : ''}${panel.title}${badge > 0 ? html`<span class="badge">${badge}</span>` : ''}</button>`;
-    })}`;
+  /** Hotbar buttons toggle: open if closed, close if it is the top window, else bring to front. */
+  toggleWindow(panelId: string): void {
+    const win = this.ui.windows.find((w) => w.panel === panelId);
+    if (!win) { this.openWindow(panelId); return; }
+    if (this.ui.windows.at(-1)?.id === win.id) this.closeWindow(win.id);
+    else this.bringToFront(win.id);
   }
 
   private renderTicker({ game }: ViewContext): Raw {
     const recent = game.state.log.slice(-2);
-    return html`${recent.map((e) => html`<span class="tick log-${e.kind}" data-action="panel" data-id="log">${e.text}</span>`)}`;
+    return html`${recent.map((e) => html`<span class="tick log-${e.kind}" data-action="window" data-id="log">${e.text}</span>`)}`;
   }
 
   private renderOffline(): Raw {
@@ -211,8 +365,16 @@ function loadPrefs(): Partial<UiState> {
     if (typeof parsed !== 'object' || parsed === null) return {};
     const prefs = parsed as Record<string, unknown>;
     const out: Partial<UiState> = {};
-    if (typeof prefs.panel === 'string') out.panel = prefs.panel;
     if (typeof prefs.logFilter === 'string') out.logFilter = prefs.logFilter as LogKind | 'all';
+    if (Array.isArray(prefs.windows)) {
+      out.windows = prefs.windows.flatMap((w: unknown): WindowState[] => {
+        if (typeof w !== 'object' || w === null) return [];
+        const r = w as Record<string, unknown>;
+        if (typeof r.id !== 'string' || typeof r.panel !== 'string') return [];
+        const params = typeof r.params === 'object' && r.params !== null ? Object.fromEntries(Object.entries(r.params as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string> : {};
+        return [{ id: r.id, panel: r.panel, params, x: typeof r.x === 'number' ? r.x : 40, y: typeof r.y === 'number' ? r.y : 40 }];
+      });
+    }
     return out;
   } catch {
     return {};
@@ -221,7 +383,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(ui: UiState): void {
   try {
-    localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ panel: ui.panel, logFilter: ui.logFilter }));
+    localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ logFilter: ui.logFilter, windows: ui.windows }));
   } catch {
     /* preferences are a convenience */
   }

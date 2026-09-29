@@ -18,9 +18,42 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
   let result: Result | null = null;
 
   switch (action) {
-    case 'panel': app.setPanel(id); return;
-    case 'tab': app.setTab(id); return;
+    case 'window': app.openWindow(id); return;
+    case 'toggle-window': app.toggleWindow(id); return;
+    case 'select-node': app.ui.selectedNode = id; app.markDirty(); return;
+    case 'filter': app.setWindowParam(data.window ?? '', 'cat', id); return;
+    case 'item': {
+      if (!content.hasItem(id)) return;
+      const params: Record<string, string> = { id };
+      if (data.shop && content.hasShop(data.shop)) params.shop = data.shop;
+      app.openExclusive('item', params);
+      return;
+    }
+    case 'panel': app.openWindow(id); return;
+    case 'close-window': app.closeWindow(id); return;
+    case 'close-all': app.ui.windows = []; app.markDirty(); return;
+    case 'poi': {
+      switch (data.kind) {
+        case 'node': app.openExclusive('node', { id }); return;
+        case 'station': if (content.hasStation(id)) app.openWindow(id); return;
+        case 'shop': app.openShop(id); return;
+        case 'market': app.openWindow('market'); return;
+        case 'trader': app.openWindow('traders'); return;
+        case 'npc': app.openExclusive('npc', { id }); return;
+        case 'signpost': app.openWindow('zones'); return;
+        case 'monster': {
+          if (!content.hasMonster(id)) return;
+          const fighting = game.state.combat?.monsterId === id;
+          if (!fighting) result = game.startCombat(id);
+          app.openWindow('combat');
+          break;
+        }
+        default: return;
+      }
+      break;
+    }
     case 'unlock': if (content.hasProgressNode(id)) result = game.unlockNode(id); break;
+    case 'claim-mission': if (content.hasMission(id)) result = game.claimMission(id); break;
     case 'log-filter': if ((LOG_FILTERS as readonly string[]).includes(id)) app.setLogFilter(id as LogKind | 'all'); return;
     case 'dismiss-offline': app.offline = null; app.markDirty(); return;
     case 'stop': result = game.stopActivity(); break;
@@ -32,7 +65,12 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
       break;
     }
     case 'fight': if (content.hasMonster(id)) result = game.startCombat(id); break;
-    case 'equip': if (content.hasItem(id)) result = game.equip(id); break;
+    case 'equip': {
+      if (!content.hasItem(id)) break;
+      const slot = data.slot && (EQUIP_SLOTS as readonly string[]).includes(data.slot) ? (data.slot as EquipSlot) : undefined;
+      result = game.equip(id, slot);
+      break;
+    }
     case 'unequip': if ((EQUIP_SLOTS as readonly string[]).includes(id)) result = game.unequip(id as EquipSlot); break;
     case 'use': if (content.hasItem(id)) result = game.consume(id); break;
     case 'travel': if (content.hasZone(id)) result = game.travel(id); break;

@@ -6,9 +6,10 @@ import type { Panel } from '../panel';
 export const settingsPanel: Panel = {
   id: 'settings',
   title: 'Settings',
+  width: 720,
   render({ game, ui }) {
     return html`
-      <div class="panel-head"><h2>Settings</h2></div>
+      
       <div class="grid grid-2">
       <section class="card">
         <h3>Character</h3>

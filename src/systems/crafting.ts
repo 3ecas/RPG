@@ -13,10 +13,11 @@ type CraftActivity = Extract<Activity, { kind: 'craft' }>;
 
 export function canCraft(state: GameState, ctx: Ctx, recipeId: RecipeId): Result {
   const recipe = ctx.content.recipe(recipeId);
-  if (!progression.hasStation(state, ctx, recipe.station)) {
-    return fail(`The ${ctx.content.station(recipe.station).name} is locked. Unlock "${progression.nodeForStation(ctx, recipe.station)?.name ?? '?'}" in the Progression tree.`);
+  const here = ctx.content.zone(state.player.zoneId);
+  if (!here.stations.includes(recipe.station)) {
+    const elsewhere = ctx.content.zoneIds.map((id) => ctx.content.zone(id)).find((z) => z.stations.includes(recipe.station));
+    return fail(`There is no ${ctx.content.station(recipe.station).name} in ${here.name}.${elsewhere ? ` Travel to ${elsewhere.name}.` : ''}`);
   }
-  if (!progression.hasSkill(state, ctx, recipe.skill)) return fail(progression.lockedSkillReason(ctx, recipe.skill));
   if (skills.tier(state, recipe.skill) < recipe.tier) return fail(`Requires ${ctx.content.skill(recipe.skill).name} tier ${recipe.tier}.`);
   const missing = inventory.missing(state, recipe.inputs);
   if (missing.length > 0) return fail(`Missing: ${missing.map((m) => `${m.qty}× ${ctx.content.item(m.itemId).name}`).join(', ')}.`);

@@ -1,5 +1,5 @@
 /** Shapes of the content tables. Content files are literals of these types; they contain no logic. */
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from './ids';
+import type { GearKind, ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from './ids';
 
 /** A content definition whose `id` is narrowed to the table's id union. */
 export type Keyed<TDef, Id extends string> = TDef & { readonly id: Id };
@@ -40,13 +40,17 @@ export interface StatBlock {
 
 export type ItemCategory = 'material' | 'weapon' | 'armor' | 'food' | 'potion' | 'misc';
 
+/** Finer grouping for catalogue lists (shops, market, crafting). */
+export type ItemGroup = 'ore' | 'bar' | 'log' | 'fish' | 'crop' | 'herb' | 'hide' | 'food' | 'weapon' | 'armor' | 'shield' | 'trinket' | 'misc';
+
 export interface SkillRequirement {
   readonly skill: SkillId;
   readonly tier: Tier;
 }
 
 export interface EquipInfo {
-  readonly slot: EquipSlot;
+  /** Weapons go in the main hand (daggers also fit the off hand), shields in the off hand, trinkets in either trinket slot. */
+  readonly kind: GearKind;
   readonly stats: Readonly<Partial<StatBlock>>;
   /** Weapons only: time between attacks. */
   readonly attackIntervalMs?: number;
@@ -65,6 +69,7 @@ export interface ItemDef {
   readonly name: string;
   readonly description: string;
   readonly category: ItemCategory;
+  readonly group: ItemGroup;
   readonly tier: Tier;
   /** Base gold value. Shops and the market derive prices from it. */
   readonly value: number;
@@ -136,7 +141,7 @@ export type Requirement =
 
 export type ProgressBranch = 'gathering' | 'crafting' | 'combat' | 'world';
 
-export type Feature = 'market' | 'traders' | 'auto_eat';
+export type Feature = 'market' | 'traders' | 'auto_eat' | 'dual_wield';
 
 /** Numeric bonuses granted by tree nodes. Fractions are added (0.1 = +10%), counts are added as-is. */
 export type PerkId =
@@ -144,10 +149,9 @@ export type PerkId =
   | 'gather_xp' | 'craft_xp' | 'combat_xp'
   | 'max_hp' | 'regen' | 'gold_find' | 'sell_bonus' | 'inventory_slots';
 
+/** Skills and stations are never gated: skills grow by use, stations stand in settlements. */
 export type Unlock =
-  | { readonly type: 'skill'; readonly skillId: SkillId }
   | { readonly type: 'zone'; readonly zoneId: ZoneId }
-  | { readonly type: 'station'; readonly stationId: StationId }
   | { readonly type: 'feature'; readonly feature: Feature }
   | { readonly type: 'perk'; readonly perk: PerkId; readonly value: number };
 
@@ -171,12 +175,22 @@ export interface NpcDef {
   readonly greeting: string;
 }
 
+/**
+ * Objectives are shared by quests and missions. Counted kinds advance from
+ * events; live kinds are read from the state when viewed.
+ */
 export type Objective =
   | { readonly type: 'kill'; readonly monsterId: MonsterId; readonly count: number }
-  | { readonly type: 'collect'; readonly itemId: ItemId; readonly count: number }
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly count: number }
+  | { readonly type: 'gather'; readonly itemId: ItemId; readonly count: number }
+  | { readonly type: 'talk'; readonly npcId: NpcId }
+  | { readonly type: 'trade'; readonly kind: 'market' | 'shop' | 'barter'; readonly count: number }
+  | { readonly type: 'collect'; readonly itemId: ItemId; readonly count: number }
   | { readonly type: 'reach_tier'; readonly skill: SkillId; readonly tier: Tier }
-  | { readonly type: 'talk'; readonly npcId: NpcId };
+  | { readonly type: 'any_tier'; readonly tier: Tier }
+  | { readonly type: 'unlock'; readonly nodeId: ProgressNodeId }
+  | { readonly type: 'visit'; readonly zoneId: ZoneId }
+  | { readonly type: 'equip'; readonly kind: GearKind };
 
 export type Reward =
   | { readonly type: 'gold'; readonly amount: number }
@@ -237,6 +251,22 @@ export interface TraderDef {
   readonly offers: readonly TraderOfferDef[];
 }
 
+export interface ChapterDef {
+  readonly number: number;
+  readonly name: string;
+  readonly blurb: string;
+}
+
+/** A campaign step. Missions of a chapter open when the previous chapter is fully claimed. */
+export interface MissionDef {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly chapter: number;
+  readonly objectives: readonly Objective[];
+  readonly rewards: readonly Reward[];
+}
+
 export interface ZoneDef {
   readonly id: string;
   readonly name: string;
@@ -249,6 +279,8 @@ export interface ZoneDef {
   readonly traders: readonly TraderId[];
   /** Whether the market (see content/market.ts) can be used from this zone. */
   readonly market: boolean;
+  /** Crafting stations physically present here. Crafting needs the station in the current zone. */
+  readonly stations: readonly StationId[];
 }
 
 /** Everything the registry is built from. */
@@ -267,4 +299,6 @@ export interface ContentTables {
   /** Items the market trades. */
   readonly market: readonly string[];
   readonly progression: Readonly<Record<string, ProgressNodeDef>>;
+  readonly chapters: readonly ChapterDef[];
+  readonly missions: Readonly<Record<string, MissionDef>>;
 }

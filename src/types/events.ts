@@ -1,6 +1,6 @@
 /** Everything systems tell each other and the UI. Payloads are plain data. */
 import type { Activity, LogKind } from './state';
-import type { ItemId, MonsterId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
+import type { ItemId, MissionId, MonsterId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
 
 export interface GameEvents {
   'item:gained': { itemId: ItemId; qty: number; source: string };
@@ -14,6 +14,9 @@ export interface GameEvents {
   'quest:accepted': { questId: QuestId };
   'quest:progress': { questId: QuestId };
   'quest:completed': { questId: QuestId };
+  'mission:progress': { missionId: MissionId };
+  'mission:claimed': { missionId: MissionId };
+  'chapter:opened': { chapter: number };
   'zone:unlocked': { zoneId: ZoneId };
   'progress:unlocked': { nodeId: ProgressNodeId };
   'progress:points': { granted: number };

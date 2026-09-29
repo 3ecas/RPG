@@ -37,7 +37,7 @@ describe('gathering', () => {
     const game = newGame();
     game.travel('copper_hills');
     // Fill every slot (duplicate stacks are fine for this test: only the slot count matters).
-    game.state.inventory = Array.from({ length: 40 }, () => ({ itemId: 'bone' as const, qty: 1 }));
+    game.state.inventory = Array.from({ length: game.inventoryCapacity() }, () => ({ itemId: 'bone' as const, qty: 1 }));
     expect(game.startGathering('copper_rock')).toEqual({ ok: false, reason: 'Inventory is full.' });
 
     game.state.inventory.pop();

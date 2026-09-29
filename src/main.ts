@@ -101,6 +101,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('beforeunload', save);
 
 if (import.meta.env.DEV) {
-  // Handy in the browser console: game.state, game.startGathering('copper_rock'), ...
+  // Handy in the browser console: game.state, game.startGathering('copper_rock'), app.openWindow('anvil'), ...
   Object.defineProperty(window, 'game', { get: () => game });
+  Object.defineProperty(window, 'app', { get: () => app });
 }

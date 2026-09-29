@@ -9,6 +9,7 @@ const HOUR = 3_600_000;
 describe('shops', () => {
   it('sells from stock for gold and restocks over time', () => {
     const game = newGame();
+    game.travel('copper_hills');
     game.state.player.gold = 1000;
     const before = game.shopStock('smithy').find((r) => r.itemId === 'bronze_bar')!;
     expect(before).toMatchObject({ qty: 10, max: 10, price: 27 }); // 15 × 1.8
@@ -29,10 +30,10 @@ describe('shops', () => {
 
   it('refuses without gold, without the shop present, and for items it does not sell', () => {
     const game = newGame();
+    expect(game.buy('smithy', 'bronze_bar', 1)).toEqual({ ok: false, reason: "Orla's Smithy is not here." });
+    game.travel('copper_hills');
     expect(game.buy('smithy', 'steel_bar', 1)).toEqual({ ok: false, reason: 'Not enough gold: Steel Bar costs 220.' });
     expect(game.buy('smithy', 'shrimp', 1)).toEqual({ ok: false, reason: "Orla's Smithy doesn't sell Shrimp." });
-    game.travel('copper_hills');
-    expect(game.buy('smithy', 'bronze_bar', 1)).toEqual({ ok: false, reason: "Orla's Smithy is not here." });
     expect(game.buy('prospectors_outpost', 'copper_ore', 2).ok).toBe(true); // 4 × 1.5 = 6 each, we have 10 gold
     expect(game.state.player.gold).toBe(10 - 6); // could only afford one
     expect(inventory.count(game.state, 'copper_ore')).toBe(1);
@@ -42,29 +43,31 @@ describe('shops', () => {
     const game = newGame();
     give(game, 'bronze_sword', 2);
     give(game, 'bone', 5);
-    expect(game.sell('smithy', 'bronze_sword', 1).ok).toBe(true);
-    expect(game.state.player.gold).toBe(10 + 17); // floor(35 × 0.5)
-    expect(inventory.count(game.state, 'bronze_sword')).toBe(1);
-    expect(game.sell('smithy', 'shrimp', 1)).toEqual({ ok: false, reason: "Orla's Smithy doesn't buy food items." });
-    expect(game.sell('smithy', 'bone', 5)).toEqual({ ok: false, reason: "Orla's Smithy doesn't buy misc items." });
     expect(game.sell('hollow_goods', 'bone', 5)).toEqual({ ok: false, reason: 'Bone is worth nothing to Hollow Goods.' }); // floor(2 × 0.4) = 0
     expect(game.sell('hollow_goods', 'shrimp', 99).ok).toBe(true); // clamps to what you have
     expect(inventory.count(game.state, 'shrimp')).toBe(0);
+    game.travel('copper_hills');
+    expect(game.sell('smithy', 'bronze_sword', 1).ok).toBe(true);
+    expect(game.state.player.gold).toBe(10 + 5 * 2 + 17); // shrimp sold at floor(6 × 0.4) = 2 each, sword at floor(35 × 0.5)
+    expect(inventory.count(game.state, 'bronze_sword')).toBe(1);
+    expect(game.sell('smithy', 'bone', 5)).toEqual({ ok: false, reason: "Orla's Smithy doesn't buy misc items." });
   });
 });
 
 describe('market', () => {
-  it('only opens in zones that have one', () => {
+  it('only opens in Kingsport, once the road there is unlocked', () => {
     const game = newGame();
-    unlock(game, 'market_access');
-    game.travel('copper_hills');
-    expect(game.marketBuy('copper_ore', 1)).toEqual({ ok: false, reason: 'There is no market in Copper Hills.' });
-    expect(game.marketOpen().ok).toBe(false);
+    expect(game.marketBuy('copper_ore', 1)).toEqual({ ok: false, reason: 'Unlock "Kingsport" in the Progression tree to reach the market.' });
+    unlock(game, 'kingsport');
+    expect(game.marketBuy('copper_ore', 1)).toEqual({ ok: false, reason: 'There is no market in Greenhollow Village.' });
+    expect(game.travel('kingsport').ok).toBe(true);
+    expect(game.marketOpen().ok).toBe(true);
   });
 
   it('moves prices with trades and applies the spread', () => {
     const game = newGame();
-    unlock(game, 'market_access');
+    unlock(game, 'kingsport');
+    game.travel('kingsport');
     game.state.player.gold = 10_000;
     const base = game.content.item('copper_ore').value; // 4
     expect(market.priceOf(game.state, game.ctx, 'copper_ore')).toBe(base);
@@ -84,7 +87,8 @@ describe('market', () => {
 
   it('clamps prices and relaxes them back toward base over time', () => {
     const game = newGame();
-    unlock(game, 'market_access');
+    unlock(game, 'kingsport');
+    game.travel('kingsport');
     give(game, 'bone', 5000);
     expect(game.marketSell('bone', 5000).ok).toBe(true);
     const base = game.content.item('bone').value;
@@ -98,7 +102,8 @@ describe('market', () => {
 
   it('buys as much as the gold allows', () => {
     const game = newGame();
-    unlock(game, 'market_access');
+    unlock(game, 'kingsport');
+    game.travel('kingsport');
     game.state.player.gold = 20;
     expect(game.marketBuy('copper_ore', 100).ok).toBe(true); // 4 × 1.04 → 4 gold each, rising
     expect(inventory.count(game.state, 'copper_ore')).toBeGreaterThanOrEqual(4);

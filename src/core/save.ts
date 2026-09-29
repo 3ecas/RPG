@@ -56,8 +56,8 @@ function sanitize(raw: Raw, content: Registry, fresh: GameState): GameState {
     if (equipment) {
       for (const slot of EQUIP_SLOTS) {
         const itemId = equipment[slot];
-        s.player.equipment[slot] =
-          typeof itemId === 'string' && content.hasItem(itemId) && content.item(itemId).equip?.slot === slot ? itemId : null;
+        const kind = typeof itemId === 'string' && content.hasItem(itemId) ? content.item(itemId).equip?.kind : undefined;
+        s.player.equipment[slot] = typeof itemId === 'string' && content.hasItem(itemId) && kind !== undefined && slotAccepts(slot, kind) ? itemId : null;
       }
     }
     if (Array.isArray(p.buffs)) {
@@ -120,8 +120,27 @@ function sanitize(raw: Raw, content: Registry, fresh: GameState): GameState {
     }
   }
 
+  const missions = rec(raw.missions);
+  if (missions) {
+    if (Array.isArray(missions.claimed)) {
+      s.missions.claimed = [...new Set(missions.claimed.filter((m: unknown): m is string => typeof m === 'string' && content.hasMission(m)))] as GameState['missions']['claimed'];
+    }
+    const counts = rec(missions.counts);
+    if (counts) {
+      for (const [missionId, value] of Object.entries(counts)) {
+        if (!content.hasMission(missionId) || s.missions.claimed.includes(missionId) || !Array.isArray(value)) continue;
+        const size = content.mission(missionId).objectives.length;
+        s.missions.counts[missionId] = value.slice(0, size).map((c: unknown) => Math.max(0, Math.floor(num(c, 0))));
+      }
+    }
+  }
+
   const world = rec(raw.world);
   if (world) {
+    if (Array.isArray(world.visitedZones)) {
+      s.world.visitedZones = [...new Set([...s.world.visitedZones, ...world.visitedZones.filter((z: unknown): z is string => typeof z === 'string' && content.hasZone(z))])] as GameState['world']['visitedZones'];
+    }
+    if (typeof s.player.zoneId === 'string' && !s.world.visitedZones.includes(s.player.zoneId)) s.world.visitedZones.push(s.player.zoneId);
     if (Array.isArray(world.unlockedZones)) {
       s.world.unlockedZones = [...new Set(world.unlockedZones.filter((z: unknown): z is string => typeof z === 'string' && content.hasZone(z)))] as GameState['world']['unlockedZones'];
     }
@@ -199,6 +218,15 @@ function validActivity(raw: unknown, content: Registry): GameState['activity'] {
         : null;
     default:
       return null;
+  }
+}
+
+function slotAccepts(slot: string, kind: string): boolean {
+  switch (kind) {
+    case 'weapon': return slot === 'main_hand' || slot === 'off_hand';
+    case 'shield': return slot === 'off_hand';
+    case 'trinket': return slot === 'trinket_1' || slot === 'trinket_2';
+    default: return slot === kind;
   }
 }
 

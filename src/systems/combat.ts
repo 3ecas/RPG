@@ -12,7 +12,7 @@ import * as inventory from './inventory';
 import { log } from './log';
 import * as progression from './progression';
 import * as skills from './skills';
-import { armorPiecesWorn, derive, type DerivedStats, weaponSkill } from './stats';
+import { armorPiecesWorn, derive, type DerivedStats, hasShield, weaponSkill } from './stats';
 
 type CombatActivity = Extract<Activity, { kind: 'combat' }>;
 
@@ -88,7 +88,7 @@ function playerAttack(state: GameState, ctx: Ctx, stats: DerivedStats, monster: 
 }
 
 function monsterAttack(state: GameState, ctx: Ctx, stats: DerivedStats, monster: Keyed<MonsterDef, MonsterId>): void {
-  const xp = defenceXpForAttack(monster.tier, armorPiecesWorn(state), state.player.equipment.shield !== null);
+  const xp = defenceXpForAttack(monster.tier, armorPiecesWorn(state), hasShield(state, ctx));
   skills.addXp(state, ctx, 'armor', xp.armor);
   skills.addXp(state, ctx, 'shields', xp.shields);
   if (!ctx.rng.chance(hitChance(monster.attack, stats.defence))) {

@@ -3,16 +3,17 @@ import { itemName } from '../components/items';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
 
+/** All gathering spots in the zone. The map opens single spots; this is the list view. */
 export const gatheringPanel: Panel = {
   id: 'gathering',
   title: 'Gathering',
+  width: 720,
   render({ game }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const nodes = zone.nodes.map((id) => game.content.node(id));
     const activeNode = game.state.activity?.kind === 'gather' ? game.state.activity.nodeId : null;
-    if (nodes.length === 0) return html`<div class="panel-head"><h2>Gather</h2></div><p class="muted">Nothing to gather in ${zone.name}. Try another zone.</p>`;
+    if (nodes.length === 0) return html`<p class="muted">Nothing to gather in ${zone.name}.</p>`;
     return html`
-      <div class="panel-head"><h2>Gather</h2><span class="muted small">in ${zone.name}</span></div>
       <div class="grid grid-auto">
         ${nodes.map((node) => {
           const skill = game.content.skill(node.skill);
@@ -25,8 +26,7 @@ export const gatheringPanel: Panel = {
               <div class="row">
                 ${isActive
                   ? html`<button class="btn btn-small" data-action="stop">Stop</button><span class="ok small">In progress</span>`
-                  : html`<button class="btn btn-small btn-primary" data-action="gather" data-id="${node.id}" ${attr(!can.ok, 'disabled')} title="${can.ok ? `Start ${skill.verb.toLowerCase()}` : can.reason}">${skill.verb}</button>
-                    ${can.ok ? '' : html`<span class="bad small">${can.reason}</span>`}`}
+                  : html`<button class="btn btn-small btn-primary" data-action="gather" data-id="${node.id}" ${attr(!can.ok, 'disabled')} title="${can.ok ? '' : can.reason}">${skill.verb}</button>${can.ok ? '' : html`<span class="bad small">${can.reason}</span>`}`}
               </div>
             </div>`;
         })}

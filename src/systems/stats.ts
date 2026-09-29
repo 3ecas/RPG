@@ -1,6 +1,6 @@
 /** The one place where skill tiers, equipment and buffs are added up. */
 import { BALANCE } from '@/content/balance';
-import { EQUIP_SLOTS, type EquipSlot, type SkillId } from '@/types/ids';
+import { ARMOR_SLOTS, EQUIP_SLOTS, type SkillId } from '@/types/ids';
 import type { StatBlock, WeaponType } from '@/types/content';
 import type { GameState } from '@/types/state';
 import type { Ctx } from './ctx';
@@ -13,14 +13,17 @@ export interface DerivedStats extends StatBlock {
 }
 
 const WEAPON_SKILL: Readonly<Record<WeaponType, SkillId>> = { sword: 'swords', axe: 'axes', dagger: 'daggers' };
-const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
 
-/** The combat skill trained by the equipped weapon, or null when bare-handed or the skill is still locked. */
+/** The combat skill trained by the main-hand weapon, or null when bare-handed. */
 export function weaponSkill(state: GameState, ctx: Ctx): SkillId | null {
-  const weapon = state.player.equipment.weapon;
+  const weapon = state.player.equipment.main_hand;
   const type = weapon ? ctx.content.item(weapon).equip?.weaponType : undefined;
-  const skill = type ? WEAPON_SKILL[type] : null;
-  return skill && progression.hasSkill(state, ctx, skill) ? skill : null;
+  return type ? WEAPON_SKILL[type] : null;
+}
+
+export function hasShield(state: GameState, ctx: Ctx): boolean {
+  const off = state.player.equipment.off_hand;
+  return !!off && ctx.content.item(off).equip?.kind === 'shield';
 }
 
 export function armorPiecesWorn(state: GameState): number {
@@ -30,9 +33,8 @@ export function armorPiecesWorn(state: GameState): number {
 export function derive(state: GameState, ctx: Ctx): DerivedStats {
   const skill = weaponSkill(state, ctx);
   const masteryTier = skill ? tier(state, skill) : 0;
-  // Locked skills give no mastery, even if the gear is somehow worn.
-  const armorTier = progression.hasSkill(state, ctx, 'armor') ? tier(state, 'armor') : 0;
-  const shieldTier = state.player.equipment.shield && progression.hasSkill(state, ctx, 'shields') ? tier(state, 'shields') : 0;
+  const armorTier = tier(state, 'armor');
+  const shieldTier = hasShield(state, ctx) ? tier(state, 'shields') : 0;
   const stats: DerivedStats = {
     attack: BALANCE.MASTERY_ATTACK_PER_TIER * masteryTier,
     strength: BALANCE.MASTERY_STRENGTH_PER_TIER * masteryTier,
@@ -47,8 +49,10 @@ export function derive(state: GameState, ctx: Ctx): DerivedStats {
     if (!itemId) continue;
     const equip = ctx.content.item(itemId).equip;
     if (!equip) continue;
-    for (const [stat, value] of Object.entries(equip.stats) as [keyof StatBlock, number][]) stats[stat] += value;
-    if (equip.attackIntervalMs) stats.attackIntervalMs = equip.attackIntervalMs;
+    // An off-hand weapon adds half its stats and does not change attack speed.
+    const factor = slot === 'off_hand' && equip.kind === 'weapon' ? 0.5 : 1;
+    for (const [stat, value] of Object.entries(equip.stats) as [keyof StatBlock, number][]) stats[stat] += Math.floor(value * factor);
+    if (slot === 'main_hand' && equip.attackIntervalMs) stats.attackIntervalMs = equip.attackIntervalMs;
   }
   for (const buff of state.player.buffs) {
     if (buff.expiresAtMs > state.time.nowMs) stats[buff.stat] += buff.amount;

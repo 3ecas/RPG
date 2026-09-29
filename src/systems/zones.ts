@@ -16,6 +16,7 @@ export function travel(state: GameState, ctx: Ctx, zoneId: ZoneId): Result {
   if (!unlocked.ok) return unlocked;
   activity.stop(state, ctx, 'You left.');
   state.player.zoneId = zoneId;
+  if (!state.world.visitedZones.includes(zoneId)) state.world.visitedZones.push(zoneId);
   ctx.events.emit('zone:travelled', { zoneId });
   log(state, ctx, 'info', `You travel to ${ctx.content.zone(zoneId).name}.`);
   return ok();

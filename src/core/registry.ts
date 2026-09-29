@@ -3,9 +3,9 @@
  * cross-reference. If validate() returns errors the game refuses to start.
  */
 import type {
-  ContentTables, GatherNodeDef, ItemDef, Keyed, MonsterDef, NpcDef, ProgressNodeDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
+  ChapterDef, ContentTables, GatherNodeDef, ItemDef, Keyed, MissionDef, MonsterDef, NpcDef, Objective, ProgressNodeDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
 } from '@/types/content';
-import type { ItemId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
+import type { ItemId, MissionId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 
 function must<T, Id extends string>(table: Readonly<Record<string, T>>, id: Id, kind: string): Keyed<T, Id> {
   const def = table[id];
@@ -28,6 +28,11 @@ export class Registry {
   shop(id: ShopId): Keyed<ShopDef, ShopId> { return must(this.tables.shops, id, 'shop'); }
   trader(id: TraderId): Keyed<TraderDef, TraderId> { return must(this.tables.traders, id, 'trader'); }
   progressNode(id: ProgressNodeId): Keyed<ProgressNodeDef, ProgressNodeId> { return must(this.tables.progression, id, 'progression node'); }
+  mission(id: MissionId): Keyed<MissionDef, MissionId> { return must(this.tables.missions, id, 'mission'); }
+  get chapters(): readonly ChapterDef[] { return this.tables.chapters; }
+  get missionIds(): MissionId[] { return Object.keys(this.tables.missions) as MissionId[]; }
+  hasMission(id: string): id is MissionId { return id in this.tables.missions; }
+  missionsInChapter(chapter: number): Keyed<MissionDef, MissionId>[] { return this.missionIds.map((id) => this.mission(id)).filter((m) => m.chapter === chapter); }
 
   get skillIds(): SkillId[] { return Object.keys(this.tables.skills) as SkillId[]; }
   get stationIds(): StationId[] { return Object.keys(this.tables.stations) as StationId[]; }
@@ -41,6 +46,7 @@ export class Registry {
   get progressNodeIds(): ProgressNodeId[] { return Object.keys(this.tables.progression) as ProgressNodeId[]; }
 
   hasSkill(id: string): id is SkillId { return id in this.tables.skills; }
+  hasStation(id: string): id is StationId { return id in this.tables.stations; }
   hasItem(id: string): id is ItemId { return id in this.tables.items; }
   hasRecipe(id: string): id is RecipeId { return id in this.tables.recipes; }
   hasNode(id: string): id is NodeId { return id in this.tables.nodes; }
@@ -78,6 +84,21 @@ export class Registry {
     const t = this.tables;
     const check = (cond: boolean, msg: string) => { if (!cond) errors.push(msg); };
     const validTier = (tier: number) => Number.isInteger(tier) && tier >= 1 && tier <= 6;
+    const checkObjective = (owner: string, o: Objective) => {
+      switch (o.type) {
+        case 'kill': check(o.monsterId in t.monsters && o.count > 0, `${owner}: bad kill objective`); break;
+        case 'collect': check(o.itemId in t.items && o.count > 0, `${owner}: bad collect objective`); break;
+        case 'gather': check(o.itemId in t.items && o.count > 0 && Object.values(t.nodes).some((n) => n.itemId === o.itemId), `${owner}: gather objective for '${o.itemId}' which no node yields`); break;
+        case 'craft': check(o.recipeId in t.recipes && o.count > 0, `${owner}: bad craft objective`); break;
+        case 'reach_tier': check(o.skill in t.skills && validTier(o.tier), `${owner}: bad reach_tier objective`); break;
+        case 'any_tier': check(validTier(o.tier), `${owner}: bad any_tier objective`); break;
+        case 'talk': check(o.npcId in t.npcs, `${owner}: unknown npc '${o.npcId}'`); break;
+        case 'trade': check(o.count > 0, `${owner}: bad trade objective`); break;
+        case 'unlock': check(o.nodeId in t.progression, `${owner}: unknown progression node '${o.nodeId}'`); break;
+        case 'visit': check(o.zoneId in t.zones, `${owner}: unknown zone '${o.zoneId}'`); break;
+        case 'equip': break;
+      }
+    };
     const checkReq = (owner: string, req: Requirement) => {
       switch (req.type) {
         case 'tier':
@@ -99,7 +120,7 @@ export class Registry {
         check(r.skill in t.skills, `item ${id}: unknown skill '${r.skill}'`);
         check(validTier(r.tier), `item ${id}: bad requirement tier ${r.tier}`);
       }
-      if (def.equip?.slot === 'weapon') {
+      if (def.equip?.kind === 'weapon') {
         check((def.equip.attackIntervalMs ?? 0) > 0, `weapon ${id}: needs attackIntervalMs`);
         check(def.equip.weaponType !== undefined, `weapon ${id}: needs weaponType`);
       }
@@ -139,15 +160,7 @@ export class Registry {
       check(def.giverId in t.npcs, `quest ${id}: unknown giver '${def.giverId}'`);
       check(def.objectives.length > 0, `quest ${id}: needs at least one objective`);
       for (const r of def.prerequisites) checkReq(`quest ${id}`, r);
-      for (const o of def.objectives) {
-        switch (o.type) {
-          case 'kill': check(o.monsterId in t.monsters, `quest ${id}: unknown monster '${o.monsterId}'`); break;
-          case 'collect': check(o.itemId in t.items, `quest ${id}: unknown item '${o.itemId}'`); break;
-          case 'craft': check(o.recipeId in t.recipes, `quest ${id}: unknown recipe '${o.recipeId}'`); break;
-          case 'reach_tier': check(o.skill in t.skills && validTier(o.tier), `quest ${id}: bad reach_tier objective`); break;
-          case 'talk': check(o.npcId in t.npcs, `quest ${id}: unknown npc '${o.npcId}'`); break;
-        }
-      }
+      for (const o of def.objectives) checkObjective(`quest ${id}`, o);
       for (const r of def.rewards) {
         if (r.type === 'item') check(r.itemId in t.items, `quest ${id}: unknown reward item '${r.itemId}'`);
         if (r.type === 'xp') check(r.skill in t.skills, `quest ${id}: unknown reward skill '${r.skill}'`);
@@ -156,6 +169,21 @@ export class Registry {
     }
     errors.push(...this.questCycles());
     errors.push(...this.validateProgression());
+
+    const chapterNumbers = t.chapters.map((c) => c.number);
+    check(chapterNumbers.every((n, i) => n === i + 1), 'chapters must be numbered 1..N in order');
+    for (const [id, def] of Object.entries(t.missions)) {
+      check(def.id === id, `mission ${id}: id field is '${def.id}'`);
+      check(chapterNumbers.includes(def.chapter), `mission ${id}: unknown chapter ${def.chapter}`);
+      check(def.objectives.length > 0, `mission ${id}: needs an objective`);
+      for (const o of def.objectives) checkObjective(`mission ${id}`, o);
+      for (const r of def.rewards) {
+        if (r.type === 'item') check(r.itemId in t.items, `mission ${id}: unknown reward item '${r.itemId}'`);
+        if (r.type === 'xp') check(r.skill in t.skills, `mission ${id}: unknown reward skill '${r.skill}'`);
+        if (r.type === 'points') check(r.amount > 0, `mission ${id}: points reward must be > 0`);
+      }
+    }
+    for (const chapter of t.chapters) check(Object.values(t.missions).some((m) => m.chapter === chapter.number), `chapter ${chapter.number}: has no missions`);
 
     for (const [id, def] of Object.entries(t.shops)) {
       check(def.id === id, `shop ${id}: id field is '${def.id}'`);
@@ -197,6 +225,7 @@ export class Registry {
     const referencedNpcs = new Set<string>();
     const referencedShops = new Set<string>();
     const referencedTraders = new Set<string>();
+    const referencedStations = new Set<string>();
     for (const [id, def] of Object.entries(t.zones)) {
       check(def.id === id, `zone ${id}: id field is '${def.id}'`);
       for (const r of def.unlock) checkReq(`zone ${id}`, r);
@@ -205,6 +234,7 @@ export class Registry {
       for (const n of def.npcs) { check(n in t.npcs, `zone ${id}: unknown npc '${n}'`); referencedNpcs.add(n); }
       for (const s of def.shops) { check(s in t.shops, `zone ${id}: unknown shop '${s}'`); referencedShops.add(s); }
       for (const tr of def.traders) { check(tr in t.traders, `zone ${id}: unknown trader '${tr}'`); referencedTraders.add(tr); }
+      for (const st of def.stations) { check(st in t.stations, `zone ${id}: unknown station '${st}'`); referencedStations.add(st); }
       for (const s of def.shops) {
         const keeper = t.shops[s]?.keeperId;
         check(!keeper || def.npcs.includes(keeper), `zone ${id}: shop '${s}' is here but its keeper '${keeper}' is not`);
@@ -215,6 +245,7 @@ export class Registry {
     for (const id of Object.keys(t.npcs)) check(referencedNpcs.has(id), `npc ${id}: not placed in any zone`);
     for (const id of Object.keys(t.shops)) check(referencedShops.has(id), `shop ${id}: not placed in any zone`);
     for (const id of Object.keys(t.traders)) check(referencedTraders.has(id), `trader ${id}: not placed in any zone`);
+    for (const id of Object.keys(t.stations)) check(referencedStations.has(id), `station ${id}: not placed in any zone`);
 
     return errors;
   }
@@ -223,8 +254,6 @@ export class Registry {
     const t = this.tables;
     const errors: string[] = [];
     const check = (cond: boolean, msg: string) => { if (!cond) errors.push(msg); };
-    const skillUnlockedBy = new Map<string, string[]>();
-    const stationUnlockedBy = new Map<string, string[]>();
     const zoneUnlockedBy = new Map<string, string[]>();
     for (const [id, def] of Object.entries(t.progression)) {
       check(def.id === id, `progression ${id}: id field is '${def.id}'`);
@@ -242,16 +271,12 @@ export class Registry {
       }
       for (const u of def.unlocks) {
         switch (u.type) {
-          case 'skill': check(u.skillId in t.skills, `progression ${id}: unknown skill '${u.skillId}'`); skillUnlockedBy.set(u.skillId, [...(skillUnlockedBy.get(u.skillId) ?? []), id]); break;
-          case 'station': check(u.stationId in t.stations, `progression ${id}: unknown station '${u.stationId}'`); stationUnlockedBy.set(u.stationId, [...(stationUnlockedBy.get(u.stationId) ?? []), id]); break;
           case 'zone': check(u.zoneId in t.zones, `progression ${id}: unknown zone '${u.zoneId}'`); zoneUnlockedBy.set(u.zoneId, [...(zoneUnlockedBy.get(u.zoneId) ?? []), id]); break;
           case 'perk': check(u.value > 0, `progression ${id}: perk value must be > 0`); break;
           case 'feature': break;
         }
       }
     }
-    for (const id of Object.keys(t.skills)) check((skillUnlockedBy.get(id) ?? []).length === 1, `skill ${id}: must be unlocked by exactly one progression node (found ${(skillUnlockedBy.get(id) ?? []).join(', ') || 'none'})`);
-    for (const id of Object.keys(t.stations)) check((stationUnlockedBy.get(id) ?? []).length === 1, `station ${id}: must be unlocked by exactly one progression node`);
     for (const [id, zone] of Object.entries(t.zones)) {
       const by = zoneUnlockedBy.get(id) ?? [];
       check(by.length === 1, `zone ${id}: must be unlocked by exactly one progression node`);

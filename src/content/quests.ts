@@ -36,7 +36,7 @@ export const QUESTS: { readonly [K in QuestId]: QuestDef & { readonly id: K } } 
     name: "Smith's Apprentice",
     description: 'Orla will teach you the trade if you prove you can keep a furnace fed: five bronze bars and one dagger.',
     giverId: 'smith_orla',
-    prerequisites: [{ type: 'unlock', nodeId: 'furnace' }],
+    prerequisites: [],
     objectives: [
       { type: 'craft', recipeId: 'smelt_bronze_bar', count: 5 },
       { type: 'craft', recipeId: 'smith_bronze_dagger', count: 1 },

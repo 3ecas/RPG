@@ -10,4 +10,8 @@ export const NPCS = defineNpcs({
   angler_tobb: { name: 'Tobb', title: 'Angler', greeting: 'Shrimp in the shallows, trout past the woods. Cook them before you eat them, unlike some people.' },
   keeper_pell: { name: 'Pell', title: 'Shopkeeper', greeting: 'Hollow Goods: if we do not have it, you probably do not need it. Buying, selling, no questions.' },
   prospector_dun: { name: 'Dun', title: 'Prospector', greeting: 'Forty years in these hills. I will pay proper money for ore, and I sell picks to people who lose theirs to goblins.' },
+  woodsman_hal: { name: 'Hal', title: 'Woodsman', greeting: 'Sawbench is yours if you keep it clear of wolves. I buy logs, I sell planks, I do not do small talk.' },
+  quartermaster_bex: { name: 'Bex', title: 'Quartermaster', greeting: 'Kingsport Armory. Everything sharp, everything heavy. Show me your coin.' },
+  bazaar_master_ilse: { name: 'Ilse', title: 'Bazaar Master', greeting: 'The Grand Bazaar buys from everyone and sells to anyone. The market floor is through the arch; prices there move with the crowd.' },
+  curio_dealer_marek: { name: 'Marek', title: 'Curio Dealer', greeting: 'Rings, charms, oddities. All genuine, some of them.' },
 });

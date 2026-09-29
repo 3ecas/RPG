@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '@/game';
 import { SAVE_VERSION } from '@/core/migrations';
-import { give, newGame, NOW, registry, tickFor, unlock } from './helpers';
+import { give, newGame, NOW, registry, tickFor } from './helpers';
 
 describe('save / load', () => {
   it('round-trips a state exactly', () => {
@@ -31,7 +31,7 @@ describe('save / load', () => {
     give(game, 'bone', 3);
     const raw = JSON.parse(game.save());
     raw.inventory.push({ itemId: 'dragon_egg', qty: 1 });
-    raw.player.equipment.weapon = 'bronze_helmet'; // wrong slot
+    raw.player.equipment.main_hand = 'bronze_helmet'; // wrong slot
     raw.player.zoneId = 'atlantis';
     raw.quests.completed = ['rat_problem', 'nope'];
     raw.quests.active = { goblin_menace: { counts: [4] }, fake: { counts: [] } };
@@ -40,7 +40,7 @@ describe('save / load', () => {
     const loaded = Game.fromSave(registry, JSON.stringify(raw), NOW);
     expect(loaded.state.inventory.some((s) => (s.itemId as string) === 'dragon_egg')).toBe(false);
     expect(loaded.state.inventory.find((s) => s.itemId === 'bone')?.qty).toBe(3);
-    expect(loaded.state.player.equipment.weapon).toBeNull();
+    expect(loaded.state.player.equipment.main_hand).toBeNull();
     expect(loaded.state.player.zoneId).toBe('greenhollow');
     expect(loaded.state.quests.completed).toEqual(['rat_problem']);
     expect(loaded.state.quests.active).toEqual({ goblin_menace: { counts: [4] } });
@@ -49,9 +49,11 @@ describe('save / load', () => {
 
   it('round-trips economy state and upgrades a version 1 save', () => {
     const game = newGame(11);
-    unlock(game, 'market_access');
+    expect(game.unlockNode('kingsport').ok).toBe(true);
     game.state.player.gold = 500;
+    game.travel('copper_hills');
     game.buy('smithy', 'bronze_bar', 3);
+    game.travel('kingsport');
     game.marketSell('shrimp', 5);
     tickFor(game, 120_000);
     const loaded = Game.fromSave(registry, game.save(), NOW);
@@ -82,7 +84,7 @@ describe('save / load', () => {
     expect(loaded.state.player.skills.swords.xp).toBe(1600);
     expect(loaded.state.player.skills.vitality.xp).toBe(3000);
     expect(loaded.state.player.skills.mining.xp).toBe(50);
-    expect(loaded.state.player.equipment.shield).toBe('oak_shield');
+    expect(loaded.state.player.equipment.off_hand).toBe('oak_shield'); // renamed item, renamed slot
     expect(loaded.state.inventory).toEqual([{ itemId: 'oak_shield', qty: 2 }, { itemId: 'copper_ore', qty: 5 }]);
     expect('combatStyle' in loaded.state.player).toBe(false);
   });

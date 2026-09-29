@@ -13,20 +13,18 @@ const GROUPS: { id: SkillGroup; title: string; hint: string }[] = [
 export const skillsPanel: Panel = {
   id: 'skills',
   title: 'Skills',
+  width: 980,
   render({ game }) {
     const skills = game.content.skillIds.map((id) => game.content.skill(id));
     return html`
-      <div class="panel-head"><h2>Skills</h2><span class="muted small">${game.totalTier()} of ${skills.length * 6} tiers · fill a bar to unlock the next tier</span></div>
+      <div class="panel-head"><span class="muted small">${game.totalTier()} of ${skills.length * 6} tiers · every skill grows only by doing it; fill a bar to unlock the next tier</span></div>
       <div class="grid grid-3">
         ${GROUPS.map((group) => html`
           <section class="card">
             <h3>${group.title} <span class="muted">${group.hint}</span></h3>
             ${skills.filter((s) => s.group === group.id).map((skill) => {
-              const lock = game.skillLockReason(skill.id);
               const v = game.skillView(skill.id);
-              return lock
-                ? html`<div class="skill-row locked" title="${lock}"><span class="name">${v.name}</span><span class="muted small">🔒 locked</span><span class="muted small lock-hint">${lock.replace(`${v.name} is locked. `, '')}</span></div>`
-                : html`<div class="skill-row" title="${skill.description}">
+              return html`<div class="skill-row" title="${skill.description}">
                     <span class="name">${v.name}</span>
                     <span class="tier" title="${v.tierName}">T${v.tier}</span>
                     ${progressBar(v.progress, 'xp')}

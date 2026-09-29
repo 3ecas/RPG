@@ -4,8 +4,8 @@
  * system asks here before letting the player use something.
  */
 import { BALANCE } from '@/content/balance';
-import type { Feature, Keyed, PerkId, ProgressNodeDef, SkillGroup } from '@/types/content';
-import type { ProgressNodeId, SkillId, StationId, ZoneId } from '@/types/ids';
+import type { Feature, PerkId, ProgressNodeDef, SkillGroup } from '@/types/content';
+import type { ProgressNodeId, ZoneId } from '@/types/ids';
 import type { GameState } from '@/types/state';
 import { fail, ok, type Result } from '@/types/result';
 import type { Ctx, SystemListeners } from './ctx';
@@ -14,9 +14,7 @@ import * as requirements from './requirements';
 import { tierForXp } from './formulas';
 
 export interface Unlocks {
-  skills: Set<SkillId>;
   zones: Set<ZoneId>;
-  stations: Set<StationId>;
   features: Set<Feature>;
   perks: Record<PerkId, number>;
 }
@@ -28,13 +26,11 @@ const NO_PERKS: Record<PerkId, number> = {
 
 /** Everything the unlocked nodes grant, added up. */
 export function unlocks(state: GameState, ctx: Ctx): Unlocks {
-  const out: Unlocks = { skills: new Set(), zones: new Set(), stations: new Set(), features: new Set(), perks: { ...NO_PERKS } };
+  const out: Unlocks = { zones: new Set(), features: new Set(), perks: { ...NO_PERKS } };
   for (const nodeId of state.progression.unlocked) {
     for (const u of ctx.content.progressNode(nodeId).unlocks) {
       switch (u.type) {
-        case 'skill': out.skills.add(u.skillId); break;
         case 'zone': out.zones.add(u.zoneId); break;
-        case 'station': out.stations.add(u.stationId); break;
         case 'feature': out.features.add(u.feature); break;
         case 'perk': out.perks[u.perk] += u.value; break;
       }
@@ -45,14 +41,6 @@ export function unlocks(state: GameState, ctx: Ctx): Unlocks {
 
 export function isUnlocked(state: GameState, nodeId: ProgressNodeId): boolean {
   return state.progression.unlocked.includes(nodeId);
-}
-
-export function hasSkill(state: GameState, ctx: Ctx, skillId: SkillId): boolean {
-  return unlocks(state, ctx).skills.has(skillId);
-}
-
-export function hasStation(state: GameState, ctx: Ctx, stationId: StationId): boolean {
-  return unlocks(state, ctx).stations.has(stationId);
 }
 
 export function hasFeature(state: GameState, ctx: Ctx, feature: Feature): boolean {
@@ -70,28 +58,6 @@ export function xpMultiplier(state: GameState, ctx: Ctx, group: SkillGroup): num
   return 1 + bonus;
 }
 
-/** The node that unlocks a skill: for "locked" messages. */
-export function nodeForSkill(ctx: Ctx, skillId: SkillId): Keyed<ProgressNodeDef, ProgressNodeId> | null {
-  for (const id of ctx.content.progressNodeIds) {
-    const node = ctx.content.progressNode(id);
-    if (node.unlocks.some((u) => u.type === 'skill' && u.skillId === skillId)) return node;
-  }
-  return null;
-}
-
-export function nodeForStation(ctx: Ctx, stationId: StationId): Keyed<ProgressNodeDef, ProgressNodeId> | null {
-  for (const id of ctx.content.progressNodeIds) {
-    const node = ctx.content.progressNode(id);
-    if (node.unlocks.some((u) => u.type === 'station' && u.stationId === stationId)) return node;
-  }
-  return null;
-}
-
-export function lockedSkillReason(ctx: Ctx, skillId: SkillId): string {
-  const node = nodeForSkill(ctx, skillId);
-  return `${ctx.content.skill(skillId).name} is locked. Unlock "${node?.name ?? '?'}" in the Progression tree.`;
-}
-
 export function spent(state: GameState, ctx: Ctx): number {
   return state.progression.unlocked.reduce((sum, id) => sum + ctx.content.progressNode(id).cost, 0);
 }
@@ -106,6 +72,9 @@ export function expectedGranted(state: GameState, ctx: Ctx): number {
   for (const id of ctx.content.skillIds) total += BALANCE.POINTS_PER_TIER_UP * (tierForXp(state.player.skills[id].xp) - 1);
   for (const questId of state.quests.completed) {
     for (const r of ctx.content.quest(questId).rewards) if (r.type === 'points') total += r.amount;
+  }
+  for (const missionId of state.missions.claimed) {
+    for (const r of ctx.content.mission(missionId).rewards) if (r.type === 'points') total += r.amount;
   }
   return total;
 }
@@ -158,10 +127,8 @@ export function unlock(state: GameState, ctx: Ctx, nodeId: ProgressNodeId): Resu
 export function describeUnlocks(ctx: Ctx, node: ProgressNodeDef): string {
   return node.unlocks.map((u) => {
     switch (u.type) {
-      case 'skill': return `Skill: ${ctx.content.skill(u.skillId).name}`;
       case 'zone': return `Zone: ${ctx.content.zone(u.zoneId).name}`;
-      case 'station': return `Station: ${ctx.content.station(u.stationId).name}`;
-      case 'feature': return u.feature === 'market' ? 'Market access' : u.feature === 'traders' ? 'Barter with traders' : 'Auto-eat';
+      case 'feature': return u.feature === 'market' ? 'Market access' : u.feature === 'traders' ? 'Barter with traders' : u.feature === 'auto_eat' ? 'Auto-eat' : 'Dual wield';
       case 'perk': return describePerk(u.perk, u.value);
     }
   }).join(' · ');
@@ -194,4 +161,5 @@ export function depth(ctx: Ctx, nodeId: ProgressNodeId, seen: Set<string> = new 
 export const listeners: SystemListeners = {
   'skill:tierup': (state, ctx) => reconcile(state, ctx),
   'quest:completed': (state, ctx) => reconcile(state, ctx),
+  'mission:claimed': (state, ctx) => reconcile(state, ctx),
 };

@@ -16,9 +16,9 @@ export function totalTier(state: GameState, ctx: Ctx): number {
   return ctx.content.skillIds.reduce((sum, id) => sum + tier(state, id), 0);
 }
 
-/** Locked skills gain nothing. Group perks from the progression tree multiply the xp. */
+/** Group perks from the progression tree multiply the xp. */
 export function addXp(state: GameState, ctx: Ctx, skill: SkillId, baseAmount: number): void {
-  if (baseAmount <= 0 || !progression.hasSkill(state, ctx, skill)) return;
+  if (baseAmount <= 0) return;
   const amount = baseAmount * progression.xpMultiplier(state, ctx, ctx.content.skill(skill).group);
   const before = tier(state, skill);
   state.player.skills[skill].xp += amount;

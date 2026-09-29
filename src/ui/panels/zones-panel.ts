@@ -5,10 +5,11 @@ import type { Panel } from '../panel';
 export const zonesPanel: Panel = {
   id: 'zones',
   title: 'Zones',
+  width: 940,
   render({ game }) {
     const current = game.state.player.zoneId;
     return html`
-      <div class="panel-head"><h2>Zones</h2><span class="muted small">travel is instant and stops what you were doing</span></div>
+      <div class="panel-head"><span class="muted small">travel is instant and stops what you were doing</span></div>
       <div class="grid grid-auto-wide">
         ${game.content.zoneIds.map((id) => {
           const zone = game.content.zone(id);

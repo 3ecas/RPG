@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as inventory from '@/systems/inventory';
 import * as quests from '@/systems/quests';
-import { give, newGame, tickUntil, unlock } from '../helpers';
+import { give, newGame, tickUntil } from '../helpers';
 
 describe('quests', () => {
   it('locks quests behind prerequisites', () => {
@@ -21,7 +21,7 @@ describe('quests', () => {
     game.startCombat('rat');
     tickUntil(game, () => (game.state.quests.active.rat_problem?.counts[0] ?? 0) >= 5);
     game.stopActivity();
-    const view = quests.objectives(game.state, game.ctx, 'rat_problem');
+    const view = quests.objectiveViews(game.state, game.ctx, 'rat_problem');
     expect(view[0]).toMatchObject({ text: 'Defeat 5× Giant Rat', current: 5, target: 5, done: true });
 
     const tails = inventory.count(game.state, 'rat_tail');
@@ -41,8 +41,8 @@ describe('quests', () => {
 
   it('craft objectives advance from crafting events', () => {
     const game = newGame();
-    expect(game.acceptQuest('apprentice_smith')).toEqual({ ok: false, reason: 'Requires: Unlock "Furnace" in the Progression tree.' });
-    unlock(game, 'furnace');
+    expect(game.acceptQuest('apprentice_smith')).toEqual({ ok: false, reason: 'Orla is not here.' });
+    game.travel('copper_hills');
     expect(game.acceptQuest('apprentice_smith').ok).toBe(true);
     give(game, 'copper_ore', 2);
     give(game, 'tin_ore', 2);

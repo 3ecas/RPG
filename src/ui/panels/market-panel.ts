@@ -1,5 +1,6 @@
 import { fmtNum } from '@/util/format';
-import { itemName } from '../components/items';
+import { categoryList, itemLink } from '../components/catalogue';
+import { catalogueKey, categoriesOf } from '../groups';
 import { lockNotice } from '../components/lock';
 import { attr, html } from '../html';
 import type { Panel } from '../panel';
@@ -14,22 +15,28 @@ function trend(price: number, base: number): { label: string; cls: string } {
 export const marketPanel: Panel = {
   id: 'market',
   title: 'Market',
+  width: 900,
   lock: ({ game }) => (game.hasFeature('market') ? null : 'Unlock "Market Access" in the Progression tree.'),
-  render({ game }) {
+  render({ game, params, windowId }) {
     const zone = game.content.zone(game.state.player.zoneId);
     const open = game.marketOpen();
-    if (!open.ok) return html`<div class="panel-head"><h2>Market</h2></div>${game.hasFeature('market') ? html`<p class="muted">${open.reason} The village has one.</p>` : lockNotice(open.reason)}`;
+    if (!open.ok) return html`${game.hasFeature('market') ? html`<p class="muted">${open.reason} The village has one.</p>` : lockNotice(open.reason)}`;
     const gold = game.state.player.gold;
-    const rows = game.marketView();
+    const all = game.marketView();
+    const categories = categoriesOf(game, all.map((r) => r.itemId));
+    const selected = params.cat && params.cat !== 'all' ? params.cat : null;
+    const rows = all.filter((r) => !selected || catalogueKey(game.content.item(r.itemId)) === selected);
     return html`
-      <div class="panel-head"><h2>Market</h2><span class="muted small">in ${zone.name} · ${fmtNum(gold)} gold · your trades move prices; they drift back over time</span></div>
+      <div class="panel-head"><span class="muted small">${zone.name} · ${fmtNum(gold)} gold · your trades move prices; they drift back over time</span></div>
+      <div class="catalogue">
+      ${categoryList(windowId, categories, selected, all.length)}
       <table class="table table-market">
         <tr class="head"><th>Item</th><th class="num">Price</th><th>Trend</th><th class="num">You have</th><th class="num">Buy at</th><th></th><th class="num">Sell at</th><th></th></tr>
         ${rows.map((row) => {
           const t = trend(row.price, row.base);
           const canBuy = gold >= row.buy;
           return html`<tr>
-            <td class="name">${itemName(game, row.itemId)}</td>
+            <td class="name">${itemLink(game, row.itemId)}</td>
             <td class="num">${fmtNum(Math.round(row.price))}g <span class="muted small">(base ${row.base})</span></td>
             <td class="${t.cls} small">${t.label}</td>
             <td class="num muted">${row.have ? fmtNum(row.have) : '—'}</td>
@@ -47,6 +54,7 @@ export const marketPanel: Panel = {
           </tr>`;
         })}
       </table>
+      </div>
     `;
   },
 };

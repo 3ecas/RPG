@@ -7,6 +7,7 @@ import type { Panel } from '../panel';
 export const combatPanel: Panel = {
   id: 'combat',
   title: 'Combat',
+  width: 860,
   render({ game }) {
     const state = game.state;
     const zone = game.content.zone(state.player.zoneId);
@@ -18,13 +19,13 @@ export const combatPanel: Panel = {
     const weaponSkill = game.weaponSkill();
     const training = [
       weaponSkill ? `${game.content.skill(weaponSkill).name} T${game.skillTier(weaponSkill)}` : 'no weapon skill',
-      game.isSkillUnlocked('armor') ? `Armor T${game.skillTier('armor')}` : 'Armor locked',
-      state.player.equipment.shield ? `Shields T${game.skillTier('shields')}` : game.isSkillUnlocked('shields') ? 'Shields (equip one)' : 'Shields locked',
+      `Armor T${game.skillTier('armor')}`,
+      game.hasShield() ? `Shields T${game.skillTier('shields')}` : 'Shields (equip one)',
       `Vitality T${game.skillTier('vitality')}`,
     ];
 
     return html`
-      <div class="panel-head"><h2>Combat</h2><span class="muted small">in ${zone.name} · training ${training.join(' · ')}${game.hasFeature('auto_eat') ? ' · auto-eat on' : ''}</span></div>
+      <div class="panel-head"><span class="muted small">Training ${training.join(' · ')}${game.hasFeature('auto_eat') ? ' · auto-eat on' : ''}</span></div>
 
       ${combat && monster
         ? html`
@@ -46,7 +47,7 @@ export const combatPanel: Panel = {
 
       <div class="grid grid-2 grid-combat">
         <section class="card">
-          <h3>Targets <span class="muted">fighting continues until you stop, die or leave</span></h3>
+          <h3>Targets in ${zone.name} <span class="muted">until you stop, die or leave</span></h3>
           <div class="grid grid-auto-sm">
             ${zone.monsters.map((id) => {
               const m = game.content.monster(id);

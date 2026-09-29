@@ -99,6 +99,8 @@ rpg/
 │  │  ├─ combat.ts               # auto-battle tick, loot, death
 │  │  ├─ requirements.ts         # shared Requirement evaluation
 │  │  ├─ zones.ts · npcs.ts · quests.ts
+│  │  ├─ objectives.ts           # objective evaluation shared by quests and missions
+│  │  ├─ missions.ts             # the campaign: chapters, claims
 │  │  ├─ progression.ts          # tree: points, unlocks, perks, gating queries
 │  │  ├─ shops.ts · market.ts · traders.ts   # the economy (§5)
 │  │  ├─ log.ts · new-game.ts
@@ -111,24 +113,26 @@ rpg/
 │  │  ├─ tiers.ts                # the six tiers + material ladders that generate tiered content
 │  │  ├─ skills.ts · stations.ts
 │  │  ├─ items/{materials,weapons,armor,food}.ts + index.ts
-│  │  ├─ recipes/{smelting,forging,woodworking,leatherworking,cooking}.ts + index.ts
+│  │  ├─ recipes/{smelting,forging,woodworking,leatherworking,cooking}.ts + index.ts   # multi-material
 │  │  ├─ gather-nodes.ts · monsters.ts · npcs.ts · quests.ts · zones.ts
 │  │  ├─ shops.ts · traders.ts · market.ts
-│  │  ├─ progression.ts          # the tree
+│  │  ├─ progression.ts          # the tree (zones, features, perks)
+│  │  ├─ missions.ts             # chapters and missions
 │  │  ├─ index.ts                # CONTENT: all tables
 │  │  ├─ items/potions.ts · recipes/alchemy.ts · spells.ts   (planned)
 │  │  ├─ bosses.ts · dungeons.ts                             (planned)
 │  │
 │  ├─ ui/                        # DOM only
-│  │  ├─ app.ts                  # shell: status bar, tabs, sub-tabs, ticker, panel; string-memoized re-render
-│  │  ├─ tabs.ts                 # which panels sit under which tab
+│  │  ├─ app.ts                  # shell: status bar, ticker, stage (map + windows), hotbar; window manager
+│  │  ├─ map.ts                  # the zone map: markers for everything interactive
+│  │  ├─ menubar.ts · icons.ts · groups.ts
 │  │  ├─ actions.ts              # one delegated click handler → Game commands
 │  │  ├─ html.ts                 # escaping tagged template
 │  │  ├─ panel.ts · toast.ts
-│  │  ├─ components/{progress-bar,items,lock}.ts
-│  │  └─ panels/                 # one file per panel + index.ts
-│  │     skills · tree · inventory · equipment · journal · gathering · crafting (×5 stations)
-│  │     combat · zones · people · shops · market · traders · log · settings
+│  │  ├─ components/{progress-bar,items,lock,npc-card,catalogue}.ts
+│  │  └─ panels/                 # one file per panel (each opens as a window) + index.ts
+│  │     skills · tree · inventory (bag + gear figure) · missions · node · npc · people
+│  │     gathering · crafting (×5 stations) · item · combat · zones · shops · market · traders · log · settings
 │  │
 │  └─ util/{format,base64}.ts
 │
@@ -422,16 +426,31 @@ Design notes per feature:
   `{ type: 'tier' | 'any_tier' | 'quest' | 'item', … }`; zones from tier 2 up
   unlock with `any_tier`, so any playstyle opens the next area.
 - **Progression tree.** `content/progression.ts` is a DAG of nodes in four
-  branches. Points come from facts in the state (one per tier-up, quests'
-  `points` rewards, a starting allowance) and are reconciled by
+  branches. Points come from facts in the state (one per tier-up, quests' and
+  missions' `points` rewards, a starting allowance) and are reconciled by
   `systems/progression.ts`, so old saves are credited automatically. A node
   costs points, needs its parents, may carry `Requirement`s, and *unlocks*
-  skills, stations, zones, features (market, barter, auto-eat) or perks
-  (speed, xp, hp, regen, gold, prices, inventory slots). Every system asks
-  `progression.hasSkill / hasStation / hasFeature / perk` before letting the
-  player do something; zones require their node through the shared
-  `Requirement` type (`{ type: 'unlock', nodeId }`). The registry checks that
-  each skill, station and zone is granted by exactly one node.
+  zones, features (Kingsport market, barter, auto-eat, dual wield) or perks
+  (speed, xp, hp, regen, gold, prices, bag slots). Skills and stations are
+  never gated: a skill grows only by doing it, a station stands in a zone.
+  Zones require their node through the shared `Requirement` type
+  (`{ type: 'unlock', nodeId }`); the registry checks each zone is granted by
+  exactly one node.
+- **Missions.** `content/missions.ts` is the campaign: chapters of missions
+  with `Objective`s (kill, craft, gather, talk, trade, collect, reach a tier,
+  any tier, unlock a node, visit a zone, equip a kind of gear) and rewards
+  (gold, xp, items, points). `systems/objectives.ts` evaluates objectives for
+  both quests and missions: counted kinds advance from events, live kinds
+  read the state. A chapter opens when the previous one is fully claimed.
+- **Zone specialization.** Every zone lists its stations, shops, traders,
+  people and whether it has the market. The village is social and farming,
+  Copper Hills the first forge, Kingsport the trade city with the only
+  market, the Woods the lumber camp, the Mines the second forge, the Marsh
+  the tannery. Crafting needs the station in the current zone.
+- **Realistic recipes.** Gear takes several materials of its tier: bars plus
+  a wooden grip or haft, leather padding under plate, planks with a metal
+  rim and a hide strap for shields, studs and buckles on leather bodies,
+  wooden soles on boots, and a log of fuel for every cook.
 - **Material ladders.** `content/tiers.ts` lists each family in tier order
   (bronze → rune, oak → elder, shrimp → swordfish, wheat → sunfruit, nettle →
   dragonleaf, cowhide → dragon scale). `tieredDefiner` in `content/define.ts`
@@ -501,11 +520,23 @@ Design notes per feature:
 ## 6. UI design
 
 - **Layout:** a one-line status bar (zone, tiers, gold, bag, hp, the current
-  activity with its progress bar and a Stop button, save age), a row of tabs,
-  a row of sub-tabs when the tab has several panels (stations, world places,
-  items / equipment), a two-line event ticker, and the panel. No sidebar: the
-  panel gets the full width and lays its content out in CSS grids
-  (`.grid-2/3/4`, `.grid-auto`) so screens stay dense.
+  activity with its progress bar and a Stop button, save age), a two-line
+  event ticker, the stage, and a bottom hotbar. The stage is the **zone map**
+  (`ui/map.ts`): an SVG scene with one marker per thing you can interact with
+  (gathering spots, stations, shops, market, traders, people, monsters, a
+  signpost), and **windows** floating over it. Clicking a marker opens the
+  matching panel as a window (a monster starts the fight and opens combat);
+  the hotbar opens the character menus (bag with the paper-doll gear figure,
+  world map, missions, log, skills, progression tree, settings). Windows are
+  draggable, stack, and close with Escape; positions persist per session.
+- **Catalogues:** crafting, market and shop windows show an ordered category
+  list (Swords, Helmets, Ore, Fish…) that filters the table, and every item
+  name opens the item card (`panels/item-panel.ts`): tier, stats,
+  requirements, effects, value, where to get it, what it is used for, and
+  the buy / sell / craft / equip actions available where you stand.
+- **Progression tree:** each branch is drawn as a graph (nodes by depth,
+  edges from parents); selecting a node shows its details and the Unlock
+  button.
 - **Panel contract**, one file per panel:
 
   ```ts
@@ -645,14 +676,16 @@ Netlify or any static host. No server.
 
 Done (steps 1–6 of the build order, all covered by tests and a browser run):
 tooling and layer boundaries, state / loop / save / offline catch-up, fifteen
-skills with six-tier progression, a progression tree of about forty nodes
-that gates skills, stations, zones, features and perks, six material tiers
-of nodes, recipes, weapons and armor, eight zones, gathering, five crafting
-stations, equipment and derived stats, food and auto-eat, idle combat that
-trains the weapon's skill, loot, death and respawn, six NPCs, four quests,
-the journal, three shops with restocking stock, the market with
-player-driven prices, two barter traders with rotating offers, log,
-settings with export / import / reset, and a tabbed, grid-based UI.
+skills with six-tier progression that grow only by use, a progression tree
+of 33 nodes for zones, features and perks, an eight-chapter mission
+campaign, six material tiers of nodes, multi-material recipes, weapons and
+armor, nine specialized zones including the Kingsport trade city, gathering,
+five crafting stations placed in zones, nine-slot equipment with a paper
+doll, food and auto-eat, dual wield, idle combat, loot, death and respawn,
+eleven NPCs, four quests, seven shops with restocking stock, the market with
+player-driven prices, two barter traders, log, settings with export /
+import / reset, and a map-centred UI with windows, hotbar, catalogues and
+item cards.
 
 Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
 (step 8), then breadth and balance.

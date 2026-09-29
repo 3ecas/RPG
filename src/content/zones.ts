@@ -3,44 +3,65 @@ import { tableDefiner } from './define';
 
 const defineZones = tableDefiner<ZoneDef>();
 
-/** One zone per tier (two for tier 1). Every zone past the first two is opened by a node of the progression tree. */
+/**
+ * Every zone specializes. The village is social and farming, Copper Hills is
+ * the first forge, Kingsport is the trade city with the only market, the
+ * Woods are the lumber camp, the Mines the second forge, the Marsh the
+ * tannery; the high zones each have one station. Resources are exclusive to
+ * their zone. Every zone past the first two is opened by a progression node.
+ */
 export const ZONES = defineZones({
   greenhollow: {
     name: 'Greenhollow Village',
-    description: 'A quiet village with a furnace, a pond, an oak grove, a wheat field and a rat problem.',
+    description: 'Home. A pond, an oak grove, a wheat field, a tannery, and everyone who has a job for you.',
     unlock: [],
     nodes: ['oak_tree', 'shrimp_spot', 'wheat_field', 'nettle_patch'],
     monsters: ['rat', 'cow'],
-    npcs: ['elder_maren', 'captain_bram', 'smith_orla', 'angler_tobb', 'keeper_pell'],
-    shops: ['hollow_goods', 'smithy'],
+    npcs: ['elder_maren', 'captain_bram', 'angler_tobb', 'keeper_pell'],
+    shops: ['hollow_goods'],
     traders: [],
-    market: true,
+    market: false,
+    stations: ['campfire', 'tannery'],
   },
   copper_hills: {
     name: 'Copper Hills',
-    description: 'Rolling hills east of the village. Copper and tin near the surface, goblins everywhere else.',
+    description: 'The smelting camp east of the village. Copper and tin near the surface, a furnace, an anvil, and goblins.',
     unlock: [],
     nodes: ['copper_rock', 'tin_rock'],
     monsters: ['goblin'],
-    npcs: ['prospector_dun'],
-    shops: ['prospectors_outpost'],
+    npcs: ['prospector_dun', 'smith_orla'],
+    shops: ['prospectors_outpost', 'smithy'],
     traders: ['peddler_vex'],
     market: false,
+    stations: ['furnace', 'anvil', 'campfire'],
+  },
+  kingsport: {
+    name: 'Kingsport',
+    description: 'The trade city. The world market, an armory, the Grand Bazaar and a curio dealer. Nothing to gather, nothing to fight.',
+    unlock: [{ type: 'unlock', nodeId: 'kingsport' }],
+    nodes: [],
+    monsters: [],
+    npcs: ['quartermaster_bex', 'bazaar_master_ilse', 'curio_dealer_marek'],
+    shops: ['kingsport_armory', 'grand_bazaar', 'curios'],
+    traders: [],
+    market: true,
+    stations: ['campfire'],
   },
   whispering_woods: {
     name: 'Whispering Woods',
-    description: 'Willows, a fast river, potato patches gone wild, wolves, and people who would rather rob you than work.',
+    description: 'The lumber camp. Willows, a fast river, potato patches gone wild, a sawbench, wolves, and bandits.',
     unlock: [{ type: 'unlock', nodeId: 'whispering_woods' }],
     nodes: ['willow_tree', 'trout_spot', 'potato_field', 'sage_patch'],
     monsters: ['wolf', 'bandit'],
-    npcs: [],
-    shops: [],
+    npcs: ['woodsman_hal'],
+    shops: ['sawmill'],
     traders: ['woods_hermit'],
     market: false,
+    stations: ['sawbench', 'campfire'],
   },
   old_iron_mines: {
     name: 'Old Iron Mines',
-    description: 'Abandoned shafts full of iron, coal, spiders and the miners who never left.',
+    description: 'Iron and coal, and the old forge the miners left behind. Spiders and the miners who never left.',
     unlock: [{ type: 'unlock', nodeId: 'old_iron_mines' }],
     nodes: ['iron_rock', 'coal_seam'],
     monsters: ['cave_spider', 'skeleton'],
@@ -48,10 +69,11 @@ export const ZONES = defineZones({
     shops: [],
     traders: [],
     market: false,
+    stations: ['furnace', 'anvil'],
   },
   blackfen_marsh: {
     name: 'Blackfen Marsh',
-    description: 'Maples on stilts, salmon in black water, and things that are mostly mud.',
+    description: 'Maples on stilts, salmon in black water, a tannery on the only dry ground, and things that are mostly mud.',
     unlock: [{ type: 'unlock', nodeId: 'blackfen_marsh' }],
     nodes: ['maple_tree', 'salmon_spot', 'carrot_field', 'lavender_patch'],
     monsters: ['bear', 'bog_lurker'],
@@ -59,10 +81,11 @@ export const ZONES = defineZones({
     shops: [],
     traders: [],
     market: false,
+    stations: ['tannery', 'campfire'],
   },
   grey_peaks: {
     name: 'Grey Peaks',
-    description: 'Mithril in the cliffs, yews on the ledges, terraced cabbage farms, and trolls who own all of it.',
+    description: 'Mithril in the cliffs, yews on the ledges, terraced cabbage farms, a sawbench, and trolls who own all of it.',
     unlock: [{ type: 'unlock', nodeId: 'grey_peaks' }],
     nodes: ['mithril_rock', 'yew_tree', 'tuna_spot', 'cabbage_field', 'bloodroot_patch'],
     monsters: ['troll', 'harpy'],
@@ -70,10 +93,11 @@ export const ZONES = defineZones({
     shops: [],
     traders: [],
     market: false,
+    stations: ['sawbench', 'campfire'],
   },
   ashen_wastes: {
     name: 'Ashen Wastes',
-    description: 'A burned land. Adamant under the cinders, ash trees that grow anyway, and a cult that likes it here.',
+    description: 'A burned land. Adamant under the cinders, the Ashforge still hot, and a cult that likes it here.',
     unlock: [{ type: 'unlock', nodeId: 'ashen_wastes' }],
     nodes: ['adamant_rock', 'ash_tree', 'lobster_spot', 'pumpkin_field', 'moonflower_patch'],
     monsters: ['wyvern', 'cultist'],
@@ -81,6 +105,7 @@ export const ZONES = defineZones({
     shops: [],
     traders: [],
     market: false,
+    stations: ['furnace', 'anvil', 'campfire'],
   },
   dragons_reach: {
     name: "Dragon's Reach",
@@ -92,5 +117,6 @@ export const ZONES = defineZones({
     shops: [],
     traders: [],
     market: false,
+    stations: ['campfire'],
   },
 });

@@ -29,7 +29,6 @@ describe('combat', () => {
 
   it('armor and shields train from attacks taken while wearing them', () => {
     const game = newGame();
-    unlock(game, 'armor_training', 'shield_training');
     give(game, 'bronze_helmet', 1);
     give(game, 'oak_shield', 1);
     game.equip('bronze_helmet');

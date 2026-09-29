@@ -28,13 +28,17 @@ instead of staying blank.
 
 ## What is in the first slice
 
-- **Progression tree:** points from tier-ups and quests buy nodes in four branches that unlock skills, crafting stations, zones, market access, barter, auto-eat and perks. Nothing past the basics is available until you unlock it.
+- **A map you play on:** each zone is a map with markers. Click a rock to mine, an anvil to forge, a person to talk, a monster to fight, the signpost to travel. Menus open as draggable windows; a bottom hotbar holds bag, world map, missions, log, skills, progression and settings.
+- **Missions:** an eight-chapter campaign with tracked objectives that pays gold, xp, items and progression points; finishing a chapter opens the next.
+- **Progression tree:** points from tier-ups, quests and missions buy nodes in four branches: zones, the Kingsport market, barter, auto-eat, dual wield and perks. Skills and stations are never gated; skills grow only by use.
+- **Specialized zones:** the village is social and farming, Copper Hills the first forge, Kingsport the trade city with the only market, the Woods the lumber camp, the Mines the second forge, the Marsh the tannery. Resources are exclusive to their zone.
+- **Realistic recipes:** swords need bars and a wooden grip, plate needs leather padding, shields need planks, a metal rim and a strap, cooking burns a log.
 - **Skills with tiers:** fifteen skills, each with its own six-tier progression. Fill a tier's bar to unlock the next tier of materials, recipes and gear. Gathering: mining, woodcutting, fishing, farming, harvesting. Production: blacksmithing, woodworking, leatherworking, cooking. Combat: swords, axes, daggers, shields, armor, vitality.
 - **Six material tiers:** bronze → iron → steel → mithril → adamant → rune, and the same ladder for wood, fish, crops, herbs and hides.
 - **Zones:** eight, from Greenhollow Village to Dragon's Reach; each opens when any skill reaches its tier (the woods need a quest).
 - **Gathering:** rocks, trees, fishing spots, fields and herb patches per zone.
-- **Crafting:** furnace (smelting), anvil (weapons and armor), sawbench (shields), tannery (leather armor), campfire (cooking).
-- **Combat:** idle auto-battle that trains the skill of the weapon you hold, plus Armor, Shields and Vitality; food, loot tables, death and respawn.
+- **Crafting:** furnace (smelting), anvil (weapons and armor), sawbench (shields), tannery (leather armor), campfire (cooking), each standing in specific zones. Catalogue windows filter by category and every item opens a card with full details and actions.
+- **Combat:** idle auto-battle that trains the skill of the weapon you hold, plus Armor, Shields and Vitality; nine gear slots (head, torso, legs, hands, feet, two hands, two trinkets), food, loot tables, death and respawn.
 - **Quests:** four quests given by village NPCs, tracked in the journal.
 - **Economy:** three shops with restocking stock, a market whose prices react to what you trade and drift back over time, and two barter traders with rotating offers.
 - **Persistence:** autosave, export/import, offline catch-up with a summary.
@@ -69,8 +73,9 @@ ESLint fails the build if a layer imports something it should not.
 | Add a recipe    | Add a literal in `src/content/recipes/<station>.ts`.                            |
 | Add a monster   | `src/content/monsters.ts`, then list it in a zone.                              |
 | Add a quest     | Add the id to `QuestId` and the entry in `src/content/quests.ts`.               |
-| Add a zone      | `src/content/zones.ts`, plus the tree node that unlocks it in `src/content/progression.ts`. |
+| Add a zone      | `src/content/zones.ts` (nodes, monsters, people, shops, stations, market), plus the tree node that unlocks it in `src/content/progression.ts`. |
 | Add a tree node | `src/content/progression.ts`: add the id to the union and the entry; validation checks parents and unlocks. |
+| Add a mission   | `src/content/missions.ts`: an entry with a chapter, objectives and rewards. |
 | Add a shop      | `src/content/shops.ts`, then list it in a zone (its keeper must be there too).   |
 | Add a trader    | `src/content/traders.ts`, then list it in a zone.                               |
 | Sell on market  | Add the item id to `src/content/market.ts`.                                     |
