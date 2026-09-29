@@ -1,5 +1,5 @@
 /** Shapes of the content tables. Content files are literals of these types; they contain no logic. */
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, SkillId, StationId } from './ids';
+import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId } from './ids';
 
 /** A content definition whose `id` is narrowed to the table's id union. */
 export type Keyed<TDef, Id extends string> = TDef & { readonly id: Id };
@@ -150,6 +150,48 @@ export interface QuestDef {
   readonly completionText: string;
 }
 
+export interface ShopStockDef {
+  readonly itemId: ItemId;
+  /** Maximum stock; restocks one unit per `restockMs`. 'infinite' never runs out. */
+  readonly qty: number | 'infinite';
+  /** Overrides the shop's markup for this item. */
+  readonly price?: number;
+}
+
+export interface ShopDef {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly keeperId?: NpcId;
+  /** Player pays item.value × markup. */
+  readonly markup: number;
+  /** Player receives item.value × sellRate. */
+  readonly sellRate: number;
+  /** Which item categories the shop buys. */
+  readonly buys: 'all' | readonly ItemCategory[];
+  readonly restockMs: number;
+  readonly stock: readonly ShopStockDef[];
+}
+
+export interface TraderOfferDef {
+  readonly give: readonly Readonly<ItemStack>[];
+  readonly get: readonly Readonly<ItemStack>[];
+  /** Times the offer can be taken per rotation. */
+  readonly uses?: number;
+}
+
+export interface TraderDef {
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  /** How often the shown offers rotate (game time). */
+  readonly refreshMs: number;
+  /** How many of the offers are shown at once. */
+  readonly offersShown: number;
+  readonly offers: readonly TraderOfferDef[];
+}
+
 export interface ZoneDef {
   readonly id: string;
   readonly name: string;
@@ -158,6 +200,10 @@ export interface ZoneDef {
   readonly nodes: readonly NodeId[];
   readonly monsters: readonly MonsterId[];
   readonly npcs: readonly NpcId[];
+  readonly shops: readonly ShopId[];
+  readonly traders: readonly TraderId[];
+  /** Whether the market (see content/market.ts) can be used from this zone. */
+  readonly market: boolean;
 }
 
 /** Everything the registry is built from. */
@@ -171,4 +217,8 @@ export interface ContentTables {
   readonly npcs: Readonly<Record<string, NpcDef>>;
   readonly quests: Readonly<Record<string, QuestDef>>;
   readonly zones: Readonly<Record<string, ZoneDef>>;
+  readonly shops: Readonly<Record<string, ShopDef>>;
+  readonly traders: Readonly<Record<string, TraderDef>>;
+  /** Items the market trades. */
+  readonly market: readonly string[];
 }

@@ -37,6 +37,7 @@ export const peoplePanel: Panel = {
             <div class="card">
               <div class="card-head"><strong>${npc.name}</strong><span class="tag">${npc.title}</span></div>
               ${talked ? html`<p class="quote">“${npc.greeting}”</p>` : html`<div class="row"><button class="btn btn-small" data-action="talk" data-id="${npc.id}">Talk</button></div>`}
+              ${game.content.shopsKeptBy(npc.id).map((shop) => html`<div class="row"><button class="btn btn-small" data-action="open-shop" data-id="${shop.id}">Browse ${shop.name}</button></div>`)}
               ${quests.map(({ quest, status }) => html`
                 <div class="quest quest-${status}">
                   <div class="row"><strong>${quest.name}</strong><span class="tag">${status}</span></div>

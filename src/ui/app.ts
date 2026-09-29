@@ -36,7 +36,7 @@ export class App {
 
   constructor(private readonly root: HTMLElement, game: Game, readonly hooks: AppHooks) {
     this.current = game;
-    this.ui = { panel: 'skills', logFilter: 'all', exportText: '', ...loadPrefs() };
+    this.ui = { panel: 'skills', logFilter: 'all', exportText: '', shopId: null, ...loadPrefs() };
     if (!PANELS.some((p) => p.id === this.ui.panel)) this.ui.panel = 'skills';
   }
 
@@ -81,6 +81,11 @@ export class App {
     this.ui.logFilter = filter;
     savePrefs(this.ui);
     this.markDirty();
+  }
+
+  openShop(shopId: string): void {
+    this.ui.shopId = shopId;
+    this.setPanel('shops');
   }
 
   /** Called every frame by the loop. Cheap when nothing changed. */

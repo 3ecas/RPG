@@ -34,6 +34,7 @@ instead of staying blank.
 - **Crafting:** furnace (smelting), anvil (weapons and armor), campfire (cooking), workbench (leather and wood).
 - **Combat:** idle auto-battle with a combat style, food, loot tables, death and respawn.
 - **Quests:** four quests given by village NPCs, tracked in the journal.
+- **Economy:** three shops with restocking stock, a market whose prices react to what you trade and drift back over time, and two barter traders with rotating offers.
 - **Persistence:** autosave, export/import, offline catch-up with a summary.
 
 Typical first hour: mine copper and tin in Copper Hills, smelt bronze at the
@@ -65,6 +66,9 @@ ESLint fails the build if a layer imports something it should not.
 | Add a monster   | `src/content/monsters.ts`, then list it in a zone.                              |
 | Add a quest     | Add the id to `QuestId` and the entry in `src/content/quests.ts`.               |
 | Add a zone      | `src/content/zones.ts` with unlock requirements.                                |
+| Add a shop      | `src/content/shops.ts`, then list it in a zone (its keeper must be there too).   |
+| Add a trader    | `src/content/traders.ts`, then list it in a zone.                               |
+| Sell on market  | Add the item id to `src/content/market.ts`.                                     |
 | Add a panel     | `src/ui/panels/<name>-panel.ts` implementing `Panel`, register it in `index.ts`.|
 | Add a mechanic  | A file in `src/systems/`, its test, its panel, one line in `src/game.ts`.       |
 

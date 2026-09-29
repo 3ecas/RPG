@@ -1,6 +1,6 @@
 /** The whole game is this one plain, serializable object. Store facts; derive the rest. */
 import type { ItemStack, StatBlock } from './content';
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, SkillId, ZoneId } from './ids';
+import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from './ids';
 
 export type CombatStyle = 'attack' | 'strength' | 'defence';
 
@@ -32,7 +32,27 @@ export interface QuestProgress {
   counts: number[];
 }
 
-export type LogKind = 'info' | 'loot' | 'combat' | 'quest' | 'level' | 'warn';
+export interface ShopState {
+  /** Current stock of finite items. Infinite items are absent. */
+  stock: Partial<Record<ItemId, number>>;
+  lastRestockMs: number;
+}
+
+export interface MarketState {
+  lastUpdateMs: number;
+  /** Current price per item; absent means the item's base value. */
+  prices: Partial<Record<ItemId, number>>;
+}
+
+export interface TraderState {
+  /** Indices into the trader's offer list that are currently shown. */
+  offers: number[];
+  /** Remaining uses per shown offer, same order. */
+  usesLeft: number[];
+  nextRefreshMs: number;
+}
+
+export type LogKind = 'info' | 'loot' | 'combat' | 'quest' | 'level' | 'warn' | 'trade';
 
 export interface LogEntry {
   /** Game-clock time. */
@@ -79,6 +99,11 @@ export interface GameState {
     unlockedZones: ZoneId[];
     flags: Record<string, boolean>;
     talkedTo: NpcId[];
+    /** Created on first visit; a missing shop is at full stock. */
+    shops: Partial<Record<ShopId, ShopState>>;
+    market: MarketState;
+    /** Created on first visit. */
+    traders: Partial<Record<TraderId, TraderState>>;
   };
   log: LogEntry[];
 }

@@ -7,9 +7,9 @@ import { EventBus } from '@/core/events';
 import type { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
 import { deserialize, serialize } from '@/core/save';
-import type { Keyed, NpcDef, QuestDef, Requirement } from '@/types/content';
+import type { Keyed, NpcDef, QuestDef, Requirement, ShopDef, TraderDef } from '@/types/content';
 import type { GameEventName } from '@/types/events';
-import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, SkillId, ZoneId } from '@/types/ids';
+import type { EquipSlot, ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, TraderId, ZoneId } from '@/types/ids';
 import type { CombatStyle, GameState } from '@/types/state';
 import type { Result } from '@/types/result';
 import * as activity from '@/systems/activity';
@@ -20,13 +20,16 @@ import type { Ctx, SystemListeners } from '@/systems/ctx';
 import * as equipment from '@/systems/equipment';
 import * as gathering from '@/systems/gathering';
 import * as inventory from '@/systems/inventory';
+import * as market from '@/systems/market';
 import { createInitialState } from '@/systems/new-game';
 import * as npcs from '@/systems/npcs';
 import * as quests from '@/systems/quests';
 import * as requirements from '@/systems/requirements';
+import * as shops from '@/systems/shops';
 import * as skills from '@/systems/skills';
 import * as stats from '@/systems/stats';
 import { tick as simulate } from '@/systems/tick';
+import * as traders from '@/systems/traders';
 import * as zones from '@/systems/zones';
 
 export interface OfflineSummary {
@@ -54,6 +57,8 @@ export class Game {
     this.wire(zones.listeners);
     this.wire(quests.listeners);
     zones.checkUnlocks(this.state, this.ctx);
+    shops.ensure(this.state, this.ctx);
+    traders.ensure(this.state, this.ctx);
   }
 
   static newGame(content: Registry, seed: number = randomSeed(), now: number = Date.now()): Game {
@@ -144,6 +149,11 @@ export class Game {
   talk(npcId: NpcId): Result { return this.command(npcs.talk(this.state, this.ctx, npcId)); }
   acceptQuest(questId: QuestId): Result { return this.command(quests.accept(this.state, this.ctx, questId)); }
   turnInQuest(questId: QuestId): Result { return this.command(quests.turnIn(this.state, this.ctx, questId)); }
+  buy(shopId: ShopId, itemId: ItemId, qty: number): Result { return this.command(shops.buy(this.state, this.ctx, shopId, itemId, qty)); }
+  sell(shopId: ShopId, itemId: ItemId, qty: number): Result { return this.command(shops.sell(this.state, this.ctx, shopId, itemId, qty)); }
+  marketBuy(itemId: ItemId, qty: number): Result { return this.command(market.buy(this.state, this.ctx, itemId, qty)); }
+  marketSell(itemId: ItemId, qty: number): Result { return this.command(market.sell(this.state, this.ctx, itemId, qty)); }
+  barter(traderId: TraderId, slot: number): Result { return this.command(traders.barter(this.state, this.ctx, traderId, slot)); }
 
   // ---- read-only queries for the UI ---------------------------------------
   // The UI never re-implements a rule: whether a button is enabled comes from here.
@@ -167,4 +177,14 @@ export class Game {
   questObjectives(questId: QuestId): quests.ObjectiveView[] { return quests.objectives(this.state, this.ctx, questId); }
   questsByGiver(npcId: NpcId): { quest: Keyed<QuestDef, QuestId>; status: quests.QuestStatus }[] { return quests.byGiver(this.state, this.ctx, npcId); }
   canTurnIn(questId: QuestId): Result { return quests.canTurnIn(this.state, this.ctx, questId); }
+  shopsHere(): Keyed<ShopDef, ShopId>[] { return shops.here(this.state, this.ctx); }
+  shopStock(shopId: ShopId): shops.StockView[] { return shops.stock(this.state, this.ctx, shopId); }
+  shopSellPrice(shopId: ShopId, itemId: ItemId): number { return shops.sellPrice(this.ctx, this.ctx.content.shop(shopId), itemId); }
+  canSellTo(shopId: ShopId, itemId: ItemId): Result { return shops.canSell(this.state, this.ctx, shopId, itemId); }
+  marketOpen(): Result { return market.isOpen(this.state, this.ctx); }
+  marketView(): market.MarketView[] { return market.view(this.state, this.ctx); }
+  marketQuote(kind: market.TradeKind, itemId: ItemId, qty: number): market.Quote { return market.quote(this.state, this.ctx, kind, itemId, qty); }
+  tradersHere(): Keyed<TraderDef, TraderId>[] { return traders.here(this.state, this.ctx); }
+  traderOffers(traderId: TraderId): traders.OfferView[] { return traders.offers(this.state, this.ctx, traderId); }
+  traderRefreshInMs(traderId: TraderId): number { return traders.refreshInMs(this.state, traderId); }
 }

@@ -9,6 +9,7 @@ const FILTERS: { id: LogKind | 'all'; label: string }[] = [
   { id: 'loot', label: 'Loot' },
   { id: 'level', label: 'Levels' },
   { id: 'quest', label: 'Quests' },
+  { id: 'trade', label: 'Trade' },
   { id: 'info', label: 'Info' },
   { id: 'warn', label: 'Warnings' },
 ];

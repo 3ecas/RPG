@@ -22,6 +22,7 @@ export const zonesPanel: Panel = {
               <div class="small"><span class="muted">Gather:</span> ${zone.nodes.length ? zone.nodes.map((n) => game.content.node(n).name).join(', ') : '—'}</div>
               <div class="small"><span class="muted">Monsters:</span> ${zone.monsters.length ? zone.monsters.map((m) => `${game.content.monster(m).name} (${game.content.monster(m).level})`).join(', ') : '—'}</div>
               <div class="small"><span class="muted">People:</span> ${zone.npcs.length ? zone.npcs.map((n) => game.content.npc(n).name).join(', ') : '—'}</div>
+              <div class="small"><span class="muted">Trade:</span> ${[...zone.shops.map((s) => game.content.shop(s).name), ...zone.traders.map((t) => `${game.content.trader(t).name} (barter)`), ...(zone.market ? ['Market'] : [])].join(', ') || '—'}</div>
               <div class="small"><span class="muted">Requires:</span> ${requirementList(game, zone.unlock)}</div>
               <div class="row top-gap">
                 <button class="btn btn-primary" data-action="travel" data-id="${id}" ${attr(here || !unlocked.ok, 'disabled')} title="${unlocked.ok ? '' : unlocked.reason}">Travel</button>

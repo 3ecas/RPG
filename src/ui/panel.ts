@@ -7,6 +7,8 @@ export interface UiState {
   panel: string;
   logFilter: LogKind | 'all';
   exportText: string;
+  /** Selected shop in the Shops panel. */
+  shopId: string | null;
 }
 
 export interface ViewContext {

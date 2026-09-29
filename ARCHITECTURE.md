@@ -99,10 +99,10 @@ rpg/
 │  │  ├─ combat.ts               # auto-battle tick, loot, death
 │  │  ├─ requirements.ts         # shared Requirement evaluation
 │  │  ├─ zones.ts · npcs.ts · quests.ts
+│  │  ├─ shops.ts · market.ts · traders.ts   # the economy (§5)
 │  │  ├─ log.ts · new-game.ts
 │  │  ├─ magic.ts                (planned) mana, spellbook, casting
 │  │  ├─ dungeons.ts             (planned) floors, boss, run rewards
-│  │  ├─ shops.ts · market.ts · trading.ts   (planned) economy
 │  │
 │  ├─ content/                   # data only
 │  │  ├─ define.ts               # tableDefiner(): stamps ids onto literals
@@ -111,9 +111,10 @@ rpg/
 │  │  ├─ items/{materials,weapons,armor,food}.ts + index.ts
 │  │  ├─ recipes/{smelting,smithing,cooking,crafting}.ts + index.ts
 │  │  ├─ gather-nodes.ts · monsters.ts · npcs.ts · quests.ts · zones.ts
+│  │  ├─ shops.ts · traders.ts · market.ts
 │  │  ├─ index.ts                # CONTENT: all tables
 │  │  ├─ items/potions.ts · recipes/alchemy.ts · spells.ts   (planned)
-│  │  ├─ bosses.ts · dungeons.ts · shops.ts · traders.ts     (planned)
+│  │  ├─ bosses.ts · dungeons.ts                             (planned)
 │  │
 │  ├─ ui/                        # DOM only
 │  │  ├─ app.ts                  # shell: header, nav, panel, sidebar; string-memoized re-render
@@ -123,13 +124,13 @@ rpg/
 │  │  ├─ components/{progress-bar,items}.ts
 │  │  └─ panels/                 # one file per panel + index.ts (nav order)
 │  │     skills · inventory · equipment · journal · gathering · crafting (×4 stations)
-│  │     combat · zones · people · log · settings
+│  │     combat · zones · people · shops · market · traders · log · settings
 │  │
 │  └─ util/{format,base64}.ts
 │
 └─ tests/
    ├─ helpers.ts · content.test.ts · formulas.test.ts · save.test.ts
-   └─ systems/{gathering,crafting,combat,equipment,quests,offline}.test.ts
+   └─ systems/{gathering,crafting,combat,equipment,quests,offline,economy}.test.ts
 ```
 
 Rule of thumb for growth: when a system file passes ~400 lines, split it into a
@@ -614,12 +615,14 @@ Netlify or any static host. No server.
 
 ## 11. Status
 
-Done (steps 1–5 of the build order, all covered by tests and a browser run):
+Done (steps 1–6 of the build order, all covered by tests and a browser run):
 tooling and layer boundaries, state / loop / save / offline catch-up, ten
 skills, four zones with unlock rules, gathering, four crafting stations,
 equipment and derived stats, food, idle combat with styles, loot, death and
-respawn, four NPCs, four quests with kill / collect / craft objectives, the
-journal, log, settings with export / import / reset, and all panels.
+respawn, six NPCs, four quests with kill / collect / craft objectives, the
+journal, three shops with restocking stock, the market with player-driven
+prices, two barter traders with rotating offers, log, settings with
+export / import / reset, and all panels.
 
-Next (in order): shops + market + traders (step 6), magic + potions via
-alchemy (step 7), dungeons + bosses (step 8), then breadth and balance.
+Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
+(step 8), then breadth and balance.

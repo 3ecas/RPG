@@ -1,5 +1,5 @@
 /** Save format versioning. migrations[n] upgrades a version-n save to n+1. Each gets a test with a fixture. */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 type RawSave = Record<string, unknown>;
 type Migration = (raw: RawSave) => RawSave;
@@ -7,6 +7,9 @@ type Migration = (raw: RawSave) => RawSave;
 export const migrations: Record<number, Migration> = {
   // 0: saves written before versioning existed. Same shape as v1.
   0: (raw) => raw,
+  // 1 → 2: shops, market and traders were added under world. Missing sections
+  // get fresh defaults from the sanitizer, so nothing needs rewriting.
+  1: (raw) => raw,
 };
 
 export function migrate(raw: RawSave): RawSave {

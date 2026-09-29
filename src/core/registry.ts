@@ -3,9 +3,9 @@
  * cross-reference. If validate() returns errors the game refuses to start.
  */
 import type {
-  ContentTables, GatherNodeDef, ItemDef, Keyed, MonsterDef, NpcDef, QuestDef, RecipeDef, Requirement, SkillDef, StationDef, ZoneDef,
+  ContentTables, GatherNodeDef, ItemDef, Keyed, MonsterDef, NpcDef, QuestDef, RecipeDef, Requirement, ShopDef, SkillDef, StationDef, TraderDef, ZoneDef,
 } from '@/types/content';
-import type { ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, SkillId, StationId, ZoneId } from '@/types/ids';
+import type { ItemId, MonsterId, NodeId, NpcId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 
 function must<T, Id extends string>(table: Readonly<Record<string, T>>, id: Id, kind: string): Keyed<T, Id> {
   const def = table[id];
@@ -25,6 +25,8 @@ export class Registry {
   npc(id: NpcId): Keyed<NpcDef, NpcId> { return must(this.tables.npcs, id, 'npc'); }
   quest(id: QuestId): Keyed<QuestDef, QuestId> { return must(this.tables.quests, id, 'quest'); }
   zone(id: ZoneId): Keyed<ZoneDef, ZoneId> { return must(this.tables.zones, id, 'zone'); }
+  shop(id: ShopId): Keyed<ShopDef, ShopId> { return must(this.tables.shops, id, 'shop'); }
+  trader(id: TraderId): Keyed<TraderDef, TraderId> { return must(this.tables.traders, id, 'trader'); }
 
   get skillIds(): SkillId[] { return Object.keys(this.tables.skills) as SkillId[]; }
   get stationIds(): StationId[] { return Object.keys(this.tables.stations) as StationId[]; }
@@ -32,6 +34,9 @@ export class Registry {
   get recipeIds(): RecipeId[] { return Object.keys(this.tables.recipes) as RecipeId[]; }
   get zoneIds(): ZoneId[] { return Object.keys(this.tables.zones) as ZoneId[]; }
   get questIds(): QuestId[] { return Object.keys(this.tables.quests) as QuestId[]; }
+  get shopIds(): ShopId[] { return Object.keys(this.tables.shops) as ShopId[]; }
+  get traderIds(): TraderId[] { return Object.keys(this.tables.traders) as TraderId[]; }
+  get marketItems(): ItemId[] { return this.tables.market as ItemId[]; }
 
   hasSkill(id: string): id is SkillId { return id in this.tables.skills; }
   hasItem(id: string): id is ItemId { return id in this.tables.items; }
@@ -41,6 +46,13 @@ export class Registry {
   hasNpc(id: string): id is NpcId { return id in this.tables.npcs; }
   hasQuest(id: string): id is QuestId { return id in this.tables.quests; }
   hasZone(id: string): id is ZoneId { return id in this.tables.zones; }
+  hasShop(id: string): id is ShopId { return id in this.tables.shops; }
+  hasTrader(id: string): id is TraderId { return id in this.tables.traders; }
+  isMarketItem(id: string): id is ItemId { return this.tables.market.includes(id); }
+
+  shopsKeptBy(npcId: NpcId): Keyed<ShopDef, ShopId>[] {
+    return this.shopIds.map((id) => this.shop(id)).filter((s) => s.keeperId === npcId);
+  }
 
   recipesByStation(station: StationId): Keyed<RecipeDef, RecipeId>[] {
     return this.recipeIds.map((id) => this.recipe(id)).filter((r) => r.station === station).sort((a, b) => a.level - b.level);
@@ -124,19 +136,64 @@ export class Registry {
     }
     errors.push(...this.questCycles());
 
+    for (const [id, def] of Object.entries(t.shops)) {
+      check(def.id === id, `shop ${id}: id field is '${def.id}'`);
+      check(!def.keeperId || def.keeperId in t.npcs, `shop ${id}: unknown keeper '${def.keeperId}'`);
+      check(def.markup > 0, `shop ${id}: markup must be > 0`);
+      check(def.sellRate >= 0 && def.sellRate <= 1, `shop ${id}: sellRate must be within 0..1`);
+      check(def.restockMs > 0, `shop ${id}: restockMs must be > 0`);
+      const seen = new Set<string>();
+      for (const entry of def.stock) {
+        check(entry.itemId in t.items, `shop ${id}: unknown item '${entry.itemId}'`);
+        check(!seen.has(entry.itemId), `shop ${id}: '${entry.itemId}' listed twice`);
+        seen.add(entry.itemId);
+        check(entry.qty === 'infinite' || entry.qty > 0, `shop ${id}: stock of '${entry.itemId}' must be > 0`);
+        check(entry.price === undefined || entry.price > 0, `shop ${id}: price of '${entry.itemId}' must be > 0`);
+      }
+    }
+    for (const [id, def] of Object.entries(t.traders)) {
+      check(def.id === id, `trader ${id}: id field is '${def.id}'`);
+      check(def.refreshMs > 0, `trader ${id}: refreshMs must be > 0`);
+      check(def.offersShown > 0 && def.offersShown <= def.offers.length, `trader ${id}: offersShown must be within 1..${def.offers.length}`);
+      def.offers.forEach((offer, i) => {
+        check(offer.give.length > 0 && offer.get.length > 0, `trader ${id}: offer ${i} needs give and get`);
+        for (const s of [...offer.give, ...offer.get]) {
+          check(s.itemId in t.items, `trader ${id}: offer ${i} has unknown item '${s.itemId}'`);
+          check(s.qty > 0, `trader ${id}: offer ${i} quantity of '${s.itemId}' must be > 0`);
+        }
+        check(offer.uses === undefined || offer.uses > 0, `trader ${id}: offer ${i} uses must be > 0`);
+      });
+    }
+    const marketSeen = new Set<string>();
+    for (const itemId of t.market) {
+      check(itemId in t.items, `market: unknown item '${itemId}'`);
+      check(!marketSeen.has(itemId), `market: '${itemId}' listed twice`);
+      marketSeen.add(itemId);
+    }
+
     const referencedNodes = new Set<string>();
     const referencedMonsters = new Set<string>();
     const referencedNpcs = new Set<string>();
+    const referencedShops = new Set<string>();
+    const referencedTraders = new Set<string>();
     for (const [id, def] of Object.entries(t.zones)) {
       check(def.id === id, `zone ${id}: id field is '${def.id}'`);
       for (const r of def.unlock) checkReq(`zone ${id}`, r);
       for (const n of def.nodes) { check(n in t.nodes, `zone ${id}: unknown node '${n}'`); referencedNodes.add(n); }
       for (const m of def.monsters) { check(m in t.monsters, `zone ${id}: unknown monster '${m}'`); referencedMonsters.add(m); }
       for (const n of def.npcs) { check(n in t.npcs, `zone ${id}: unknown npc '${n}'`); referencedNpcs.add(n); }
+      for (const s of def.shops) { check(s in t.shops, `zone ${id}: unknown shop '${s}'`); referencedShops.add(s); }
+      for (const tr of def.traders) { check(tr in t.traders, `zone ${id}: unknown trader '${tr}'`); referencedTraders.add(tr); }
+      for (const s of def.shops) {
+        const keeper = t.shops[s]?.keeperId;
+        check(!keeper || def.npcs.includes(keeper), `zone ${id}: shop '${s}' is here but its keeper '${keeper}' is not`);
+      }
     }
     for (const id of Object.keys(t.nodes)) check(referencedNodes.has(id), `node ${id}: not placed in any zone`);
     for (const id of Object.keys(t.monsters)) check(referencedMonsters.has(id), `monster ${id}: not placed in any zone`);
     for (const id of Object.keys(t.npcs)) check(referencedNpcs.has(id), `npc ${id}: not placed in any zone`);
+    for (const id of Object.keys(t.shops)) check(referencedShops.has(id), `shop ${id}: not placed in any zone`);
+    for (const id of Object.keys(t.traders)) check(referencedTraders.has(id), `trader ${id}: not placed in any zone`);
 
     return errors;
   }

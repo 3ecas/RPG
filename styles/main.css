@@ -116,6 +116,9 @@ ul { margin: 6px 0; padding-left: 18px; }
 .log-warn { color: var(--warn); }
 .log-combat { color: var(--text); }
 .log-info { color: var(--muted); }
+.log-trade { color: var(--gold); }
+.table-market td, .table-shop .name, .table-shop .num { white-space: nowrap; }
+.table-market .name { white-space: normal; }
 
 .item-weapon, .item-armor { color: var(--accent); }
 .item-food, .item-potion { color: var(--ok); }

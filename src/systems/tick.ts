@@ -5,11 +5,17 @@ import * as consumables from './consumables';
 import * as crafting from './crafting';
 import type { Ctx } from './ctx';
 import * as gathering from './gathering';
+import * as market from './market';
+import * as shops from './shops';
+import * as traders from './traders';
 
 export function tick(state: GameState, ctx: Ctx, dtMs: number): void {
   state.time.nowMs += dtMs;
   consumables.tickBuffs(state, ctx);
   consumables.tickRegen(state, ctx, dtMs);
+  shops.tick(state, ctx);
+  market.tick(state, ctx);
+  traders.tick(state, ctx);
 
   const a = state.activity;
   if (!a) return;

@@ -4,13 +4,13 @@
  * is dropped, missing sections fall back to a fresh state.
  */
 import type { GameState, LogKind } from '@/types/state';
-import { EQUIP_SLOTS } from '@/types/ids';
+import { EQUIP_SLOTS, type ItemId } from '@/types/ids';
 import type { Registry } from './registry';
 import { migrate, SAVE_VERSION } from './migrations';
 
 type Raw = Record<string, unknown>;
 
-const LOG_KINDS: readonly LogKind[] = ['info', 'loot', 'combat', 'quest', 'level', 'warn'];
+const LOG_KINDS: readonly LogKind[] = ['info', 'loot', 'combat', 'quest', 'level', 'warn', 'trade'];
 const COMBAT_STYLES = ['attack', 'strength', 'defence'] as const;
 
 export function serialize(state: GameState): string {
@@ -128,6 +128,43 @@ function sanitize(raw: Raw, content: Registry, fresh: GameState): GameState {
     if (flags) {
       s.world.flags = {};
       for (const [k, v] of Object.entries(flags)) if (typeof v === 'boolean') s.world.flags[k] = v;
+    }
+    const shops = rec(world.shops);
+    if (shops) {
+      for (const [shopId, value] of Object.entries(shops)) {
+        const r = rec(value);
+        if (!content.hasShop(shopId) || !r) continue;
+        const def = content.shop(shopId);
+        const stock: Partial<Record<ItemId, number>> = {};
+        const rawStock = rec(r.stock) ?? {};
+        for (const entry of def.stock) {
+          if (entry.qty === 'infinite') continue;
+          const qty = rawStock[entry.itemId];
+          stock[entry.itemId] = Math.min(entry.qty, Math.max(0, Math.floor(num(qty, entry.qty))));
+        }
+        s.world.shops[shopId] = { stock, lastRestockMs: Math.max(0, num(r.lastRestockMs, 0)) };
+      }
+    }
+    const market = rec(world.market);
+    if (market) {
+      s.world.market.lastUpdateMs = Math.max(0, num(market.lastUpdateMs, 0));
+      const prices = rec(market.prices) ?? {};
+      for (const [itemId, price] of Object.entries(prices)) {
+        if (content.isMarketItem(itemId) && typeof price === 'number' && Number.isFinite(price) && price > 0) s.world.market.prices[itemId] = price;
+      }
+    }
+    const traders = rec(world.traders);
+    if (traders) {
+      for (const [traderId, value] of Object.entries(traders)) {
+        const r = rec(value);
+        if (!content.hasTrader(traderId) || !r || !Array.isArray(r.offers) || !Array.isArray(r.usesLeft)) continue;
+        const count = content.trader(traderId).offers.length;
+        const rawUses = r.usesLeft as unknown[];
+        const offers = r.offers.map((o: unknown) => Math.floor(num(o, -1))).filter((o: number) => o >= 0 && o < count);
+        const usesLeft = offers.map((_, i) => Math.max(0, Math.floor(num(rawUses[i], 0))));
+        if (offers.length === 0) continue;
+        s.world.traders[traderId] = { offers, usesLeft, nextRefreshMs: Math.max(0, num(r.nextRefreshMs, 0)) };
+      }
     }
   }
 

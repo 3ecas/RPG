@@ -30,7 +30,7 @@ export function createInitialState(content: Registry, seed: number, now: number)
     activity: null,
     combat: null,
     quests: { active: {}, completed: [] },
-    world: { unlockedZones: [], flags: {}, talkedTo: [] },
+    world: { unlockedZones: [], flags: {}, talkedTo: [], shops: {}, market: { lastUpdateMs: 0, prices: {} }, traders: {} },
     log: [{ t: 0, kind: 'info', text: `Welcome to ${content.zone(BALANCE.START_ZONE).name}. Pick something up and get to work.` }],
   };
 }

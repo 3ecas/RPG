@@ -47,6 +47,28 @@ describe('save / load', () => {
     expect(loaded.state.log.every((e) => typeof e.text === 'string')).toBe(true);
   });
 
+  it('round-trips economy state and upgrades a version 1 save', () => {
+    const game = newGame(11);
+    game.state.player.gold = 500;
+    game.buy('smithy', 'bronze_bar', 3);
+    game.marketSell('shrimp', 5);
+    tickFor(game, 120_000);
+    const loaded = Game.fromSave(registry, game.save(), NOW);
+    expect(loaded.state.world).toEqual(game.state.world);
+
+    const v1 = JSON.parse(game.save());
+    v1.version = 1;
+    delete v1.world.shops;
+    delete v1.world.market;
+    delete v1.world.traders;
+    const upgraded = Game.fromSave(registry, JSON.stringify(v1), NOW);
+    expect(upgraded.state.version).toBe(SAVE_VERSION);
+    expect(upgraded.state.player.gold).toBe(game.state.player.gold);
+    expect(upgraded.shopStock('smithy').find((r) => r.itemId === 'bronze_bar')?.qty).toBe(10); // fresh shops are full
+    expect(upgraded.traderOffers('peddler_vex')).toHaveLength(3);
+    expect(upgraded.marketView().every((r) => r.price === r.base)).toBe(true);
+  });
+
   it('fills missing sections from a fresh state', () => {
     const loaded = Game.fromSave(registry, JSON.stringify({ version: SAVE_VERSION, player: { gold: 50 } }), NOW);
     expect(loaded.state.player.gold).toBe(50);

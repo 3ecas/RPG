@@ -56,4 +56,16 @@ export const ARMOR = defineItems({
     name: 'Steel Platebody', description: 'Knight-grade plate.', category: 'armor', value: 360,
     equip: { slot: 'body', stats: { defence: 26 }, requirements: [{ skill: 'defence', level: 20 }] },
   },
+  leather_gloves: {
+    name: 'Leather Gloves', description: 'Grip and a little protection.', category: 'armor', value: 15,
+    equip: { slot: 'hands', stats: { defence: 1, attack: 1 } },
+  },
+  copper_ring: {
+    name: 'Copper Ring', description: 'Turns your finger green and your swings truer.', category: 'armor', value: 120,
+    equip: { slot: 'ring', stats: { attack: 2, strength: 1 } },
+  },
+  amulet_of_vigor: {
+    name: 'Amulet of Vigor', description: 'Warm to the touch. Pell will not say where it came from.', category: 'armor', value: 450,
+    equip: { slot: 'amulet', stats: { strength: 3, defence: 3 }, requirements: [{ skill: 'defence', level: 5 }] },
+  },
 });

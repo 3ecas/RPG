@@ -11,6 +11,8 @@ import type { NODES } from '@/content/gather-nodes';
 import type { MONSTERS } from '@/content/monsters';
 import type { NPCS } from '@/content/npcs';
 import type { ZONES } from '@/content/zones';
+import type { SHOPS } from '@/content/shops';
+import type { TRADERS } from '@/content/traders';
 
 export type SkillId = keyof typeof SKILLS;
 export type StationId = keyof typeof STATIONS;
@@ -20,6 +22,8 @@ export type NodeId = keyof typeof NODES;
 export type MonsterId = keyof typeof MONSTERS;
 export type NpcId = keyof typeof NPCS;
 export type ZoneId = keyof typeof ZONES;
+export type ShopId = keyof typeof SHOPS;
+export type TraderId = keyof typeof TRADERS;
 export type { QuestId } from '@/content/quests';
 
 

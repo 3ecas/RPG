@@ -8,6 +8,9 @@ import { craftingPanel } from './crafting-panel';
 import { combatPanel } from './combat-panel';
 import { zonesPanel } from './zones-panel';
 import { peoplePanel } from './people-panel';
+import { shopsPanel } from './shops-panel';
+import { marketPanel } from './market-panel';
+import { tradersPanel } from './traders-panel';
 import { logPanel } from './log-panel';
 import { settingsPanel } from './settings-panel';
 
@@ -25,6 +28,9 @@ export const PANELS: Panel[] = [
   combatPanel,
   zonesPanel,
   peoplePanel,
+  shopsPanel,
+  marketPanel,
+  tradersPanel,
   logPanel,
   settingsPanel,
 ];

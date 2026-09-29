@@ -10,7 +10,10 @@ export const ZONES = defineZones({
     unlock: [],
     nodes: ['oak_tree', 'shrimp_spot'],
     monsters: ['rat', 'cow'],
-    npcs: ['elder_maren', 'captain_bram', 'smith_orla', 'angler_tobb'],
+    npcs: ['elder_maren', 'captain_bram', 'smith_orla', 'angler_tobb', 'keeper_pell'],
+    shops: ['hollow_goods', 'smithy'],
+    traders: [],
+    market: true,
   },
   copper_hills: {
     name: 'Copper Hills',
@@ -18,7 +21,10 @@ export const ZONES = defineZones({
     unlock: [],
     nodes: ['copper_rock', 'tin_rock'],
     monsters: ['goblin'],
-    npcs: [],
+    npcs: ['prospector_dun'],
+    shops: ['prospectors_outpost'],
+    traders: ['peddler_vex'],
+    market: false,
   },
   whispering_woods: {
     name: 'Whispering Woods',
@@ -27,6 +33,9 @@ export const ZONES = defineZones({
     nodes: ['willow_tree', 'trout_spot'],
     monsters: ['wolf', 'bandit'],
     npcs: [],
+    shops: [],
+    traders: ['woods_hermit'],
+    market: false,
   },
   old_iron_mines: {
     name: 'Old Iron Mines',
@@ -35,5 +44,8 @@ export const ZONES = defineZones({
     nodes: ['iron_rock', 'coal_rock'],
     monsters: ['skeleton'],
     npcs: [],
+    shops: [],
+    traders: [],
+    market: false,
   },
 });

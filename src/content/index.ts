@@ -9,6 +9,9 @@ import { MONSTERS } from './monsters';
 import { NPCS } from './npcs';
 import { QUESTS } from './quests';
 import { ZONES } from './zones';
+import { SHOPS } from './shops';
+import { TRADERS } from './traders';
+import { MARKET_ITEMS } from './market';
 
 export const CONTENT = {
   skills: SKILLS,
@@ -20,4 +23,7 @@ export const CONTENT = {
   npcs: NPCS,
   quests: QUESTS,
   zones: ZONES,
+  shops: SHOPS,
+  traders: TRADERS,
+  market: MARKET_ITEMS,
 } satisfies ContentTables;

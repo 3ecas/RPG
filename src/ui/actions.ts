@@ -10,7 +10,7 @@ import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import { toast } from './toast';
 
 const STYLES: readonly CombatStyle[] = ['attack', 'strength', 'defence'];
-const LOG_FILTERS: readonly (LogKind | 'all')[] = ['all', 'info', 'loot', 'combat', 'quest', 'level', 'warn'];
+const LOG_FILTERS: readonly (LogKind | 'all')[] = ['all', 'info', 'loot', 'combat', 'quest', 'level', 'warn', 'trade'];
 
 export function handleAction(app: App, action: string, data: DOMStringMap): void {
   const game = app.game;
@@ -39,6 +39,25 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
     case 'talk': if (content.hasNpc(id)) result = game.talk(id); break;
     case 'accept-quest': if (content.hasQuest(id)) result = game.acceptQuest(id); break;
     case 'turn-in': if (content.hasQuest(id)) result = game.turnInQuest(id); break;
+    case 'open-shop': if (content.hasShop(id)) app.openShop(id); return;
+    case 'buy': {
+      const shopId = data.shop ?? '';
+      if (content.hasShop(shopId) && content.hasItem(id)) result = game.buy(shopId, id, quantity(data.qty, () => Infinity));
+      break;
+    }
+    case 'sell': {
+      const shopId = data.shop ?? '';
+      if (content.hasShop(shopId) && content.hasItem(id)) result = game.sell(shopId, id, quantity(data.qty, () => game.itemCount(id)));
+      break;
+    }
+    case 'market-buy': if (content.hasItem(id)) result = game.marketBuy(id, quantity(data.qty, () => Infinity)); break;
+    case 'market-sell': if (content.hasItem(id)) result = game.marketSell(id, quantity(data.qty, () => game.itemCount(id))); break;
+    case 'barter': {
+      const traderId = data.trader ?? '';
+      const slot = Number(id);
+      if (content.hasTrader(traderId) && Number.isInteger(slot)) result = game.barter(traderId, slot);
+      break;
+    }
     case 'save': app.hooks.save(); toast('Saved.', 'good'); break;
     case 'export': app.ui.exportText = app.hooks.exportSave(); break;
     case 'import': {
@@ -58,4 +77,11 @@ export function handleAction(app: App, action: string, data: DOMStringMap): void
 
   if (result && !result.ok) toast(result.reason, 'warn');
   app.markDirty();
+}
+
+/** data-qty is a number or 'all'; `all` resolves the amount for 'all'. */
+function quantity(raw: string | undefined, all: () => number): number {
+  if (raw === 'all') return all();
+  const n = Number(raw ?? 1);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
