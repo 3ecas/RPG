@@ -102,6 +102,16 @@ export function isWalkable(grid: Grid, x: number, y: number): boolean {
 
 export const DIRS: readonly Cell[] = [{ x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }];
 
+/** A facing, in the order of DIRS: 0 down, 1 left, 2 right, 3 up. */
+export type Dir = 0 | 1 | 2 | 3;
+
+/** The facing for a step of (dx, dy). A diagonal step shows its horizontal side, as four-way sprites do. */
+export function dirOf(dx: number, dy: number): Dir {
+  if (dx < 0) return 1;
+  if (dx > 0) return 2;
+  return dy < 0 ? 3 : 0;
+}
+
 export function neighbors(cell: Cell): Cell[] {
   return DIRS.map((d) => ({ x: cell.x + d.x, y: cell.y + d.y }));
 }

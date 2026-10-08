@@ -57,6 +57,35 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': ['error', { patterns: [noSystems, noCore] }] },
   },
   {
+    // The wire protocol is shared by browser and server: types and world geometry only, no DOM.
+    files: ['src/net/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
+      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+    },
+  },
+  {
+    // The client replica and socket feed the UI but are not DOM code themselves.
+    files: ['src/client/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
+      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+    },
+  },
+  {
+    // The server runs rules and moves messages; it never touches the UI or the browser.
+    files: ['src/server/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noGame] }],
+      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+    },
+  },
+  {
+    // The server's entry point is where its log lines are written.
+    files: ['src/server/main.ts'],
+    rules: { 'no-console': 'off' },
+  },
+  {
     // core/storage.ts and core/loop.ts are the only browser-API adapters.
     files: ['src/core/storage.ts', 'src/core/loop.ts'],
     rules: { 'no-restricted-globals': 'off' },

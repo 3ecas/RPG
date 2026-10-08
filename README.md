@@ -32,6 +32,29 @@ Opening the source `index.html` directly does *not* work: browsers cannot run
 TypeScript, and the dev server is what compiles it. That page now says so
 instead of staying blank.
 
+## Play online (the first multiplayer slice)
+
+The game is growing into a small MMO ([DESIGN.md](DESIGN.md) has the design and
+the build order). The first slice is in: a zone server that runs Greenhollow on
+a fixed tick, and an online client in which players walk the same map and talk.
+
+```bash
+npm run server    # the zone server on ws://localhost:8080 (PORT, TICK_MS, ZONE, GRACE_MS change it)
+npm run dev       # the client; open http://localhost:5173/?online in two tabs
+```
+
+Each tab picks a name and sees the other walk. Click to walk, Enter to talk,
+R to run. `?server=ws://host:port` points a client at another server, and the
+`VITE_SERVER_URL` build variable sets the default address of a built client.
+For production, `npm run build:server` bundles the server into
+`dist-server/main.js` and `npm start` runs it. `GET /health` on the server port
+reports the tick and the player count.
+
+The server is authoritative: it paths and moves every character one cell per
+tick (two when running), and the browser only draws what it is told, one tick
+behind, interpolating between cells. Dropped connections keep their character
+for 30 seconds and resume it with a session token.
+
 ## What is in the first slice
 
 - **A world you walk through:** each zone is a tile map. Move with WASD / arrows or tap where you want to go; tap a tree, a rock, a person, a building or a monster to walk up and use it, or press E when you stand next to it. Exits at the edges lead to the next zone. Menus open as draggable windows; a bottom hotbar holds bag, world map, missions, log, skills, progression and settings.
@@ -64,10 +87,13 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) for the full design. The short version:
 | `src/content/`  | Items, recipes, monsters, zones, quests…    | types                   |
 | `src/core/`     | Event bus, loop, RNG, registry, save/load   | types                   |
 | `src/systems/`  | All game rules, as pure functions on state  | types, core, content    |
-| `src/world/`    | Tile map model: grid, footprints, paths     | types                   |
-| `src/game.ts`   | The facade the UI calls                     | everything but ui       |
-| `src/ui/`       | DOM only: one file per panel, the world canvas | game, world, types, util |
-| `tests/`        | Vitest: systems, content validation, maps, art, saves |               |
+| `src/world/`    | Tile map model: grid, footprints, paths (four- and eight-way) | types          |
+| `src/net/`      | The wire protocol: message types and the strict parser | types, world     |
+| `src/server/`   | The zone server: the room simulation on a tick, the WebSocket adapter | everything but ui and game |
+| `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net |
+| `src/game.ts`   | The facade the single-player UI calls       | everything but ui       |
+| `src/ui/`       | DOM only: panels and the world canvas; `ui/online/` is the online client's shell and scene | game, client, net, world, types, util |
+| `tests/`        | Vitest: systems, content validation, maps, art, saves, protocol, room, server, replica |  |
 
 ESLint fails the build if a layer imports something it should not.
 

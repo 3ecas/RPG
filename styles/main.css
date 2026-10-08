@@ -309,3 +309,27 @@ ul { margin: 4px 0; padding-left: 16px; }
 .chapter-locked, .chapter-done { opacity: 0.7; }
 .quest-done { opacity: 0.6; }
 @media (max-width: 760px) { .catalogue { grid-template-columns: 1fr; } .cat-list { flex-direction: row; flex-wrap: wrap; position: static; } }
+
+/* ---- online: join card, chat dock, status chips ---- */
+.chip-ok { background: #1d2a20; color: var(--ok); }
+.chip-warn { background: #2a2418; color: var(--warn); }
+.chip-bad { background: #2a1d1f; color: var(--bad); }
+.muted { color: var(--muted); margin: 0; }
+.join { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 12, 16, 0.72); z-index: 3; }
+.join[hidden] { display: none; }
+.join-card { display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100% - 32px)); padding: 18px 20px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+.join-card h1 { margin: 0; font-size: 18px; }
+.join-card label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.join-card input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.join-card input:focus { outline: none; border-color: var(--accent-2); }
+.join-error { color: var(--bad); font-size: 12px; min-height: 1.2em; }
+.join-button { align-self: flex-start; color: var(--text); background: var(--accent-2); border-color: var(--accent-2); font-weight: 600; }
+.join-button:hover:not([disabled]) { background: var(--accent); }
+.join-button[disabled] { opacity: 0.6; cursor: wait; }
+.chatbox { position: absolute; left: 12px; bottom: 12px; width: min(420px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 2; }
+.chatbox[hidden] { display: none; }
+.chat-log { max-height: 132px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; font-size: 12px; pointer-events: auto; scrollbar-width: thin; }
+.chat-line { background: rgba(18, 20, 24, 0.72); padding: 2px 8px; border-radius: 4px; word-break: break-word; }
+.chat-line b { color: var(--accent); margin-right: 4px; }
+.chat-form input { width: 100%; font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: rgba(18, 20, 24, 0.85); color: var(--text); pointer-events: auto; }
+.chat-form input:focus { outline: none; border-color: var(--accent-2); }

@@ -52,8 +52,11 @@ world (grid + paths)            content  ──►  types
 | `core/`    | `types/`                          | know any RPG rule (it is generic plumbing)   |
 | `systems/` | `types/`, `core/`, `content/`     | import `ui/`, touch `document` / `window`    |
 | `world/`   | `types/`                          | touch the DOM or know a rule (pure geometry over map content) |
+| `net/`     | `types/`, `world/`                | touch the DOM; trust anything a client sent   |
+| `client/`  | `types/`, `world/`, `net/`        | touch the DOM (the socket adapter aside), import `ui/` |
+| `server/`  | everything except `ui/`, `game.ts` | touch the DOM or the browser                |
 | `game.ts`  | everything except `ui/`           | contain formulas                             |
-| `ui/`      | `game.ts`, `types/`, `util/`      | mutate state, contain formulas               |
+| `ui/`      | `game.ts`, `client/`, `net/`, `world/`, `types/`, `util/` | mutate state, contain formulas |
 
 Enforce it mechanically with ESLint `no-restricted-imports` (or
 `eslint-plugin-boundaries`) so that a `ui/` import inside `systems/` fails lint.
@@ -731,3 +734,49 @@ tap-to-move, people to talk to, creatures to fight, exits between zones.
 
 Next (in order): magic + potions via alchemy (step 7), dungeons + bosses
 (step 8), then breadth and balance.
+
+---
+
+## 12. The online slice (walk together)
+
+The first step of [DESIGN.md](DESIGN.md) §13: one zone as a room on a server,
+players who walk it together and talk. Everything below runs beside the
+single-player game; `?online` in the URL picks the online client.
+
+```
+browser                                   server (Node)
+ui/online/shell.ts  ── intents ──►  server/server.ts  ── ws adapter: sessions, limits, tick loop
+ui/online/scene.ts                  server/room.ts    ── the simulation: join, path, step, chat
+client/replica.ts   ◄── deltas ───  net/protocol.ts   ── message types and the strict parser (shared)
+client/socket.ts                    world/path.ts     ── eight-way paths with the corner rule (shared)
+```
+
+- **Room** (`server/room.ts`): a pure simulation. `join` places a character on
+  the spawn; `move` turns a clicked cell into a server-side path (the nearest
+  reachable cell when the click lands on a tree or the water); `advance()` is
+  one tick: every path advances one cell, two when running, dropped characters
+  lapse after the grace period, and the delta for the clients comes back
+  (`joined`, `left`, `moves` with the cells stepped, `chat`). Players never
+  block one another. Tested headless.
+- **Protocol** (`net/protocol.ts`): JSON over WebSocket, discriminated unions
+  shared by both sides, one `PROTOCOL_VERSION`. The client sends `hello`,
+  `move`, `run`, `chat`, `ping`; the server answers `welcome` (full snapshot
+  and a session token), one `tick` delta per tick, `reject`, `pong`.
+  `parseClientMessage` accepts only what is exactly on the schema and
+  normalizes names and chat; the limits live beside the types.
+- **Server** (`server/server.ts`): a `ws` endpoint in front of the room, a
+  drift-corrected tick loop (300 ms by default), a token bucket and strike
+  count per connection, a hello timeout, keepalive pings, `/health`.
+  Reconnecting with the token resumes the character and closes the old socket;
+  joining under the name of a dropped character takes it over.
+- **Replica** (`client/replica.ts`): applies deltas on the client's own clock,
+  one tick behind (`scheduleFor`), and interpolates each entity through the
+  cells it stepped. A delta that arrives too late shifts the clock; a burst
+  that arrives early pulls it back. No prediction, as in RuneScape.
+- **Scene and shell** (`ui/online/`): the same ground, sprites and placed
+  objects as the single-player scene (shared through `ui/world/objects.ts`),
+  every player drawn where the replica says, name tags, chat bubbles, the
+  click marker, a join card and a docked chat.
+
+What the slice deliberately leaves out: skills, items, monsters, persistence,
+accounts. Those are steps 2 to 5 of the build order.

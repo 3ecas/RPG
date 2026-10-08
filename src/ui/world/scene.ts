@@ -11,8 +11,9 @@ import { findPath, findPathTo } from '@/world/path';
 import type { App } from '../app';
 import type { WindowState } from '../panel';
 import { toast } from '../toast';
-import { ANVIL, CAMPFIRE, CART, FIELD, FISHING_SPOT, FURNACE, house, human, PATCH, type PixelArt, PLAYER_COLORS, recolor, ROCK, SAWBENCH, SIGNPOST, stall, TANNERY, TREE } from './art';
-import { BIOME_PALETTES, humanColorsFor, MARKER_COLORS, MONSTER_ART, NODE_STYLE, roofFor } from './palettes';
+import { human, PLAYER_COLORS } from './art';
+import { drawExitMarkers, objectSprite, outlinedText } from './objects';
+import { BIOME_PALETTES, MARKER_COLORS, MONSTER_ART } from './palettes';
 import { renderGround, sprite, TILE } from './sprites';
 
 const STEP_MS = 150;
@@ -702,53 +703,11 @@ export class WorldScene {
   }
 
   private objectSprite(obj: PlacedObject): HTMLCanvasElement | null {
-    const content = this.app.game.content;
-    const def = obj.def;
-    switch (def.kind) {
-      case 'node': {
-        const style = NODE_STYLE(def.id, content.node(def.id).skill);
-        const base: PixelArt = style.kind === 'tree' ? TREE : style.kind === 'rock' ? ROCK : style.kind === 'fishing' ? FISHING_SPOT : style.kind === 'field' ? FIELD : PATCH;
-        return sprite(`node:${def.id}`, () => recolor(base, style.palette));
-      }
-      case 'station': {
-        const frame = Math.floor(this.now / 320) % 2;
-        switch (def.id) {
-          case 'campfire': return sprite(`campfire:${frame}`, () => CAMPFIRE[frame]!);
-          case 'furnace': return sprite(`furnace:${frame}`, () => FURNACE[frame]!);
-          case 'anvil': return sprite('anvil', () => ANVIL);
-          case 'sawbench': return sprite('sawbench', () => SAWBENCH);
-          case 'tannery': return sprite('tannery', () => TANNERY);
-        }
-        return null;
-      }
-      case 'shop': return sprite(`house:${def.id}`, () => house(roofFor(def.id)));
-      case 'market': return sprite('stall', () => stall('#d84a20'));
-      case 'trader': return sprite('cart', () => CART);
-      case 'npc': return sprite(`npc:${def.id}`, () => human('down', 0, humanColorsFor(def.id)));
-      case 'signpost': return sprite('signpost', () => SIGNPOST);
-      default: return null;
-    }
+    return objectSprite(this.app.game.content, obj, this.now);
   }
 
   private drawExits(grid: Grid): void {
-    const ctx = this.ctx;
-    for (const obj of grid.objects) {
-      if (obj.def.kind !== 'exit') continue;
-      const x = obj.x * TILE;
-      const y = obj.y * TILE;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      const cx = x + TILE / 2;
-      const cy = y + TILE / 2;
-      ctx.beginPath();
-      if (obj.x === 0) { ctx.moveTo(cx + 3, cy - 4); ctx.lineTo(cx - 3, cy); ctx.lineTo(cx + 3, cy + 4); }
-      else if (obj.x === grid.width - 1) { ctx.moveTo(cx - 3, cy - 4); ctx.lineTo(cx + 3, cy); ctx.lineTo(cx - 3, cy + 4); }
-      else if (obj.y === 0) { ctx.moveTo(cx - 4, cy + 3); ctx.lineTo(cx, cy - 3); ctx.lineTo(cx + 4, cy + 3); }
-      else { ctx.moveTo(cx - 4, cy - 3); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx + 4, cy - 3); }
-      ctx.closePath();
-      ctx.fill();
-    }
+    drawExitMarkers(this.ctx, grid);
   }
 
   /** Labels, markers and bars in screen space, so text stays crisp at any scale. */
@@ -827,13 +786,7 @@ export class WorldScene {
   }
 
   private text(text: string, x: number, y: number, color: string, size: number, bold = false): void {
-    const ctx = this.ctx;
-    ctx.font = `${bold ? '800' : '600'} ${size}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(10, 10, 14, 0.85)';
-    ctx.strokeText(text, Math.round(x), Math.round(y));
-    ctx.fillStyle = color;
-    ctx.fillText(text, Math.round(x), Math.round(y));
+    outlinedText(this.ctx, text, x, y, color, size, bold);
   }
 
   private bar(x: number, y: number, width: number, fraction: number, color: string): void {
