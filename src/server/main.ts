@@ -1,6 +1,6 @@
 /**
  * Starts one zone server from the environment:
- *   PORT (8080), TICK_MS (300), ZONE (greenhollow), GRACE_MS (30000).
+ *   PORT (8080), TICK_MS (50), ZONE (greenhollow), GRACE_MS (30000).
  * Run in development with `npm run server`; in production build with
  * `npm run build:server` and run `node dist-server/main.js`.
  */
@@ -8,7 +8,7 @@ import type { ZoneId } from '@/types/ids';
 import { startServer } from './server';
 
 const port = Number(process.env.PORT ?? 8080);
-const tickMs = Number(process.env.TICK_MS ?? 300);
+const tickMs = Number(process.env.TICK_MS ?? 50);
 const zone = (process.env.ZONE ?? 'greenhollow') as ZoneId;
 const graceMs = Number(process.env.GRACE_MS ?? 30_000);
 

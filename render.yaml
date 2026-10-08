@@ -12,6 +12,6 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: TICK_MS
-        value: "300"
+        value: "50"
       - key: GRACE_MS
         value: "30000"

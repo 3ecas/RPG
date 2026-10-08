@@ -8,7 +8,7 @@
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -23,27 +23,29 @@ export const LIMITS = {
 export interface EntitySnapshot {
   id: number;
   name: string;
+  /** The centre, in cells. */
   x: number;
   y: number;
   dir: Dir;
   running: boolean;
+  moving: boolean;
 }
 
 export type ClientMessage =
   /** First message on a connection: who you are, and your session token if you are coming back. */
   | { t: 'hello'; v: number; name: string; token: string | null }
-  /** Walk to a cell; the server paths and moves you one or two cells a tick. */
-  | { t: 'move'; x: number; y: number }
+  /**
+   * One step of movement, sent every step while a key is held or a path is
+   * being walked. `seq` numbers them so the server can say how far it got.
+   * `to` plans a walk to a clicked cell before the step is taken.
+   */
+  | { t: 'input'; seq: number; dx: -1 | 0 | 1; dy: -1 | 0 | 1; to?: [number, number] }
   | { t: 'run'; on: boolean }
   | { t: 'chat'; text: string }
   | { t: 'ping'; at: number };
 
-/** The cells one entity stepped through this tick, in order, and the way it faces afterwards. */
-export interface MoveDelta {
-  id: number;
-  steps: [number, number][];
-  dir: Dir;
-}
+/** Where an entity is after this tick: id, centre x and y, facing, whether it moved, and the last input the server applied for it. */
+export type MoveState = [id: number, x: number, y: number, dir: Dir, moving: 0 | 1, seq: number];
 
 export interface ChatLine {
   id: number;
@@ -54,12 +56,12 @@ export interface TickDelta {
   tick: number;
   joined: EntitySnapshot[];
   left: number[];
-  moves: MoveDelta[];
+  moves: MoveState[];
   chat: ChatLine[];
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; id: number; token: string; tickMs: number; tick: number; zone: string; entities: EntitySnapshot[] }
+  | { t: 'welcome'; id: number; token: string; tickMs: number; tick: number; zone: string; entities: EntitySnapshot[]; seq: number }
   | ({ t: 'tick' } & TickDelta)
   | { t: 'reject'; reason: string }
   | { t: 'pong'; at: number };
@@ -90,6 +92,10 @@ function isInt(v: unknown, min: number, max: number): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
 
+function isAxis(v: unknown): v is -1 | 0 | 1 {
+  return v === -1 || v === 0 || v === 1;
+}
+
 /** The message a client sent, if it is exactly one of ours; null otherwise. Names and chat come back normalized. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (!isRecord(raw) || typeof raw.t !== 'string') return null;
@@ -102,8 +108,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!name) return null;
       return { t: 'hello', v: raw.v, name, token: typeof token === 'string' && token.length > 0 ? token : null };
     }
-    case 'move':
-      return isInt(raw.x, 0, LIMITS.COORD_MAX) && isInt(raw.y, 0, LIMITS.COORD_MAX) ? { t: 'move', x: raw.x, y: raw.y } : null;
+    case 'input': {
+      if (!isInt(raw.seq, 0, 1_000_000_000) || !isAxis(raw.dx) || !isAxis(raw.dy)) return null;
+      const to = raw.to;
+      if (to === undefined || to === null) return { t: 'input', seq: raw.seq, dx: raw.dx, dy: raw.dy };
+      if (!Array.isArray(to) || to.length !== 2 || !isInt(to[0], 0, LIMITS.COORD_MAX) || !isInt(to[1], 0, LIMITS.COORD_MAX)) return null;
+      return { t: 'input', seq: raw.seq, dx: raw.dx, dy: raw.dy, to: [to[0], to[1]] };
+    }
     case 'run':
       return typeof raw.on === 'boolean' ? { t: 'run', on: raw.on } : null;
     case 'chat': {

@@ -34,9 +34,9 @@ export interface GameServer {
   close(): Promise<void>;
 }
 
-/** Messages a connection may send per second, and how many it may burst. */
-const RATE_PER_SECOND = 15;
-const BURST = 30;
+/** Messages a connection may send per second, and how many it may burst: one input per step while moving, plus a little. */
+const RATE_PER_SECOND = 30;
+const BURST = 60;
 /** Off-schema or over-rate messages tolerated before the connection is closed. */
 const MAX_STRIKES = 10;
 const HELLO_TIMEOUT_MS = 10_000;
@@ -135,7 +135,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   };
 
   const welcome = (conn: Connection, playerId: number, token: string): void => {
-    send(conn.socket, { t: 'welcome', id: playerId, token, tickMs: options.tickMs, tick: room.tick, zone: room.zoneId, entities: room.snapshot() });
+    send(conn.socket, { t: 'welcome', id: playerId, token, tickMs: options.tickMs, tick: room.tick, zone: room.zoneId, entities: room.snapshot(), seq: room.player(playerId)?.seq ?? 0 });
   };
 
   const hello = (conn: Connection, msg: Extract<ClientMessage, { t: 'hello' }>): void => {
@@ -186,7 +186,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       return;
     }
     switch (msg.t) {
-      case 'move': room.move(id, msg.x, msg.y); break;
+      case 'input': room.queueInput(id, msg.to ? { seq: msg.seq, dx: msg.dx, dy: msg.dy, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq, dx: msg.dx, dy: msg.dy }); break;
       case 'run': room.setRunning(id, msg.on); break;
       case 'chat': room.chat(id, msg.text); break;
     }

@@ -6,9 +6,9 @@
  * without touching anything else.
  */
 import type { Replica, ReplicaEntity } from '@/client/replica';
-import type { Biome, Terrain, ZoneMapDef } from '@/types/content';
+import type { Biome, Terrain } from '@/types/content';
 import type { NodeId, NpcId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
-import { type Cell, type Dir, type Grid, inBounds, parseMap, type PlacedObject } from '@/world/grid';
+import { type Cell, type Dir, type Grid, inBounds, type PlacedObject } from '@/world/grid';
 
 export interface SceneContent {
   zone(id: ZoneId): { name: string };
@@ -102,9 +102,9 @@ export class OnlineScene {
   }
 
   /** The zone to show; the replica's entities are drawn on it. */
-  setMap(map: ZoneMapDef): void {
-    this.grid = parseMap(map);
-    this.ground = renderGround(this.grid, map.biome);
+  setMap(grid: Grid, biome: Biome): void {
+    this.grid = grid;
+    this.ground = renderGround(grid, biome);
     this.marker = null;
   }
 
@@ -136,18 +136,14 @@ export class OnlineScene {
     return inBounds(this.grid, x, y) ? { x, y } : null;
   }
 
-  /** Follows your own character; shows the whole map when it fits. */
+  /** Locked on your own character, which stays in the middle of the view; the void shows past the map's edge. */
   private camera(grid: Grid): { x: number; y: number } {
     const viewW = this.canvas.clientWidth / this.scale;
     const viewH = this.canvas.clientHeight / this.scale;
-    const mapW = grid.width * TILE;
-    const mapH = grid.height * TILE;
-    const self = this.replica.self;
-    const at = self ? this.replica.positionAt(self, this.now) : grid.spawn;
-    const px = at.x * TILE;
-    const py = at.y * TILE;
-    const x = mapW <= viewW ? -(viewW - mapW) / 2 : Math.max(0, Math.min(mapW - viewW, px + TILE / 2 - viewW / 2));
-    const y = mapH <= viewH ? -(viewH - mapH) / 2 : Math.max(0, Math.min(mapH - viewH, py + TILE / 2 - viewH / 2));
+    const self = this.replica.selfEntity;
+    const at = self ? this.replica.positionAt(self, this.now) : { x: grid.spawn.x + 0.5, y: grid.spawn.y + 0.5 };
+    const x = at.x * TILE - viewW / 2;
+    const y = at.y * TILE - viewH / 2;
     return { x: Math.round(x * this.scale) / this.scale, y: Math.round(y * this.scale) / this.scale };
   }
 
@@ -171,7 +167,9 @@ export class OnlineScene {
     }
     for (const e of this.replica.entities.values()) {
       const at = this.replica.positionAt(e, this.now);
-      drawables.push({ y: at.y * TILE + TILE + 0.5, draw: () => this.drawPlayer(e, at.x * TILE, at.y * TILE, at.moving) });
+      const px = at.x * TILE - TILE / 2;
+      const py = at.y * TILE - TILE / 2;
+      drawables.push({ y: py + TILE + 0.5, draw: () => this.drawPlayer(e, px, py, at.dir, at.moving) });
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
@@ -197,10 +195,10 @@ export class OnlineScene {
     }
   }
 
-  private drawPlayer(e: ReplicaEntity, px: number, py: number, moving: boolean): void {
+  private drawPlayer(e: ReplicaEntity, px: number, py: number, dir: Dir, moving: boolean): void {
     const ctx = this.ctx;
     const bob = moving ? Math.sin(this.now / 80) * 0.7 : 0;
-    drawPerson(ctx, px, py + bob, colorFor(e.name), e.dir);
+    drawPerson(ctx, px, py + bob, colorFor(e.name), dir);
     if (e.id === this.replica.selfId) {
       ctx.strokeStyle = SELF_COLOR;
       ctx.lineWidth = 1;
@@ -246,7 +244,7 @@ export class OnlineScene {
     ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
     const self = this.replica.self;
-    const near = (obj: PlacedObject) => !!self && Math.abs(obj.x + (obj.w - 1) / 2 - self.x) + Math.abs(obj.y + (obj.h - 1) / 2 - self.y) <= LABEL_RANGE + obj.w;
+    const near = (obj: PlacedObject) => Math.abs(obj.x + obj.w / 2 - self.x) + Math.abs(obj.y + obj.h / 2 - self.y) <= LABEL_RANGE + obj.w;
 
     for (const obj of grid.objects) {
       const cx = sx((obj.x + obj.w / 2) * TILE);
@@ -269,8 +267,8 @@ export class OnlineScene {
     const bubbles = new Map(this.replica.bubbles(this.now).map((b) => [b.id, b]));
     for (const e of this.replica.entities.values()) {
       const at = this.replica.positionAt(e, this.now);
-      const cx = sx(at.x * TILE + TILE / 2);
-      const top = sy(at.y * TILE);
+      const cx = sx(at.x * TILE);
+      const top = sy(at.y * TILE - TILE / 2);
       const isSelf = e.id === this.replica.selfId;
       text(ctx, e.name, cx, top - 5, isSelf ? SELF_COLOR : '#e4e6ea', 11, isSelf);
       const bubble = bubbles.get(e.id);

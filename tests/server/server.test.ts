@@ -133,11 +133,19 @@ describe('zone server', () => {
     expect(isTick(joined) && joined.joined.find((e) => e.id === w2.id)?.name).toBe('Bob');
 
     const spawn = w2.entities.find((e) => e.id === w2.id)!;
-    bob.send({ t: 'move', x: spawn.x + 3, y: spawn.y });
-    const moved = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv.id === w2.id));
-    const step = isTick(moved) ? moved.moves.find((mv) => mv.id === w2.id)! : null;
-    expect(step?.steps).toEqual([[spawn.x + 1, spawn.y]]);
-    expect(step?.dir).toBe(2);
+    expect(w2.seq).toBe(0);
+    bob.send({ t: 'input', seq: 1, dx: 1, dy: 0 });
+    const moved = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w2.id));
+    const state = isTick(moved) ? moved.moves.find((mv) => mv[0] === w2.id)! : null;
+    expect(state?.[1]).toBeCloseTo(spawn.x + 0.2, 3); // one step at walking speed
+    expect(state?.[2]).toBe(spawn.y);
+    expect(state?.[3]).toBe(2);
+    expect(state?.[4]).toBe(1);
+    expect(state?.[5]).toBe(1);
+    bob.send({ t: 'input', seq: 2, dx: 0, dy: 0, to: [Math.floor(spawn.x) + 3, Math.floor(spawn.y)] });
+    const walked = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w2.id && mv[5] === 2));
+    const after = isTick(walked) ? walked.moves.find((mv) => mv[0] === w2.id)! : null;
+    expect(after?.[1]).toBeGreaterThan(spawn.x + 0.2);
 
     bob.send({ t: 'chat', text: '  hello   there ' });
     const said = await ada.next((m) => isTick(m) && m.chat.length > 0);
@@ -186,7 +194,7 @@ describe('zone server', () => {
     watcher.hello('Bob');
     await watcher.next(isWelcome);
     second.close();
-    const left = await watcher.next((m) => isTick(m) && m.left.includes(w1.id), GRACE_MS * 4);
+    const left = await watcher.next((m) => isTick(m) && m.left.includes(w1.id), GRACE_MS * 6);
     expect(isTick(left) && left.left).toEqual([w1.id]);
     expect(server!.room.size).toBe(1);
 

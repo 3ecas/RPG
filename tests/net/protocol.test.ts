@@ -26,7 +26,9 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'hello', v: PROTOCOL_VERSION, name: ' Ada ', token: null })).toEqual({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ada', token: null });
     expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', token: 'abc' })).toEqual({ t: 'hello', v: 1, name: 'Ada', token: 'abc' });
     expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada' })).toEqual({ t: 'hello', v: 1, name: 'Ada', token: null });
-    expect(parseClientMessage({ t: 'move', x: 3, y: 4 })).toEqual({ t: 'move', x: 3, y: 4 });
+    expect(parseClientMessage({ t: 'input', seq: 7, dx: 1, dy: -1 })).toEqual({ t: 'input', seq: 7, dx: 1, dy: -1 });
+    expect(parseClientMessage({ t: 'input', seq: 8, dx: 0, dy: 0, to: [3, 4] })).toEqual({ t: 'input', seq: 8, dx: 0, dy: 0, to: [3, 4] });
+    expect(parseClientMessage({ t: 'input', seq: 9, dx: 0, dy: 0, to: null })).toEqual({ t: 'input', seq: 9, dx: 0, dy: 0 });
     expect(parseClientMessage({ t: 'run', on: true })).toEqual({ t: 'run', on: true });
     expect(parseClientMessage({ t: 'chat', text: ' hi  all ' })).toEqual({ t: 'chat', text: 'hi all' });
     expect(parseClientMessage({ t: 'ping', at: 12.5 })).toEqual({ t: 'ping', at: 12.5 });
@@ -38,10 +40,15 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage([])).toBeNull();
     expect(parseClientMessage({})).toBeNull();
     expect(parseClientMessage({ t: 'teleport', x: 1, y: 1 })).toBeNull();
-    expect(parseClientMessage({ t: 'move', x: 1.5, y: 1 })).toBeNull();
-    expect(parseClientMessage({ t: 'move', x: -1, y: 1 })).toBeNull();
-    expect(parseClientMessage({ t: 'move', x: LIMITS.COORD_MAX + 1, y: 1 })).toBeNull();
-    expect(parseClientMessage({ t: 'move', x: '1', y: 1 })).toBeNull();
+    expect(parseClientMessage({ t: 'move', x: 1, y: 1 })).toBeNull(); // from protocol 1
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 2, dy: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 0.5, dy: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: -1, dx: 0, dy: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1.5, dx: 0, dy: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 0, dy: 0, to: [1.5, 1] })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 0, dy: 0, to: [LIMITS.COORD_MAX + 1, 1] })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 0, dy: 0, to: [1] })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, dx: 0, dy: 0, to: '1,1' })).toBeNull();
     expect(parseClientMessage({ t: 'run', on: 'yes' })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: '' })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: 42 })).toBeNull();
@@ -54,8 +61,8 @@ describe('protocol: parsing what clients send', () => {
   });
 
   it('decodes JSON text with a size cap', () => {
-    expect(decodeClientMessage('{"t":"move","x":1,"y":2}')).toEqual({ t: 'move', x: 1, y: 2 });
-    expect(decodeClientMessage('{"t":"move",')).toBeNull();
+    expect(decodeClientMessage('{"t":"input","seq":1,"dx":1,"dy":0}')).toEqual({ t: 'input', seq: 1, dx: 1, dy: 0 });
+    expect(decodeClientMessage('{"t":"input",')).toBeNull();
     expect(decodeClientMessage('not json')).toBeNull();
     expect(decodeClientMessage(`{"t":"chat","text":"${'x'.repeat(LIMITS.MESSAGE_CHARS)}"}`)).toBeNull();
   });

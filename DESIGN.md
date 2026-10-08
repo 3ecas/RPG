@@ -15,7 +15,7 @@ maps and renderer carry over. Its idle-game shape does not (see §12).
 | Decision | Choice | Why |
 |---|---|---|
 | Grid | Square tiles, eight-direction movement, diagonals cost the same as straight steps | What RuneScape does. Hexes buy equal neighbours but fight pixel-art tilesets, rectangular buildings and four-way sprites; with click-to-move nobody sees the grid anyway. |
-| Time | One fixed server tick; every duration in the game is a count of ticks | A step, a swing, a mining roll, a respawn: all resolve on the tick. The tick is also the network update rate, and one-tick-behind rendering needs no prediction. |
+| Time | A fixed 50 ms simulation step on the server; movement is continuous and predicted in the browser; actions (a swing, a mining roll, a respawn) will resolve on a slower action tick on top | Walking has to feel immediate whatever the ping, so the browser simulates your own character from your inputs and the server confirms. Actions can wait a few hundred milliseconds; walking cannot. |
 | Play | Active, never idle | Activities stop at logout and nothing is simulated while you are away. This is what makes the bank loop and a shared economy work, and the server only runs online players. |
 
 Everything else below can change with experience. These three are baked into
@@ -23,8 +23,8 @@ every tile, every number and every message.
 
 ## 2. The rules that make the feel
 
-- **One action at a time, on the tick.** Clicking elsewhere cancels. The current
-  single-activity model already works like this; movement joins it.
+- **One action at a time.** Clicking elsewhere cancels. Movement is free
+  and continuous: WASD or a click with the pathfinder, sliding along walls.
 - **Server authority.** The server owns every position, roll and item. The
   browser renders a replica and sends intents: walk here, use that, say this.
 - **Small bag, non-stackable items, a bank.** Ore takes a slot each; only coins
@@ -53,8 +53,8 @@ Starting values. Expect to tune them after the first playable slice.
 
 | Setting | Default |
 |---|---|
-| Server tick | 300 ms |
-| Walk / run | 1 / 2 tiles per tick |
+| Simulation step | 50 ms |
+| Walk / run | 4 / 7 cells per second |
 | Bag | 28 slots |
 | Skill levels | 1 to 99 |
 | Tier bands start at level | 1, 15, 30, 50, 70, 85 |
@@ -203,8 +203,9 @@ instancing, zone sharding, binary protocol, mobile layout.
   client and server. The client sends intents; the server sends a full
   snapshot on join and a delta every tick. Every inbound message is parsed
   against the schema and rate limited; nothing from the client is trusted.
-- **Client:** a replica of the zone that applies deltas on its own tick
-  clock, one tick behind, and interpolates. The same canvas renderer draws it.
+- **Client:** a replica of the zone: your own character predicted from
+  your inputs and reconciled against the server, everyone else interpolated
+  a little behind it. The same canvas renderer draws it.
 - **Persistence (slice 2):** Postgres, one JSON document per character written
   through the existing serialize / sanitize / migrate code; relational tables
   only for what must be queried across players.

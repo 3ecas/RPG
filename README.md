@@ -9,8 +9,12 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
 ## What works today (slice 1: walk together)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
-- Click to walk. The server paths you eight ways and moves you one cell a
-  tick, two when running (R).
+- Move with WASD or the arrow keys, or click where you want to go and the
+  pathfinder takes you there. Hold Shift to run, or press R to keep running.
+- Your own character moves the instant you press, whatever the ping: the
+  browser predicts it and the server confirms. Other players are drawn a
+  tenth of a second behind the server and glide between the positions it
+  sends. The camera stays on you.
 - Talk: Enter, type, Enter. Lines show over heads and in the chat dock.
 - Drop the connection and get your character back within 30 seconds.
 
@@ -43,7 +47,7 @@ npm run dev       # the client on http://localhost:5173; open it twice
 3. **Share** https://3ecas.github.io/RPG/. Until the variable is set the page
    asks for a server address; `?server=wss://…` in the URL also works.
 
-Server settings are environment variables: `PORT` (8080), `TICK_MS` (300),
+Server settings are environment variables: `PORT` (8080), `TICK_MS` (50),
 `ZONE` (greenhollow), `GRACE_MS` (30000). `GET /health` on the server port
 reports the tick and the player count.
 
@@ -61,13 +65,13 @@ npm start              # runs the built server
 | `src/types/`    | Shared types, typed content ids                             | content, type-only      |
 | `src/content/`  | The world's data: zones, tile maps, and the tables they list | types                  |
 | `src/core/`     | The content registry with its validation, the seeded RNG    | types                   |
-| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths | types                   |
+| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client | types |
 | `src/net/`      | The wire protocol: message types and the strict parser      | types, world            |
 | `src/server/`   | The zone server: the room simulation on a tick, the WebSocket adapter | everything but ui, client |
 | `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net    |
 | `src/ui/`       | The page: the shapes renderer, the shell, the join card, chat | client, net, world, types |
 | `src/main.ts`   | The entry point                                             | everything              |
-| `tests/`        | Vitest: protocol, room, server (real sockets), replica, paths, content |              |
+| `tests/`        | Vitest: protocol, room, server (real sockets), replica, motion, paths, content |         |
 
 ESLint fails the build if a layer imports something it should not.
 

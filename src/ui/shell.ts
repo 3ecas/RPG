@@ -9,6 +9,7 @@ import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
 import type { ZoneMapDef } from '@/types/content';
 import type { ZoneId } from '@/types/ids';
+import { parseMap } from '@/world/grid';
 import { escapeHtml } from './html';
 import { OnlineScene, type SceneContent } from './scene';
 
@@ -26,6 +27,7 @@ const NAME_KEY = 'rpg.online.name';
 /** Per tab, so two tabs in one browser are two characters. */
 const SESSION_KEY = 'rpg.online.session';
 const PING_MS = 5000;
+const MOVE_KEYS: ReadonlySet<string> = new Set(['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
 
 interface Session {
@@ -38,7 +40,11 @@ export class OnlineApp {
   private readonly scene: OnlineScene;
   private socket: GameSocket | null = null;
   private status: { kind: SocketStatus; detail: string } = { kind: 'closed', detail: 'Not connected' };
+  /** The run toggle (R); Shift held runs as well. */
+  private runToggled = false;
+  private shiftHeld = false;
   private running = false;
+  private readonly held = new Set<string>();
   private rtt: number | null = null;
   private lastChatLine: unknown = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -57,10 +63,10 @@ export class OnlineApp {
     this.root.innerHTML =
       '<header class="topbar"><span class="brand">Greenhollow Online</span>' +
       '<span class="chips"><span class="chip" id="on-zone">No zone yet</span><span class="chip" id="on-status">Not connected</span><span class="chip" id="on-count"></span></span>' +
-      '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R)">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
+      '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R); Shift runs while held">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage"><div class="world" id="on-world"></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click to walk, Enter to talk, R to run.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click or WASD to move, hold Shift to run, Enter to talk.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -72,8 +78,9 @@ export class OnlineApp {
       join: q('on-join'), name: q('on-name'), server: q('on-server'), hint: q('on-hint'), error: q('on-error'), joinButton: q('on-join-button'),
     };
     this.scene.mount(this.els.world);
-    this.scene.onWalk = (cell) => {
-      this.socket?.send({ t: 'move', x: cell.x, y: cell.y });
+    this.scene.onWalk = (cell) => this.replica.walkTo(cell);
+    this.replica.onInput = (msg) => {
+      this.socket?.send(msg);
     };
     q<HTMLFormElement>('on-join-form').addEventListener('submit', (event) => {
       event.preventDefault();
@@ -90,18 +97,41 @@ export class OnlineApp {
     document.addEventListener('keydown', (event) => {
       if (!this.els.join.hidden) return;
       const typing = document.activeElement === this.els.input;
-      if (event.key === 'Enter' && !typing) {
+      if (event.key === 'Shift') this.setShift(true);
+      if (typing) {
+        if (event.key === 'Escape') this.els.input.blur();
+        return;
+      }
+      if (event.key === 'Enter') {
         event.preventDefault();
         this.els.input.focus();
-      } else if (event.key === 'Escape' && typing) {
-        this.els.input.blur();
-      } else if ((event.key === 'r' || event.key === 'R') && !typing) {
+      } else if (event.key === 'r' || event.key === 'R') {
         this.toggleRun();
+      } else if (MOVE_KEYS.has(event.key)) {
+        event.preventDefault();
+        if (!event.repeat) {
+          this.held.add(event.key);
+          this.pushInput();
+        }
       }
+    });
+    document.addEventListener('keyup', (event) => {
+      if (event.key === 'Shift') this.setShift(false);
+      if (this.held.delete(event.key)) this.pushInput();
+    });
+    window.addEventListener('blur', () => {
+      this.held.clear();
+      this.setShift(false);
+      this.pushInput();
+    });
+    this.els.input.addEventListener('focus', () => {
+      this.held.clear();
+      this.pushInput();
     });
     window.addEventListener('beforeunload', () => this.socket?.close());
     (savedName && this.config.serverUrl ? this.els.joinButton : savedName ? this.els.server : this.els.name).focus();
     const loop = (now: number) => {
+      if (this.socket?.connected) this.replica.update(now);
       this.scene.frame(now);
       this.refreshBar();
       requestAnimationFrame(loop);
@@ -143,13 +173,16 @@ export class OnlineApp {
       const me = msg.entities.find((e) => e.id === msg.id);
       write(sessionStorage, SESSION_KEY, JSON.stringify({ name: me?.name ?? this.els.name.value, token: msg.token } satisfies Session));
       if (this.content.hasZone(msg.zone)) {
-        this.scene.setMap(this.content.map(msg.zone));
+        const map = this.content.map(msg.zone);
+        const grid = parseMap(map);
+        this.scene.setMap(grid, map.biome);
+        this.replica.setGrid(grid);
         this.els.zone.textContent = this.content.zone(msg.zone).name;
       }
       this.els.join.hidden = true;
       this.els.chat.hidden = false;
-      this.running = false;
-      this.els.run.textContent = 'Walking';
+      this.runToggled = false;
+      this.applyRunning(true);
       if (!this.pingTimer) this.pingTimer = setInterval(() => this.socket?.send({ t: 'ping', at: performance.now() }), PING_MS);
     } else if (msg.t === 'pong') {
       this.rtt = Math.round(performance.now() - msg.at);
@@ -177,10 +210,34 @@ export class OnlineApp {
   }
 
   private toggleRun(): void {
-    if (!this.socket?.connected) return;
-    this.running = !this.running;
-    this.els.run.textContent = this.running ? 'Running' : 'Walking';
-    this.socket.send({ t: 'run', on: this.running });
+    this.runToggled = !this.runToggled;
+    this.applyRunning();
+  }
+
+  private setShift(down: boolean): void {
+    if (this.shiftHeld === down) return;
+    this.shiftHeld = down;
+    this.applyRunning();
+  }
+
+  /** Running is the toggle or Shift held; the server and the prediction learn of a change together. */
+  private applyRunning(force = false): void {
+    const running = this.runToggled || this.shiftHeld;
+    if (running === this.running && !force) return;
+    this.running = running;
+    this.els.run.textContent = running ? 'Running' : 'Walking';
+    this.replica.setRunning(running);
+    this.socket?.send({ t: 'run', on: running });
+  }
+
+  /** The direction the held keys add up to, handed to the prediction. */
+  private pushInput(): void {
+    const axis = (minus: readonly string[], plus: readonly string[]): -1 | 0 | 1 => {
+      const m = minus.some((k) => this.held.has(k));
+      const p = plus.some((k) => this.held.has(k));
+      return m === p ? 0 : m ? -1 : 1;
+    };
+    this.replica.setInput(axis(['a', 'A', 'ArrowLeft'], ['d', 'D', 'ArrowRight']), axis(['w', 'W', 'ArrowUp'], ['s', 'S', 'ArrowDown']));
   }
 
   private appendChat(): void {

@@ -1,85 +1,150 @@
 import { describe, expect, it } from 'vitest';
-import { BUBBLE_MS, Replica } from '@/client/replica';
+import { BUBBLE_MS, type InputMessage, Replica } from '@/client/replica';
 import type { EntitySnapshot, ServerMessage } from '@/net/protocol';
+import type { ZoneMapDef } from '@/types/content';
+import { parseMap } from '@/world/grid';
+import { STEP_MS, WALK_SPEED } from '@/world/motion';
 
-const ada: EntitySnapshot = { id: 1, name: 'Ada', x: 1, y: 1, dir: 0, running: false };
-const bob: EntitySnapshot = { id: 2, name: 'Bob', x: 4, y: 4, dir: 3, running: true };
+const map: ZoneMapDef = {
+  biome: 'meadow',
+  rows: ['^^^^^^^^^^^^', '^S.........^', '^..........^', '^..........^', '^..........^', '^^^^^^^^^^^^'],
+  legend: { S: { kind: 'spawn' } },
+};
+const grid = parseMap(map);
+const PER_STEP = (WALK_SPEED * STEP_MS) / 1000;
 
-function welcome(entities: EntitySnapshot[] = [ada]): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 300, tick: 10, zone: 'greenhollow', entities };
+const ada: EntitySnapshot = { id: 1, name: 'Ada', x: 1.5, y: 1.5, dir: 0, running: false, moving: false };
+const bob: EntitySnapshot = { id: 2, name: 'Bob', x: 4.5, y: 4.5, dir: 3, running: true, moving: false };
+
+function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, seq };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
   return { t: 'tick', tick: tickNo, joined: [], left: [], moves: [], chat: [], ...part };
 }
 
-describe('replica', () => {
-  it('starts from the welcome snapshot and knows who it is', () => {
-    const r = new Replica();
-    r.apply(welcome([ada, bob]), 1000);
+function replica(entities: EntitySnapshot[] = [ada]): { r: Replica; sent: InputMessage[] } {
+  const r = new Replica();
+  const sent: InputMessage[] = [];
+  r.onInput = (m) => sent.push(m);
+  r.setGrid(grid);
+  r.apply(welcome(entities), 1000);
+  r.update(1000);
+  return { r, sent };
+}
+
+describe('replica: yourself, predicted', () => {
+  it('starts from the welcome and knows who it is', () => {
+    const { r } = replica([ada, bob]);
     expect(r.selfId).toBe(1);
-    expect(r.self?.name).toBe('Ada');
-    expect(r.zone).toBe('greenhollow');
-    expect(r.entities.size).toBe(2);
-    expect(r.positionAt(r.entities.get(2)!, 1000)).toEqual({ x: 4, y: 4, moving: false });
+    expect(r.selfEntity?.name).toBe('Ada');
+    expect([r.self.x, r.self.y]).toEqual([1.5, 1.5]);
+    expect(r.positionAt(r.entities.get(2)!, 1000)).toEqual({ x: 4.5, y: 4.5, dir: 3, moving: false });
   });
 
-  it('upserts joiners and drops leavers', () => {
+  it('moves at once while a key is held and sends one numbered input per step', () => {
+    const { r, sent } = replica();
+    r.setInput(1, 0);
+    r.update(1000 + STEP_MS * 3);
+    expect(sent.map((m) => m.seq)).toEqual([1, 2, 3]);
+    expect(sent[0]).toEqual({ t: 'input', seq: 1, dx: 1, dy: 0 });
+    expect(r.self.x).toBeCloseTo(1.5 + 3 * PER_STEP, 6);
+    expect(r.positionAt(r.selfEntity!, 1150).moving).toBe(true);
+    r.setInput(0, 0);
+    r.update(1000 + STEP_MS * 6);
+    expect(sent).toHaveLength(3); // idle: nothing to send
+  });
+
+  it('carries a click as a walk and keeps sending while the path lasts', () => {
+    const { r, sent } = replica();
+    r.walkTo({ x: 4, y: 1 });
+    r.update(1000 + STEP_MS);
+    expect(sent[0]?.to).toEqual([4, 1]);
+    expect(r.self.path.length).toBeGreaterThan(0);
+    r.update(1000 + STEP_MS * 2);
+    expect(sent[1]?.to).toBeUndefined();
+    expect(r.self.x).toBeCloseTo(1.5 + 2 * PER_STEP, 6);
+  });
+
+  it('keeps its prediction when the server agrees, and replays from the server when it does not', () => {
+    const { r } = replica();
+    r.setInput(1, 0);
+    for (let i = 1; i <= 4; i++) r.update(1000 + STEP_MS * i); // inputs 1..4 predicted, one per step
+    const predicted = r.self.x;
+    r.apply(tick(101, { moves: [[1, 1.7, 1.5, 2, 1, 1]] }), 1200); // the server agrees about input 1
+    expect(r.self.x).toBeCloseTo(predicted, 6);
+    expect(r.positionAt(r.selfEntity!, 1200).x).toBeCloseTo(predicted, 6);
+    // The server put us somewhere else for input 2: we take its word and replay 3 and 4 on top, hiding the jump at first.
+    r.apply(tick(102, { moves: [[1, 2.5, 2.5, 2, 1, 2]] }), 1250);
+    expect(r.self.x).toBeCloseTo(2.5 + 2 * PER_STEP, 6);
+    expect(r.self.y).toBe(2.5);
+    const shown = r.positionAt(r.selfEntity!, 1250);
+    expect(shown.x).toBeCloseTo(predicted, 6); // still drawn where it was, for now
+    r.update(1250 + 1000);
+    expect(r.positionAt(r.selfEntity!, 2250).x).toBeCloseTo(r.self.x, 2); // the offset has faded out
+  });
+
+  it('takes the server position while idle and continues the input numbers it was given', () => {
     const r = new Replica();
-    r.apply(welcome(), 1000);
-    r.apply(tick(11, { joined: [bob] }), 1300);
+    r.setGrid(grid);
+    r.apply(welcome([ada], 41), 1000);
+    r.apply(tick(101, { moves: [[1, 3.5, 3.5, 1, 0, 41]] }), 1050);
+    expect([r.self.x, r.self.y, r.self.dir]).toEqual([3.5, 3.5, 1]);
+    const sent: InputMessage[] = [];
+    r.onInput = (m) => sent.push(m);
+    r.update(1050);
+    r.setInput(0, 1);
+    r.update(1050 + STEP_MS);
+    expect(sent[0]?.seq).toBe(42);
+  });
+
+  it('does not burst inputs after a long pause', () => {
+    const { r, sent } = replica();
+    r.setInput(1, 0);
+    r.update(1000 + 5000);
+    expect(sent.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('replica: others, interpolated', () => {
+  it('upserts joiners, drops leavers and interpolates between the states the server sent', () => {
+    const { r } = replica();
+    r.apply(tick(101, { joined: [bob] }), 1050);
     expect(r.entities.get(2)?.name).toBe('Bob');
-    r.apply(tick(12, { joined: [bob] }), 1600); // a repeat announcement is harmless
+    r.apply(tick(102, { joined: [bob] }), 1100); // a repeat announcement is harmless
     expect(r.entities.size).toBe(2);
-    r.apply(tick(13, { left: [2] }), 1900);
+    const e = r.entities.get(2)!;
+    r.apply(tick(103, { moves: [[2, 5.5, 4.5, 2, 1, 7]] }), 1150);
+    r.apply(tick(104, { moves: [[2, 6.5, 4.5, 2, 1, 8]] }), 1200);
+    // The clock: tick 100 arrived at 1000, so tick t shows at 1000 + (t - 100) × 50, two ticks later.
+    expect(r.renderTick(1200)).toBeCloseTo(102, 6);
+    expect(r.positionAt(e, 1200)).toEqual({ x: 5, y: 4.5, dir: 2, moving: true }); // tick 102: halfway from where it joined (101) to its first move (103)
+    expect(r.positionAt(e, 1275).x).toBeCloseTo(6, 6); // halfway between ticks 103 and 104
+    expect(r.positionAt(e, 1275).moving).toBe(true);
+    expect(r.positionAt(e, 1500)).toEqual({ x: 6.5, y: 4.5, dir: 2, moving: false }); // beyond the last state: held, standing
+    r.apply(tick(105, { left: [2] }), 1250);
     expect(r.entities.has(2)).toBe(false);
   });
 
-  it('plays a tick one playback delay after arrival and interpolates through its steps', () => {
-    const r = new Replica();
-    r.apply(welcome(), 1000); // delay = 150: tick 10 shows at 1150, tick 11 at 1450
-    r.apply(tick(11, { moves: [{ id: 1, steps: [[2, 1]], dir: 2 }] }), 1300);
-    const e = r.entities.get(1)!;
-    expect([e.x, e.y, e.dir]).toEqual([2, 1, 2]);
-    expect(r.positionAt(e, 1400)).toEqual({ x: 1, y: 1, moving: false }); // not yet
-    expect(r.positionAt(e, 1600)).toEqual({ x: 1.5, y: 1, moving: true }); // halfway through the tick
-    expect(r.positionAt(e, 1800)).toEqual({ x: 2, y: 1, moving: false });
+  it('shows the freshest state the line allows: an early arrival moves the clock, a late one barely', () => {
+    const { r } = replica([ada, bob]);
+    r.apply(tick(101, { moves: [[2, 5.5, 4.5, 2, 1, 1]] }), 1030); // 20 ms early
+    expect(r.renderTick(1030)).toBeCloseTo(99, 6);
+    r.apply(tick(102, { moves: [[2, 6.5, 4.5, 2, 1, 2]] }), 1300); // 220 ms late
+    expect(r.renderTick(1300)).toBeGreaterThan(104); // the clock did not jump back to hide the late packet
   });
+});
 
-  it('walks two cells in one tick when running, each over half the tick', () => {
-    const r = new Replica();
-    r.apply(welcome(), 1000);
-    r.apply(tick(11, { moves: [{ id: 1, steps: [[2, 2], [3, 3]], dir: 2 }] }), 1300); // shows at 1450
-    const e = r.entities.get(1)!;
-    expect(r.positionAt(e, 1525)).toEqual({ x: 1.5, y: 1.5, moving: true }); // a quarter in: half of the first step
-    expect(r.positionAt(e, 1600)).toEqual({ x: 2, y: 2, moving: true });
-    expect(r.positionAt(e, 1675)).toEqual({ x: 2.5, y: 2.5, moving: true });
-  });
-
-  it('shifts its clock when a tick arrives late and pulls back when it runs far ahead', () => {
-    const r = new Replica();
-    r.apply(welcome(), 1000);
-    // Tick 11 is due at 1450 but arrives at 1700: it plays at once, and tick 12 follows one tick later.
-    r.apply(tick(11, { moves: [{ id: 1, steps: [[2, 1]], dir: 2 }] }), 1700);
-    const e = r.entities.get(1)!;
-    expect(e.moveAt).toBe(1700);
-    r.apply(tick(12, { moves: [{ id: 1, steps: [[3, 1]], dir: 2 }] }), 1750);
-    expect(e.moveAt).toBe(2000);
-    // After a stall the server's catch-up burst arrives early: never schedule more than tickMs + delay ahead.
-    r.apply(tick(13, { moves: [{ id: 1, steps: [[4, 1]], dir: 2 }] }), 1760);
-    expect(e.moveAt).toBe(1760 + 300 + 150);
-  });
-
-  it('keeps a chat log with names and shows bubbles for a while', () => {
-    const r = new Replica();
-    r.apply(welcome([ada, bob]), 1000);
-    r.apply(tick(11, { chat: [{ id: 2, text: 'hi' }, { id: 1, text: 'hello' }] }), 1300); // shows at 1450
+describe('replica: chat', () => {
+  it('keeps a log with names and shows bubbles for a while', () => {
+    const { r } = replica([ada, bob]);
+    r.apply(tick(101, { chat: [{ id: 2, text: 'hi' }, { id: 1, text: 'hello' }] }), 1300);
     expect(r.chat.map((c) => `${c.name}: ${c.text}`)).toEqual(['Bob: hi', 'Ada: hello']);
-    expect(r.bubbles(1400)).toEqual([]); // not shown yet
-    expect(r.bubbles(1500).map((b) => b.id).sort()).toEqual([1, 2]);
-    r.apply(tick(12, { chat: [{ id: 2, text: 'again' }] }), 1600); // shows at 1750
-    expect(r.bubbles(1800).find((b) => b.id === 2)?.text).toBe('again'); // only the latest per speaker
-    expect(r.bubbles(1450 + BUBBLE_MS + 1).map((b) => b.id)).toEqual([2]);
-    expect(r.bubbles(1750 + BUBBLE_MS + 1)).toEqual([]);
+    expect(r.bubbles(1300).map((b) => b.id).sort()).toEqual([1, 2]);
+    r.apply(tick(102, { chat: [{ id: 2, text: 'again' }] }), 1600);
+    expect(r.bubbles(1700).find((b) => b.id === 2)?.text).toBe('again');
+    expect(r.bubbles(1300 + BUBBLE_MS + 1).map((b) => b.id)).toEqual([2]);
+    expect(r.bubbles(1600 + BUBBLE_MS + 1)).toEqual([]);
   });
 });
