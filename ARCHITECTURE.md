@@ -1,5 +1,9 @@
 # Browser RPG – Architecture
 
+> This document describes the code as it stands: the single-player game.
+> The game's direction, a RuneScape-like MMO, lives in [DESIGN.md](DESIGN.md);
+> §12 there lists what below is slated to go.
+
 A text-based, single-player, idle-leaning RPG that runs entirely in the browser.
 No graphics: the UI is a set of panels (skills, inventory, journal, crafting,
 shops, combat log, …). Every game *rule* lives in plain TypeScript modules that

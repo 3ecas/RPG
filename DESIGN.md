@@ -1,0 +1,212 @@
+# Greenhollow Online – Design
+
+What the game is becoming: a small, RuneScape-like MMO in the browser. Top-down
+pixel art, point and click, one shared world, skills that grow by use. This
+document is the *what*; [ARCHITECTURE.md](ARCHITECTURE.md) is the *how* and
+describes the code as it stands. When they disagree, this one is the intent.
+
+The single-player idle game that exists today is the seed: its content, rules,
+maps and renderer carry over. Its idle-game shape does not (see §12).
+
+---
+
+## 1. Three decisions that are hard to reverse
+
+| Decision | Choice | Why |
+|---|---|---|
+| Grid | Square tiles, eight-direction movement, diagonals cost the same as straight steps | What RuneScape does. Hexes buy equal neighbours but fight pixel-art tilesets, rectangular buildings and four-way sprites; with click-to-move nobody sees the grid anyway. |
+| Time | One fixed server tick; every duration in the game is a count of ticks | A step, a swing, a mining roll, a respawn: all resolve on the tick. The tick is also the network update rate, and one-tick-behind rendering needs no prediction. |
+| Play | Active, never idle | Activities stop at logout and nothing is simulated while you are away. This is what makes the bank loop and a shared economy work, and the server only runs online players. |
+
+Everything else below can change with experience. These three are baked into
+every tile, every number and every message.
+
+## 2. The rules that make the feel
+
+- **One action at a time, on the tick.** Clicking elsewhere cancels. The current
+  single-activity model already works like this; movement joins it.
+- **Server authority.** The server owns every position, roll and item. The
+  browser renders a replica and sends intents: walk here, use that, say this.
+- **Small bag, non-stackable items, a bank.** Ore takes a slot each; only coins
+  and a few designated things stack. The loop is fill the bag, walk to the bank,
+  deposit, walk back. This single rule creates pacing, makes map layout matter
+  and caps what one player can produce.
+- **Shared, depletable resources.** A rock empties when you succeed and respawns
+  on a timer, for everyone. Fishing spots and trees can stay infinite.
+- **Right-click menus and examine text.** Left click does the default action;
+  right click lists Walk here, Attack, Talk, Examine.
+- **Single-combat lock.** The first player to hit a monster owns it until a few
+  ticks after their last hit. Loot attribution solved with one rule.
+- **Players never block tiles.** Monsters and NPCs do.
+- **Walking, not teleporting.** Distance is content. No fast travel.
+- **Death costs something.** Keep your three most valuable items; the rest
+  drops where you fell.
+- **Trade window before any market.** Face-to-face trading and chat over heads
+  are the social glue. An exchange is a later feature.
+- **Skills level by doing.** A ding every few minutes early on.
+- **Ground items have an owner, then everyone, then nothing.** A dropped item is
+  visible only to its owner first, then to all, then it vanishes.
+
+## 3. Defaults
+
+Starting values. Expect to tune them after the first playable slice.
+
+| Setting | Default |
+|---|---|
+| Server tick | 300 ms |
+| Walk / run | 1 / 2 tiles per tick |
+| Bag | 28 slots |
+| Skill levels | 1 to 99 |
+| Tier bands start at level | 1, 15, 30, 50, 70, 85 |
+| Dropped item visible to others after | 60 s; gone after 180 s |
+| Reconnect grace after a dropped connection | 30 s |
+| Zone map size | 40 × 24 today; mainland maps may grow |
+
+## 4. Skills and progression
+
+- Fifteen skills stay. Each has a level from 1 to 99 on a steep xp curve.
+- The six material tiers stay as the content ladder (bronze → iron → steel →
+  mithril → adamant → rune, and the same for wood, fish, crops, herbs, hides).
+  A tier is a **level band**, which is literally the RuneScape metal ladder.
+  Content keeps its tier numbers; only the xp formula and the skills panel
+  change.
+- **Tools replace perks.** Gather speed comes from the pickaxe or axe you hold,
+  by tier, so speed is crafted and can be lost.
+- **The progression tree goes.** Zones open by walking, with danger and quests
+  as the gates. Features it granted (dual wield, auto-eat, the market) become
+  quest rewards or plain features.
+
+## 5. Items, bag, bank, ground
+
+- `ItemStack { itemId, qty }` stays as the storage shape; `stackable` becomes
+  an item flag that is false for almost everything.
+- The bag has 28 slots. The bank has many, with deposit-all and withdraw-x.
+  Every town has a bank; the tutorial island has one.
+- Ground items live in the zone state with an owner id and two timers.
+- Per-instance data (enchantments, charges) is not needed yet.
+
+## 6. Combat
+
+- Auto-attack on the tick, both sides, as today. Weapon skills, Armor, Shields
+  and Vitality keep being trained by use.
+- Monsters are entities in the zone with shared hit points, a spawn point, a
+  respawn timer and the single-combat lock. Combat targets an entity id, never
+  a monster type.
+- Aggressive monsters attack low-level players who come near.
+- Hit splats, an hp bar over the fight, food heals on click.
+- Death: keep the three most valuable items, drop the rest at the spot,
+  respawn in the starting town. PvE only.
+
+## 7. World
+
+- A zone is a map and a room: one simulation, everyone in it sees everyone.
+  Zones are joined by edge exits; the transition is a fade while walking, not
+  a loading screen. No fast travel; the world map only shows where you are.
+- Positions, facing and paths are server state. The map format (rows and a
+  legend) stays, and the registry keeps refusing a map that forgets something
+  its zone lists.
+- The tutorial island is one zone; the starting town is the next.
+
+## 8. Social and safety
+
+Chat over heads plus a docked chatbox (zone, later global and whisper). Unique
+character names. Mute, ban, report, and a rate limit on every message type.
+These ship with the first town, not later: the first abusive player arrives
+with the first handful of real ones.
+
+## 9. Economy
+
+- Shops: fixed prices, finite stock, restock timers. Whether stock is shared
+  and contested or per-player is decided with the first town; default shared.
+- No simulated market. Player trading starts with the trade window. An
+  exchange or market board comes much later, if ever.
+- Gold needs sinks from the start: shop prices, repairs or death.
+
+## 10. UI and art
+
+- **Chrome:** a fixed right panel with tabs for bag, gear, skills and quests, a
+  docked chatbox, right-click menus. The bag is always visible. Draggable
+  windows remain for bank, shop and crafting dialogs.
+- **Art:** 16-pixel tiles, integer scaling, the canvas renderer and the
+  text-defined sprites stay. Player sprites get taller than a tile so gear
+  reads, and equipment is drawn in layers (body, legs, torso, head, weapon,
+  shield) with one drawing per item kind and a tint per tier.
+
+## 11. Tutorial island, first pass
+
+One map. A path loops the island with a guide at each stop and a gate that
+opens for you alone once the stop is done; others see you walk through what
+looks closed to them. Shared, not instanced: seeing other newcomers is the
+first proof it is an MMO, and with no trade or PvP there is nothing to grief.
+Target 15 to 20 minutes, skippable on later characters.
+
+| Stop | Teaches | Already in the content |
+|---|---|---|
+| Guide | Walk, click, right-click, examine, talk | yes |
+| Survival expert | Chop a tree, light a fire, fish shrimp, cook them | all but firemaking |
+| Quest guide | The journal and a one-step quest | yes (missions) |
+| Mining instructor | Mine copper and tin, smelt bronze, smith a dagger | yes |
+| Combat instructor | Equip the dagger, kill a rat, eat when hurt | yes |
+| Banker and shopkeeper | Deposit, withdraw, buy a thing | bank is new |
+| Boat | Lands you in the starting town | – |
+
+Every verb in the game appears exactly once, and nothing is taught that the
+town does not need right away. The starting town after it: a bank, a general
+store, a mine, a forest, a fishing spot, a few monsters, one real quest.
+
+## 12. What goes and what stays
+
+**Delete (idle-game shape):** offline catch-up and the 12-hour cap; the
+progression tree and its perks; the simulated market; fast travel to visited
+zones; stacking for most items; millisecond durations in content, replaced by
+tick counts; client-side movement and client-side monsters; `localStorage`
+as the save.
+
+**Keep:** the content tables and their boot-time validation; typed ids; the
+systems as pure functions over plain state; the seeded RNG; the map format,
+grid and pathfinding; the canvas renderer, text sprites, palettes and icons;
+the window system for dialogs; the tests and the layer boundaries.
+
+## 13. Build order
+
+Each step is playable or demonstrable on its own. Status in the last column.
+
+| # | Slice | Proves | Status |
+|---|---|---|---|
+| 0 | This document | The design does not drift | done |
+| 1 | **Walk together**: one zone room on the tick, join with a name, click to walk, see each other move, chat over heads, reconnect | The tick feels right, one-tick-behind rendering is acceptable, the protocol shape, hosting | in progress |
+| 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, a character row in the database | Durations as ticks, shared nodes, item replication, persistence | |
+| 3 | Mining, smelting, smithing, fishing, cooking, firemaking the same way | Nothing new, breadth | |
+| 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
+| 5 | Accounts, names, chat channels, mute and ban, rate limits | Safety | |
+| 6 | Tutorial island map and guides, the starting town, the first quest | Onboarding | |
+| 7 | Trade window, shops, gold sinks | Economy | |
+| 8 | Version handshake, metrics, backups, deploy pipeline | Operations | |
+
+Do not convert the single-player game to the new rules first. Port each system
+onto the server once, in the order above, so nothing is rewritten twice. The
+single-player build keeps deploying from `main` until the online client is
+the better game.
+
+## 14. Not now
+
+Classes, free movement, physics, magic and prayer, PvP, guilds, an exchange,
+instancing, zone sharding, binary protocol, mobile layout.
+
+## 15. Technical foundations (summary)
+
+- **Server:** Node, TypeScript, one process, one room per zone, a drift-corrected
+  tick loop. The room is a pure simulation with the socket layer as a thin
+  adapter, so it runs headless in tests.
+- **Protocol:** JSON over WebSocket, typed as discriminated unions shared by
+  client and server. The client sends intents; the server sends a full
+  snapshot on join and a delta every tick. Every inbound message is parsed
+  against the schema and rate limited; nothing from the client is trusted.
+- **Client:** a replica of the zone that applies deltas on its own tick
+  clock, one tick behind, and interpolates. The same canvas renderer draws it.
+- **Persistence (slice 2):** Postgres, one JSON document per character written
+  through the existing serialize / sanitize / migrate code; relational tables
+  only for what must be queried across players.
+- **Hosting:** the client stays static (GitHub Pages); the server is one
+  container with a managed database. Protocol and content versions travel in
+  the handshake so stale clients reload.

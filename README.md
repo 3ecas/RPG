@@ -7,6 +7,10 @@ stations, shops, the market, traders, a progression tree, log and settings.
 It saves to `localStorage` and simulates up to 12 hours of progress while the
 tab is closed.
 
+> **Where this is going:** the game is being turned into a small
+> RuneScape-like MMO. [DESIGN.md](DESIGN.md) holds the agreed design and the
+> build order; this README describes the single-player game that exists today.
+
 ## Run it
 
 ```bash
