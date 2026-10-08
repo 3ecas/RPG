@@ -2,14 +2,17 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
-const noUi = { group: ['**/ui/**', '@/ui/**'], message: 'Game logic must not import the UI layer.' };
-const noSystems = { group: ['**/systems/**', '@/systems/**'], message: 'This layer must not import systems.' };
+const noUi = { group: ['**/ui/**', '@/ui/**'], message: 'Only the page entry imports the UI layer.' };
+const noServer = { group: ['**/server/**', '@/server/**'], message: 'Only the server imports server code.' };
+const noClient = { group: ['**/client/**', '@/client/**'], message: 'Only the UI imports the client layer.' };
 const noCore = { group: ['**/core/**', '@/core/**'], message: 'This layer must not import core.' };
 const noContent = { group: ['**/content/**', '@/content/**'], message: 'This layer must not import content.' };
-const noGame = { group: ['**/game', '@/game', '../game', './game'], message: 'Only the UI and main.ts may import the Game facade.' };
+const noNet = { group: ['**/net/**', '@/net/**'], message: 'This layer must not import the protocol.' };
+const noWorld = { group: ['**/world/**', '@/world/**'], message: 'This layer must not import the world model.' };
+const browserGlobals = ['document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'];
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'dist-server/**', 'node_modules/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -19,65 +22,59 @@ export default tseslint.config(
     },
   },
   {
-    // Game rules: no DOM, no UI, no facade.
-    files: ['src/systems/**', 'src/core/**', 'src/content/**', 'src/types/**'],
+    // Shared types: nothing below them, except type-only imports of the content tables to derive the id unions.
+    files: ['src/types/**'],
     rules: {
-      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noClient, noCore, noNet, noWorld] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
     },
-  },
-  {
-    files: ['src/systems/**'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [noUi, noGame] }] },
   },
   {
     // Content is data: only types (and other content) allowed.
     files: ['src/content/**'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noGame] }] },
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noClient, noCore, noNet, noWorld] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
+    },
   },
   {
-    // Core is generic plumbing: it may not know about rules or content.
+    // Core is generic plumbing (the content registry, the seeded RNG): types only.
     files: ['src/core/**'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noContent, noGame] }] },
-  },
-  {
-    files: ['src/types/**'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noGame] }] },
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noClient, noContent, noNet, noWorld] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
+    },
   },
   {
     // The world model is pure geometry over map content: types only, no DOM.
     files: ['src/world/**'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
-      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noClient, noCore, noContent, noNet] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
     },
-  },
-  {
-    // The UI reads state and calls the facade; it never reaches into systems.
-    files: ['src/ui/**'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [noSystems, noCore] }] },
   },
   {
     // The wire protocol is shared by browser and server: types and world geometry only, no DOM.
     files: ['src/net/**'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
-      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noClient, noCore, noContent] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
     },
   },
   {
     // The client replica and socket feed the UI but are not DOM code themselves.
     files: ['src/client/**'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [noUi, noSystems, noCore, noContent, noGame] }],
-      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+      'no-restricted-imports': ['error', { patterns: [noUi, noServer, noCore, noContent] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
     },
   },
   {
-    // The server runs rules and moves messages; it never touches the UI or the browser.
+    // The server runs the rules and moves messages; it never touches the browser.
     files: ['src/server/**'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [noUi, noGame] }],
-      'no-restricted-globals': ['error', 'document', 'window', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'alert'],
+      'no-restricted-imports': ['error', { patterns: [noUi, noClient] }],
+      'no-restricted-globals': ['error', ...browserGlobals],
     },
   },
   {
@@ -86,8 +83,8 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
-    // core/storage.ts and core/loop.ts are the only browser-API adapters.
-    files: ['src/core/storage.ts', 'src/core/loop.ts'],
-    rules: { 'no-restricted-globals': 'off' },
+    // The UI draws the replica and sends intents; content reaches it through an injected interface.
+    files: ['src/ui/**'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [noServer, noCore, noContent] }] },
   },
 );

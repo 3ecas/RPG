@@ -1,5 +1,8 @@
-# Builds the game and deploys it to GitHub Pages on every push to main.
+# Builds the client and deploys it to GitHub Pages on every push to main.
 # The site is the single self-contained dist/index.html produced by `npm run build`.
+# The page needs a zone server to talk to: set the repository variable SERVER_URL
+# (Settings -> Secrets and variables -> Actions -> Variables) to its wss:// address
+# and it is baked into the page at build time.
 name: Deploy to GitHub Pages
 
 on:
@@ -42,6 +45,8 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+        env:
+          VITE_SERVER_URL: ${{ vars.SERVER_URL }}
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

@@ -127,10 +127,12 @@ with the first handful of real ones.
 - **Chrome:** a fixed right panel with tabs for bag, gear, skills and quests, a
   docked chatbox, right-click menus. The bag is always visible. Draggable
   windows remain for bank, shop and crafting dialogs.
-- **Art:** 16-pixel tiles, integer scaling, the canvas renderer and the
-  text-defined sprites stay. Player sprites get taller than a tile so gear
-  reads, and equipment is drawn in layers (body, legs, torso, head, weapon,
-  shield) with one drawing per item kind and a tint per tier.
+- **Art:** simple shapes for now: flat tiles, discs for people, boxes and
+  circles for what stands on the map. The renderer is one file, so pixel art
+  can replace it once the mechanics are in. When it does: 16-pixel tiles,
+  integer scaling, player sprites taller than a tile so gear reads, equipment
+  drawn in layers (body, legs, torso, head, weapon, shield) with one drawing
+  per item kind and a tint per tier.
 
 ## 11. Tutorial island, first pass
 
@@ -156,16 +158,16 @@ store, a mine, a forest, a fishing spot, a few monsters, one real quest.
 
 ## 12. What goes and what stays
 
-**Delete (idle-game shape):** offline catch-up and the 12-hour cap; the
-progression tree and its perks; the simulated market; fast travel to visited
-zones; stacking for most items; millisecond durations in content, replaced by
-tick counts; client-side movement and client-side monsters; `localStorage`
-as the save.
+**Deleted (done):** the single-player game: its systems, save and offline
+catch-up, the progression tree, the simulated market, fast travel, the
+panels and windows, client-side movement and monsters, the pixel-art
+sprites and icons. The content tables (items, recipes, monsters, quests…)
+still exist as data and are reshaped slice by slice; millisecond durations
+in them become tick counts as each system is ported.
 
-**Keep:** the content tables and their boot-time validation; typed ids; the
-systems as pure functions over plain state; the seeded RNG; the map format,
-grid and pathfinding; the canvas renderer, text sprites, palettes and icons;
-the window system for dialogs; the tests and the layer boundaries.
+**Kept:** the content tables and their boot-time validation; typed ids; the
+seeded RNG; the map format, grid and pathfinding; the tests and the layer
+boundaries.
 
 ## 13. Build order
 
@@ -174,7 +176,7 @@ Each step is playable or demonstrable on its own. Status in the last column.
 | # | Slice | Proves | Status |
 |---|---|---|---|
 | 0 | This document | The design does not drift | done |
-| 1 | **Walk together**: one zone room on the tick, join with a name, click to walk, see each other move, chat over heads, reconnect | The tick feels right, one-tick-behind rendering is acceptable, the protocol shape, hosting | in progress |
+| 1 | **Walk together**: one zone room on the tick, join with a name, click to walk, see each other move, chat over heads, reconnect; the idle game removed, the world drawn with simple shapes, the Pages client pointed at a hosted server | The tick feels right, one-tick-behind rendering is acceptable, the protocol shape, hosting | done |
 | 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, a character row in the database | Durations as ticks, shared nodes, item replication, persistence | |
 | 3 | Mining, smelting, smithing, fishing, cooking, firemaking the same way | Nothing new, breadth | |
 | 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
@@ -183,10 +185,9 @@ Each step is playable or demonstrable on its own. Status in the last column.
 | 7 | Trade window, shops, gold sinks | Economy | |
 | 8 | Version handshake, metrics, backups, deploy pipeline | Operations | |
 
-Do not convert the single-player game to the new rules first. Port each system
-onto the server once, in the order above, so nothing is rewritten twice. The
-single-player build keeps deploying from `main` until the online client is
-the better game.
+Port each system onto the server once, in the order above, so nothing is
+written twice. The single-player game is gone; `main` deploys the online
+client.
 
 ## 14. Not now
 
@@ -207,6 +208,9 @@ instancing, zone sharding, binary protocol, mobile layout.
 - **Persistence (slice 2):** Postgres, one JSON document per character written
   through the existing serialize / sanitize / migrate code; relational tables
   only for what must be queried across players.
-- **Hosting:** the client stays static (GitHub Pages); the server is one
-  container with a managed database. Protocol and content versions travel in
-  the handshake so stale clients reload.
+- **Hosting:** the client stays static (GitHub Pages, which bakes the
+  server's address in from the `SERVER_URL` repository variable); the server
+  is one Node process on any host (`render.yaml` for Render's free tier, a
+  `Dockerfile` for everything else), later with a managed database. The
+  protocol version travels in the handshake so stale clients are told to
+  reload.

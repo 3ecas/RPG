@@ -1,15 +1,15 @@
 /**
- * The online client's page: a top bar with the zone, the connection and who
- * is here, the world canvas, a docked chat, and the join card that asks for a
- * name. Wires the socket to the replica and the replica to the scene; holds
- * no rule.
+ * The page: a top bar with the zone, the connection and who is here, the
+ * world canvas, a docked chat, and the join card that asks for a name and
+ * knows where the server is. Wires the socket to the replica and the replica
+ * to the scene; holds no rule.
  */
 import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
 import type { ZoneMapDef } from '@/types/content';
 import type { ZoneId } from '@/types/ids';
-import { escapeHtml } from '../html';
+import { escapeHtml } from './html';
 import { OnlineScene, type SceneContent } from './scene';
 
 export interface OnlineContent extends SceneContent {
@@ -18,6 +18,7 @@ export interface OnlineContent extends SceneContent {
 }
 
 export interface OnlineConfig {
+  /** Where the zone server is; empty when this page was built without one and the URL names none. */
   serverUrl: string;
 }
 
@@ -25,6 +26,7 @@ const NAME_KEY = 'rpg.online.name';
 /** Per tab, so two tabs in one browser are two characters. */
 const SESSION_KEY = 'rpg.online.session';
 const PING_MS = 5000;
+const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
 
 interface Session {
   name: string;
@@ -43,7 +45,7 @@ export class OnlineApp {
   private els!: {
     zone: HTMLElement; status: HTMLElement; count: HTMLElement; tick: HTMLElement; run: HTMLButtonElement;
     world: HTMLElement; chat: HTMLElement; log: HTMLElement; input: HTMLInputElement;
-    join: HTMLElement; name: HTMLInputElement; server: HTMLInputElement; error: HTMLElement; joinButton: HTMLButtonElement;
+    join: HTMLElement; name: HTMLInputElement; server: HTMLInputElement; hint: HTMLElement; error: HTMLElement; joinButton: HTMLButtonElement;
   };
 
   constructor(private readonly root: HTMLElement, private readonly content: OnlineContent, private readonly config: OnlineConfig) {
@@ -55,18 +57,19 @@ export class OnlineApp {
     this.root.innerHTML =
       '<header class="topbar"><span class="brand">Greenhollow Online</span>' +
       '<span class="chips"><span class="chip" id="on-zone">No zone yet</span><span class="chip" id="on-status">Not connected</span><span class="chip" id="on-count"></span></span>' +
-      '<span class="now idle"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R)">Walking</button><span class="saved" id="on-tick"></span></span></header>' +
+      '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R)">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage"><div class="world" id="on-world"></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">The first multiplayer slice: walk a zone together and talk. Pick a name; others will see it over your head.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click to walk, Enter to talk, R to run.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
-      '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '"></label>' +
+      '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
+      '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
       '<div class="join-error" id="on-error"></div><button class="menu-btn join-button" id="on-join-button" type="submit">Enter the world</button></form></div></main>';
     const q = <T extends Element>(id: string) => this.root.querySelector<T>(`#${id}`)!;
     this.els = {
       zone: q('on-zone'), status: q('on-status'), count: q('on-count'), tick: q('on-tick'), run: q('on-run'),
       world: q('on-world'), chat: q('on-chat'), log: q('on-log'), input: q('on-chat-input'),
-      join: q('on-join'), name: q('on-name'), server: q('on-server'), error: q('on-error'), joinButton: q('on-join-button'),
+      join: q('on-join'), name: q('on-name'), server: q('on-server'), hint: q('on-hint'), error: q('on-error'), joinButton: q('on-join-button'),
     };
     this.scene.mount(this.els.world);
     this.scene.onWalk = (cell) => {
@@ -78,14 +81,14 @@ export class OnlineApp {
     });
     q<HTMLFormElement>('on-chat-form').addEventListener('submit', (event) => {
       event.preventDefault();
-      const text = this.els.input.value.trim();
+      const line = this.els.input.value.trim();
       this.els.input.value = '';
-      if (text) this.socket?.send({ t: 'chat', text });
+      if (line) this.socket?.send({ t: 'chat', text: line });
       else this.els.input.blur();
     });
     this.els.run.addEventListener('click', () => this.toggleRun());
     document.addEventListener('keydown', (event) => {
-      if (this.els.join.hidden === false) return;
+      if (!this.els.join.hidden) return;
       const typing = document.activeElement === this.els.input;
       if (event.key === 'Enter' && !typing) {
         event.preventDefault();
@@ -97,7 +100,7 @@ export class OnlineApp {
       }
     });
     window.addEventListener('beforeunload', () => this.socket?.close());
-    (savedName ? this.els.joinButton : this.els.name).focus();
+    (savedName && this.config.serverUrl ? this.els.joinButton : savedName ? this.els.server : this.els.name).focus();
     const loop = (now: number) => {
       this.scene.frame(now);
       this.refreshBar();
@@ -112,8 +115,13 @@ export class OnlineApp {
       this.showError(`A name is ${LIMITS.NAME_MIN} to ${LIMITS.NAME_MAX} characters: letters, digits and spaces, starting with a letter.`);
       return;
     }
-    if (!/^wss?:\/\//.test(serverUrl)) {
-      this.showError('The server address must start with ws:// or wss://.');
+    if (!/^wss?:\/\/\S+$/.test(serverUrl)) {
+      this.showError(serverUrl ? 'The server address must start with ws:// or wss://.' : 'Enter the address of a zone server first.');
+      this.els.hint.hidden = false;
+      return;
+    }
+    if (location.protocol === 'https:' && serverUrl.startsWith('ws://')) {
+      this.showError('This page is served over https, so the server address has to be wss://.');
       return;
     }
     write(localStorage, NAME_KEY, name);
@@ -132,7 +140,8 @@ export class OnlineApp {
 
   private onMessage(msg: ServerMessage, now: number): void {
     if (msg.t === 'welcome') {
-      write(sessionStorage, SESSION_KEY, JSON.stringify({ name: this.replicaNameFor(msg), token: msg.token } satisfies Session));
+      const me = msg.entities.find((e) => e.id === msg.id);
+      write(sessionStorage, SESSION_KEY, JSON.stringify({ name: me?.name ?? this.els.name.value, token: msg.token } satisfies Session));
       if (this.content.hasZone(msg.zone)) {
         this.scene.setMap(this.content.map(msg.zone));
         this.els.zone.textContent = this.content.zone(msg.zone).name;
@@ -158,16 +167,12 @@ export class OnlineApp {
     if (msg.t === 'tick' && msg.chat.length > 0) this.appendChat();
   }
 
-  private replicaNameFor(msg: Extract<ServerMessage, { t: 'welcome' }>): string {
-    return msg.entities.find((e) => e.id === msg.id)?.name ?? this.els.name.value;
-  }
-
   private onStatus(kind: SocketStatus, detail: string): void {
     this.status = { kind, detail };
-    if (kind === 'closed' && this.els.join.hidden === false) {
+    if (kind === 'closed' && !this.els.join.hidden) {
       this.els.joinButton.disabled = false;
       this.els.joinButton.textContent = 'Enter the world';
-      this.showError(`Could not connect: ${detail}. Is the server running?`);
+      this.showError(`Could not connect: ${detail}. Is the server running at that address?`);
     }
   }
 
@@ -205,8 +210,8 @@ export class OnlineApp {
     if (this.els.tick.textContent !== tick) this.els.tick.textContent = tick;
   }
 
-  private showError(text: string): void {
-    this.els.error.textContent = text;
+  private showError(message: string): void {
+    this.els.error.textContent = message;
   }
 }
 

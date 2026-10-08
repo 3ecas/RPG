@@ -4,24 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Greenhollow – Idle RPG</title>
+    <title>Greenhollow Online</title>
     <link rel="stylesheet" href="./styles/main.css" />
   </head>
   <body>
     <div id="app" class="app">
       <!-- Replaced by the game as soon as the script runs. If you can read this in the browser, the script did not run. -->
-      <div class="boot" style="padding: 40px; max-width: 640px; font-family: system-ui, sans-serif; line-height: 1.5">
-        <h1 style="margin: 0 0 8px">Greenhollow</h1>
-        <p>The game has not started. This file needs to be served by Vite, or built first: browsers cannot run the TypeScript source directly.</p>
-        <p>From the project folder run one of:</p>
-        <pre style="background: #23272f; padding: 12px; border-radius: 8px">npm install
-npm run dev        # then open http://localhost:5173
+      <div class="boot">
+        <h1>Greenhollow Online</h1>
+        <p>The page has not started. Browsers cannot run the TypeScript source directly: serve it with the dev server, or build it first.</p>
+        <pre>npm install
+npm run server     # the zone server on ws://localhost:8080
+npm run dev        # the client on http://localhost:5173
 
-npm run build      # then double-click dist/index.html</pre>
+npm run build      # or build dist/index.html and host it anywhere</pre>
         <noscript><p><strong>JavaScript is disabled.</strong> The game needs it.</p></noscript>
       </div>
     </div>
-    <div id="toasts" class="toasts"></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

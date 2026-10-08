@@ -1,0 +1,17 @@
+# One-click hosting of the zone server on Render (https://render.com): New -> Blueprint -> this repository.
+# Render sets PORT itself; the free plan sleeps after inactivity and wakes on the first connection.
+services:
+  - type: web
+    name: greenhollow-server
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TICK_MS
+        value: "300"
+      - key: GRACE_MS
+        value: "30000"

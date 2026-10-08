@@ -1,7 +1,7 @@
 /**
  * The walkable model of a zone map: terrain per cell, placed objects with
  * their footprints, and the queries movement needs. Pure data and functions;
- * the renderer and input live in ui/world.
+ * the renderer and input live in ui/ and the server paths over it.
  */
 import { BIG_KINDS, TERRAIN_CHARS, type MapObjectDef, type MapObjectKind, type Terrain, type ZoneMapDef } from '@/types/content';
 

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Pixel-art browser RPG: a single-player idle game growing into a small RuneScape-like MMO.",
+  "description": "Greenhollow Online: a small RuneScape-like browser MMO, built slice by slice.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
