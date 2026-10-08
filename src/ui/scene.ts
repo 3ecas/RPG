@@ -243,8 +243,8 @@ export class OnlineScene {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
-    const self = this.replica.self;
-    const near = (obj: PlacedObject) => Math.abs(obj.x + obj.w / 2 - self.x) + Math.abs(obj.y + obj.h / 2 - self.y) <= LABEL_RANGE + obj.w;
+    const me = this.replica.selfEntity ? this.replica.positionAt(this.replica.selfEntity, this.now) : null;
+    const near = (obj: PlacedObject) => !!me && Math.abs(obj.x + obj.w / 2 - me.x) + Math.abs(obj.y + obj.h / 2 - me.y) <= LABEL_RANGE + obj.w;
 
     for (const obj of grid.objects) {
       const cx = sx((obj.x + obj.w / 2) * TILE);

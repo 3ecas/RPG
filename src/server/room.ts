@@ -7,7 +7,7 @@
  * exactly when nothing is lost. Players never block one another; the static
  * map decides where one can stand.
  */
-import type { ChatLine, EntitySnapshot, MoveState, TickDelta } from '@/net/protocol';
+import type { ChatLine, EntitySnapshot, MoveState, Placement, TickDelta } from '@/net/protocol';
 import type { ZoneMapDef } from '@/types/content';
 import type { ZoneId } from '@/types/ids';
 import { fail, ok, type Result } from '@/types/result';
@@ -23,8 +23,7 @@ export interface RoomOptions {
 
 export interface PlayerInput {
   seq: number;
-  dx: -1 | 0 | 1;
-  dy: -1 | 0 | 1;
+  /** A clicked cell to walk to, planned before this step is taken. */
   to?: Cell;
 }
 
@@ -94,7 +93,7 @@ export class Room {
     if (this.players.size >= this.options.capacity) return fail('The world is full right now.');
     const { spawn } = this.grid;
     const player: RoomPlayer = {
-      id: this.nextId++, name, x: spawn.x + 0.5, y: spawn.y + 0.5, dir: 0, running: false, path: [], moving: false, seq: 0, inputs: [], connected: true, disconnectedAt: 0,
+      id: this.nextId++, name, cell: { x: spawn.x, y: spawn.y }, t: 0, dir: 0, running: false, path: [], moving: false, seq: 0, inputs: [], connected: true, disconnectedAt: 0,
     };
     this.players.set(player.id, player);
     this.joined.push(snapshotOf(player));
@@ -107,6 +106,10 @@ export class Room {
     if (!p || !p.connected) return;
     p.connected = false;
     p.disconnectedAt = this.tick;
+    // No more inputs will come to finish the walk: stand in the nearer of the two cells.
+    const next = p.path[0];
+    if (next && p.t >= 0.5) p.cell = next;
+    p.t = 0;
     p.path = [];
     p.inputs = [];
   }
@@ -124,7 +127,7 @@ export class Room {
     if (this.players.delete(id)) this.left.push(id);
   }
 
-  /** One step's worth of intent from a client, applied on the next tick. False when it is stale, out of order or the queue is full. */
+  /** One step from a client, with a clicked cell when there is one, applied on the next tick. False when it is stale, out of order or the queue is full. */
   queueInput(id: number, input: PlayerInput): boolean {
     const p = this.players.get(id);
     if (!p || !p.connected) return false;
@@ -167,12 +170,15 @@ export class Room {
       while (p.inputs.length > 0 && applied < MAX_PER_TICK) {
         const input = p.inputs.shift()!;
         if (input.to) planWalk(this.grid, p, input.to);
-        if (step(this.grid, p, input)) moved = true;
+        if (step(this.grid, p)) moved = true;
         p.seq = input.seq;
         applied += 1;
       }
       p.moving = moved;
-      if (applied > 0 || wasMoving) moves.push([p.id, round(p.x), round(p.y), p.dir, moved ? 1 : 0, p.seq]);
+      if (applied > 0 || wasMoving) {
+        const at = placementOf(p);
+        moves.push([p.id, at.cx, at.cy, at.nx, at.ny, at.t, p.dir, moved ? 1 : 0, p.seq]);
+      }
     }
     const delta: TickDelta = { tick: this.tick, joined: this.joined, left: this.left, moves, chat: this.said };
     this.joined = [];
@@ -183,11 +189,12 @@ export class Room {
   }
 }
 
-/** Positions travel with three decimals: a thousandth of a cell is invisible and keeps the ticks small. */
-function round(v: number): number {
-  return Math.round(v * 1000) / 1000;
+/** The cell, the cell being walked into (or -1, -1) and the progress with three decimals: a thousandth of a cell is invisible. */
+function placementOf(p: RoomPlayer): Placement {
+  const next = p.t > 0 ? p.path[0] : undefined;
+  return { cx: p.cell.x, cy: p.cell.y, nx: next ? next.x : -1, ny: next ? next.y : -1, t: next ? Math.round(p.t * 1000) / 1000 : 0 };
 }
 
 function snapshotOf(p: RoomPlayer): EntitySnapshot {
-  return { id: p.id, name: p.name, x: round(p.x), y: round(p.y), dir: p.dir, running: p.running, moving: p.moving };
+  return { ...placementOf(p), id: p.id, name: p.name, dir: p.dir, running: p.running, moving: p.moving };
 }

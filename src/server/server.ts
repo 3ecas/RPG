@@ -186,7 +186,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       return;
     }
     switch (msg.t) {
-      case 'input': room.queueInput(id, msg.to ? { seq: msg.seq, dx: msg.dx, dy: msg.dy, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq, dx: msg.dx, dy: msg.dy }); break;
+      case 'input': room.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq }); break;
       case 'run': room.setRunning(id, msg.on); break;
       case 'chat': room.chat(id, msg.text); break;
     }

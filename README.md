@@ -9,9 +9,13 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
 ## What works today (slice 1: walk together)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
-- Move with WASD or the arrow keys, or click where you want to go and the
-  pathfinder takes you there. Hold Shift to run, or press R to keep running.
-- Your own character moves the instant you press, whatever the ping: the
+- Click a cell and the pathfinder walks you there, cell to cell, gliding at
+  a steady speed. A new click takes effect once you reach the next cell.
+  Hold Shift to run, or press R to keep running.
+- Everything happens on cells: you are always in a cell or on your way to
+  the next one, and you use things from the cell beside them. Clicking a
+  tree or a person walks you to the cell next to it.
+- Your own character moves the instant you click, whatever the ping: the
   browser predicts it and the server confirms. Other players are drawn a
   tenth of a second behind the server and glide between the positions it
   sends. The camera stays on you.

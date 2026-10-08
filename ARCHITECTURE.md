@@ -83,17 +83,19 @@ rpg/
 ## 4. Movement (`world/motion.ts`) and the room (`server/room.ts`)
 
 **The motion model** is one module shared by the server and the browser, so
-both simulate the same thing from the same inputs. A mover is a circle of
-radius 0.3 cells at a continuous position (a character in cell (3, 4) stands
-at (3.5, 4.5)). One `step` is 50 ms: under direct control it moves in one of
-eight directions at walking or running speed, one axis at a time, each
-stopping just short of the first blocked cell, which makes it slide along
-walls; with no key held it follows its path, aiming for the centre of the
-next cell and carrying leftover distance into the next segment so corners do
-not slow it. `planWalk` turns a clicked cell into a path (`nearestReachable`
-picks the cell or the reachable one nearest to it, `findPath8` finds the way,
-and a diagonal first step from off-centre goes through the cell's centre so
-it never clips the corner). A key press cancels the path.
+both simulate the same thing from the same inputs. A mover always stands in
+a cell or is on its way to the next one: its state is the cell it stands in
+or is leaving, the path of cells still to walk, and how far along it is to
+the next one. One `step` is 50 ms of walking or running along that way (a
+diagonal is a longer way, so it takes longer); when a step reaches the next
+cell the leftover carries into the one after, so nothing pauses at cell
+boundaries. `positionOf` is where it is drawn, between the two cell centres.
+`planWalk` turns a clicked cell into a path (`nearestReachable` picks the
+cell or the reachable one nearest to it, so clicking a tree or a person walks
+you to the cell beside it; `findPath8` finds the way); a click mid-walk takes
+effect once the cell under way is reached. There is no free position, no
+collision and nothing half on a cell: the game reasons in whole cells, which
+is what lets every interaction be "from the cell next to it".
 
 **The room** is one zone as a pure simulation. It holds the players (id,
 name, position, facing, running, path, the queue of inputs not yet applied,
@@ -103,15 +105,16 @@ three buffers for the next delta (`joined`, `left`, `said`).
 - `join(name)` places a character on the map's spawn, or lets a dropped
   connection take its own character back under the same name. A name in use
   by a connected player, or a full room, is refused with a reason.
-- `queueInput(id, input)` takes one step's worth of intent: the direction
-  keys, optionally a clicked cell to walk to, and a sequence number. Stale,
-  duplicate and out-of-order inputs are refused, and the queue holds eight.
+- `queueInput(id, input)` takes one step: a sequence number and, when there
+  was a click, the cell to walk to. Stale, duplicate and out-of-order inputs
+  are refused, and the queue holds eight.
 - `advance()` is one tick: each player's queued inputs are applied, one in
   the steady state and up to three to catch up after a hiccup, each as one
   `step` of the motion model; dropped characters leave once the grace period
-  is over; the delta comes back with the state of everyone who moved or just
-  stopped (`[id, x, y, facing, moving, seq]`) and the buffers clear. Chat is
-  one line per player per tick.
+  is over; the delta comes back with the placement of everyone who moved or
+  just stopped (`[id, cell, next cell or -1, progress, facing, moving, seq]`)
+  and the buffers clear. A dropped player stands in the nearer of the two
+  cells it was between. Chat is one line per player per tick.
 
 Because the server only moves a character when its client sends an input,
 and at most a few per tick, nobody can move faster than the model allows.
@@ -121,13 +124,14 @@ stand. Monsters, items and skills are not in the room yet (DESIGN.md §13).
 ## 5. The protocol (`net/protocol.ts`)
 
 Client → server: `hello` (name, protocol version, session token or null),
-`input` (one step: the direction keys, a sequence number, and a clicked cell
-to walk to when there is one), `run` (on or off), `chat` (text), `ping`.
+`input` (one step: a sequence number, and the clicked cell to walk to when
+there is one), `run` (on or off), `chat` (text), `ping`.
 Server → client: `welcome` (your id, a session token, the step length, the
 zone, a full snapshot of the entities and the number of your last input it
-knows), `tick` (the delta: `joined`, `left`, `moves` as `[id, x, y, facing,
-moving, seq]` for everyone who moved or just stopped, `chat`), `reject` (a
-reason, then the socket closes), `pong`.
+knows), `tick` (the delta: `joined`, `left`, `moves` as `[id, cell x, cell
+y, next x, next y, progress, facing, moving, seq]` for everyone who moved or
+just stopped, `chat`), `reject` (a reason, then the socket closes), `pong`.
+A placement is whole cells plus one fraction, never a free position.
 
 `parseClientMessage` accepts exactly these shapes and nothing else: integers
 within bounds, booleans, names normalized (trimmed, single spaces, a letter
@@ -161,14 +165,16 @@ A `ws` endpoint over a Node `http` server in front of one room.
   message up with a timestamp, reconnects with backoff (1 s to 10 s) unless
   rejected, keeps the token.
 - **`client/replica.ts`**: two jobs. *Yourself, predicted*: `update(now)`
-  runs the motion model in 50 ms steps; every step while a key is held, a
-  path is being walked or a click is pending becomes a numbered `input`,
+  runs the motion model in 50 ms steps; every step while a path is being
+  walked or a click is pending becomes a numbered `input`,
   applied at once and handed to the socket, and the predicted state after it
   is remembered. When the server's state for that input number comes back it
   is compared with the prediction: equal (the normal case) means nothing to
-  do; different means the server's position is taken, the newer inputs are
-  replayed on top, and the visual difference is faded out over a few frames
-  instead of snapped. A hidden tab does not burst a backlog of inputs.
+  do; different means the server's placement is taken (with the rest of the
+  predicted path when it runs through the cell the server names), the newer
+  inputs are replayed on top, and the visual difference is faded out over a
+  few frames instead of snapped. A hidden tab does not burst a backlog of
+  inputs.
   *Everyone else, interpolated*: each `tick` adds a timestamped state to the
   entity's history; `positionAt(entity, now)` draws two ticks behind the
   newest server tick on a clock that follows the earliest arrivals, so a
@@ -182,9 +188,8 @@ A `ws` endpoint over a Node `http` server in front of one room.
   on you, so the void shows past the map's edge. Click → cell → `onWalk`.
 - **`ui/shell.ts`**: the join card (name, server address, the hint when the
   page was built without one), the top bar (zone, connection, players, tick,
-  ping), the chat dock, the run toggle. WASD and the arrow keys add up to a
-  direction for the prediction, a click plans a walk, Shift held or R
-  toggled runs, Enter talks, Escape leaves the box. The name is remembered
+  ping), the chat dock, the run toggle. A click plans a walk, Shift held or
+  R toggled runs, Enter talks, Escape leaves the box. The name is remembered
   per browser, the session token per tab.
 - **`main.ts`**: validates content, decides the server address (`?server=`,
   then `VITE_SERVER_URL`, then `ws://localhost:8080` when running locally,
@@ -208,8 +213,10 @@ them first.
 
 ## 9. Tests
 
-- `tests/world/motion.test.ts`: speeds, walls and sliding, path following
-  at constant speed, the centre-first rule, clicks on the unreachable.
+- `tests/world/motion.test.ts`: standing and being drawn between cells,
+  walking and running at a steady pace, diagonals, carrying over cell
+  boundaries, a click mid-walk, clicks on the unreachable and on things, a
+  path that is no longer walkable.
 - `tests/server/room.test.ts`: joining, refusing, grace and takeover, inputs
   applied and echoed, stale and surplus inputs refused, walks from clicks,
   running, chat.
@@ -231,8 +238,8 @@ them first.
 - Ids are `snake_case`; files `kebab-case.ts`; types `PascalCase`; no default
   exports; no `console.log` outside `server/main.ts`.
 - Movement happens only inside `world/motion.ts`, in whole steps of
-  `STEP_MS`; the server and the client never move anything any other way.
-  The client's clock is `performance.now()`.
+  `STEP_MS`, from cell to cell; the server and the client never move anything
+  any other way. The client's clock is `performance.now()`.
 - Randomness on the server comes from `core/rng.ts` when it arrives;
   never `Math.random()` in anything that decides an outcome.
 - Adding something to a map must never require touching `server/` or `ui/`:

@@ -27,7 +27,6 @@ const NAME_KEY = 'rpg.online.name';
 /** Per tab, so two tabs in one browser are two characters. */
 const SESSION_KEY = 'rpg.online.session';
 const PING_MS = 5000;
-const MOVE_KEYS: ReadonlySet<string> = new Set(['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
 
 interface Session {
@@ -44,7 +43,6 @@ export class OnlineApp {
   private runToggled = false;
   private shiftHeld = false;
   private running = false;
-  private readonly held = new Set<string>();
   private rtt: number | null = null;
   private lastChatLine: unknown = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -66,7 +64,7 @@ export class OnlineApp {
       '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R); Shift runs while held">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage"><div class="world" id="on-world"></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click or WASD to move, hold Shift to run, Enter to talk.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click where you want to go, hold Shift to run, Enter to talk.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -107,27 +105,12 @@ export class OnlineApp {
         this.els.input.focus();
       } else if (event.key === 'r' || event.key === 'R') {
         this.toggleRun();
-      } else if (MOVE_KEYS.has(event.key)) {
-        event.preventDefault();
-        if (!event.repeat) {
-          this.held.add(event.key);
-          this.pushInput();
-        }
       }
     });
     document.addEventListener('keyup', (event) => {
       if (event.key === 'Shift') this.setShift(false);
-      if (this.held.delete(event.key)) this.pushInput();
     });
-    window.addEventListener('blur', () => {
-      this.held.clear();
-      this.setShift(false);
-      this.pushInput();
-    });
-    this.els.input.addEventListener('focus', () => {
-      this.held.clear();
-      this.pushInput();
-    });
+    window.addEventListener('blur', () => this.setShift(false));
     window.addEventListener('beforeunload', () => this.socket?.close());
     (savedName && this.config.serverUrl ? this.els.joinButton : savedName ? this.els.server : this.els.name).focus();
     const loop = (now: number) => {
@@ -230,15 +213,6 @@ export class OnlineApp {
     this.socket?.send({ t: 'run', on: running });
   }
 
-  /** The direction the held keys add up to, handed to the prediction. */
-  private pushInput(): void {
-    const axis = (minus: readonly string[], plus: readonly string[]): -1 | 0 | 1 => {
-      const m = minus.some((k) => this.held.has(k));
-      const p = plus.some((k) => this.held.has(k));
-      return m === p ? 0 : m ? -1 : 1;
-    };
-    this.replica.setInput(axis(['a', 'A', 'ArrowLeft'], ['d', 'D', 'ArrowRight']), axis(['w', 'W', 'ArrowUp'], ['s', 'S', 'ArrowDown']));
-  }
 
   private appendChat(): void {
     const lines = this.replica.chat;

@@ -15,7 +15,7 @@ maps and renderer carry over. Its idle-game shape does not (see §12).
 | Decision | Choice | Why |
 |---|---|---|
 | Grid | Square tiles, eight-direction movement, diagonals cost the same as straight steps | What RuneScape does. Hexes buy equal neighbours but fight pixel-art tilesets, rectangular buildings and four-way sprites; with click-to-move nobody sees the grid anyway. |
-| Time | A fixed 50 ms simulation step on the server; movement is continuous and predicted in the browser; actions (a swing, a mining roll, a respawn) will resolve on a slower action tick on top | Walking has to feel immediate whatever the ping, so the browser simulates your own character from your inputs and the server confirms. Actions can wait a few hundred milliseconds; walking cannot. |
+| Time | A fixed 50 ms simulation step on the server; movement is click-to-move, cell to cell with a fluid walk between, predicted in the browser; actions (a swing, a mining roll, a respawn) will resolve on a slower action tick on top | Walking has to feel immediate whatever the ping, so the browser simulates your own character from your clicks and the server confirms. Actions can wait a few hundred milliseconds; walking cannot. |
 | Play | Active, never idle | Activities stop at logout and nothing is simulated while you are away. This is what makes the bank loop and a shared economy work, and the server only runs online players. |
 
 Everything else below can change with experience. These three are baked into
@@ -23,8 +23,13 @@ every tile, every number and every message.
 
 ## 2. The rules that make the feel
 
-- **One action at a time.** Clicking elsewhere cancels. Movement is free
-  and continuous: WASD or a click with the pathfinder, sliding along walls.
+- **One action at a time.** Clicking elsewhere cancels.
+- **Everything happens on cells.** Movement is click-to-move, cell to cell,
+  with the walk between two cells drawn fluidly at a steady speed. A character
+  is always in a cell or on its way to the next one, and every interaction is
+  between a cell and the cell beside it: you talk to someone from the cell
+  next to them and chop the tree from the cell next to it. There is no free
+  position and nothing half on a cell, so every rule reasons in whole cells.
 - **Server authority.** The server owns every position, roll and item. The
   browser renders a replica and sends intents: walk here, use that, say this.
 - **Small bag, non-stackable items, a bank.** Ore takes a slot each; only coins

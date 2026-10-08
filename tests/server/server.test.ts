@@ -134,18 +134,18 @@ describe('zone server', () => {
 
     const spawn = w2.entities.find((e) => e.id === w2.id)!;
     expect(w2.seq).toBe(0);
-    bob.send({ t: 'input', seq: 1, dx: 1, dy: 0 });
+    bob.send({ t: 'input', seq: 1, to: [spawn.cx + 3, spawn.cy] });
     const moved = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w2.id));
     const state = isTick(moved) ? moved.moves.find((mv) => mv[0] === w2.id)! : null;
-    expect(state?.[1]).toBeCloseTo(spawn.x + 0.2, 3); // one step at walking speed
-    expect(state?.[2]).toBe(spawn.y);
-    expect(state?.[3]).toBe(2);
-    expect(state?.[4]).toBe(1);
-    expect(state?.[5]).toBe(1);
-    bob.send({ t: 'input', seq: 2, dx: 0, dy: 0, to: [Math.floor(spawn.x) + 3, Math.floor(spawn.y)] });
-    const walked = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w2.id && mv[5] === 2));
+    expect(state?.slice(1, 5)).toEqual([spawn.cx, spawn.cy, spawn.cx + 1, spawn.cy]); // leaving the spawn cell, straight east
+    expect(state?.[5]).toBeCloseTo(0.2, 3); // one step at walking speed
+    expect(state?.[6]).toBe(2);
+    expect(state?.[7]).toBe(1);
+    expect(state?.[8]).toBe(1);
+    bob.send({ t: 'input', seq: 2 });
+    const walked = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w2.id && mv[8] === 2));
     const after = isTick(walked) ? walked.moves.find((mv) => mv[0] === w2.id)! : null;
-    expect(after?.[1]).toBeGreaterThan(spawn.x + 0.2);
+    expect(after?.[5]).toBeCloseTo(0.4, 3);
 
     bob.send({ t: 'chat', text: '  hello   there ' });
     const said = await ada.next((m) => isTick(m) && m.chat.length > 0);

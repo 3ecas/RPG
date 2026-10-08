@@ -3,7 +3,7 @@ import { BUBBLE_MS, type InputMessage, Replica } from '@/client/replica';
 import type { EntitySnapshot, ServerMessage } from '@/net/protocol';
 import type { ZoneMapDef } from '@/types/content';
 import { parseMap } from '@/world/grid';
-import { STEP_MS, WALK_SPEED } from '@/world/motion';
+import { positionOf, STEP_MS, WALK_SPEED } from '@/world/motion';
 
 const map: ZoneMapDef = {
   biome: 'meadow',
@@ -13,8 +13,8 @@ const map: ZoneMapDef = {
 const grid = parseMap(map);
 const PER_STEP = (WALK_SPEED * STEP_MS) / 1000;
 
-const ada: EntitySnapshot = { id: 1, name: 'Ada', x: 1.5, y: 1.5, dir: 0, running: false, moving: false };
-const bob: EntitySnapshot = { id: 2, name: 'Bob', x: 4.5, y: 4.5, dir: 3, running: true, moving: false };
+const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false };
+const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
   return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, seq };
@@ -39,99 +39,108 @@ describe('replica: yourself, predicted', () => {
     const { r } = replica([ada, bob]);
     expect(r.selfId).toBe(1);
     expect(r.selfEntity?.name).toBe('Ada');
-    expect([r.self.x, r.self.y]).toEqual([1.5, 1.5]);
+    expect(r.self.cell).toEqual({ x: 1, y: 1 });
+    expect(r.positionAt(r.selfEntity!, 1000)).toEqual({ x: 1.5, y: 1.5, dir: 0, moving: false });
     expect(r.positionAt(r.entities.get(2)!, 1000)).toEqual({ x: 4.5, y: 4.5, dir: 3, moving: false });
   });
 
-  it('moves at once while a key is held and sends one numbered input per step', () => {
+  it('moves at once after a click and sends one numbered input per step while the path lasts', () => {
     const { r, sent } = replica();
-    r.setInput(1, 0);
+    r.walkTo({ x: 9, y: 1 });
     r.update(1000 + STEP_MS * 3);
     expect(sent.map((m) => m.seq)).toEqual([1, 2, 3]);
-    expect(sent[0]).toEqual({ t: 'input', seq: 1, dx: 1, dy: 0 });
-    expect(r.self.x).toBeCloseTo(1.5 + 3 * PER_STEP, 6);
+    expect(sent[0]).toEqual({ t: 'input', seq: 1, to: [9, 1] }); // the click rides the first input
+    expect(sent[1]).toEqual({ t: 'input', seq: 2 });
+    expect(positionOf(r.self).x).toBeCloseTo(1.5 + 3 * PER_STEP, 6);
     expect(r.positionAt(r.selfEntity!, 1150).moving).toBe(true);
-    r.setInput(0, 0);
-    r.update(1000 + STEP_MS * 6);
-    expect(sent).toHaveLength(3); // idle: nothing to send
   });
 
-  it('carries a click as a walk and keeps sending while the path lasts', () => {
+  it('stops sending once it has arrived, resting on the cell', () => {
     const { r, sent } = replica();
-    r.walkTo({ x: 4, y: 1 });
-    r.update(1000 + STEP_MS);
-    expect(sent[0]?.to).toEqual([4, 1]);
-    expect(r.self.path.length).toBeGreaterThan(0);
-    r.update(1000 + STEP_MS * 2);
-    expect(sent[1]?.to).toBeUndefined();
-    expect(r.self.x).toBeCloseTo(1.5 + 2 * PER_STEP, 6);
+    r.walkTo({ x: 3, y: 1 });
+    for (let i = 1; i <= 20; i++) r.update(1000 + STEP_MS * i);
+    expect(r.self.cell).toEqual({ x: 3, y: 1 });
+    expect(r.self.t).toBe(0);
+    expect(sent).toHaveLength(10); // two cells at walking speed, then quiet
+    expect(r.positionAt(r.selfEntity!, 2000)).toEqual({ x: 3.5, y: 1.5, dir: 2, moving: false });
   });
 
   it('keeps its prediction when the server agrees, and replays from the server when it does not', () => {
     const { r } = replica();
-    r.setInput(1, 0);
-    for (let i = 1; i <= 4; i++) r.update(1000 + STEP_MS * i); // inputs 1..4 predicted, one per step
-    const predicted = r.self.x;
-    r.apply(tick(101, { moves: [[1, 1.7, 1.5, 2, 1, 1]] }), 1200); // the server agrees about input 1
-    expect(r.self.x).toBeCloseTo(predicted, 6);
-    expect(r.positionAt(r.selfEntity!, 1200).x).toBeCloseTo(predicted, 6);
-    // The server put us somewhere else for input 2: we take its word and replay 3 and 4 on top, hiding the jump at first.
-    r.apply(tick(102, { moves: [[1, 2.5, 2.5, 2, 1, 2]] }), 1250);
-    expect(r.self.x).toBeCloseTo(2.5 + 2 * PER_STEP, 6);
-    expect(r.self.y).toBe(2.5);
+    r.walkTo({ x: 9, y: 1 });
+    for (let i = 1; i <= 4; i++) r.update(1000 + STEP_MS * i); // inputs 1..4 predicted, one per step: 0.8 of the way into (2, 1)
+    const predicted = positionOf(r.self);
+    r.apply(tick(101, { moves: [[1, 1, 1, 2, 1, 0.2, 2, 1, 1]] }), 1200); // the server agrees about input 1
+    expect(positionOf(r.self)).toEqual(predicted);
+    // The server has us a little behind for input 2 (0.3 instead of 0.4): we take its word, replay 3 and 4 on top, and hide the jump at first.
+    r.apply(tick(102, { moves: [[1, 1, 1, 2, 1, 0.3, 2, 1, 2]] }), 1250);
+    expect(r.self.cell).toEqual({ x: 1, y: 1 });
+    expect(r.self.t).toBeCloseTo(0.7, 6);
+    expect(r.self.path[r.self.path.length - 1]).toEqual({ x: 9, y: 1 }); // the rest of the way is kept
     const shown = r.positionAt(r.selfEntity!, 1250);
-    expect(shown.x).toBeCloseTo(predicted, 6); // still drawn where it was, for now
+    expect(shown.x).toBeCloseTo(predicted.x, 6); // still drawn where it was, for now
     r.update(1250 + 1000);
-    expect(r.positionAt(r.selfEntity!, 2250).x).toBeCloseTo(r.self.x, 2); // the offset has faded out
+    expect(r.positionAt(r.selfEntity!, 2250).x).toBeCloseTo(positionOf(r.self).x, 2); // the offset has faded out
   });
 
-  it('takes the server position while idle and continues the input numbers it was given', () => {
+  it('takes a server placement that is off its own path and stands there', () => {
+    const { r } = replica();
+    r.walkTo({ x: 9, y: 1 });
+    for (let i = 1; i <= 4; i++) r.update(1000 + STEP_MS * i);
+    r.apply(tick(101, { moves: [[1, 2, 2, -1, -1, 0, 0, 0, 2]] }), 1200); // for input 2 the server has us standing in (2, 2)
+    expect(r.self.cell).toEqual({ x: 2, y: 2 });
+    expect(r.self.path).toEqual([]); // the server stands still, so inputs 3 and 4 moved nothing
+    expect(r.self.t).toBe(0);
+  });
+
+  it('takes the server placement while idle and continues the input numbers it was given', () => {
     const r = new Replica();
     r.setGrid(grid);
     r.apply(welcome([ada], 41), 1000);
-    r.apply(tick(101, { moves: [[1, 3.5, 3.5, 1, 0, 41]] }), 1050);
-    expect([r.self.x, r.self.y, r.self.dir]).toEqual([3.5, 3.5, 1]);
+    r.apply(tick(101, { moves: [[1, 3, 3, -1, -1, 0, 1, 0, 41]] }), 1050);
+    expect(r.self.cell).toEqual({ x: 3, y: 3 });
+    expect(r.self.dir).toBe(1);
     const sent: InputMessage[] = [];
     r.onInput = (m) => sent.push(m);
     r.update(1050);
-    r.setInput(0, 1);
+    r.walkTo({ x: 3, y: 5 });
     r.update(1050 + STEP_MS);
     expect(sent[0]?.seq).toBe(42);
   });
 
   it('does not burst inputs after a long pause', () => {
     const { r, sent } = replica();
-    r.setInput(1, 0);
+    r.walkTo({ x: 9, y: 4 });
     r.update(1000 + 5000);
     expect(sent.length).toBeLessThanOrEqual(3);
   });
 });
 
 describe('replica: others, interpolated', () => {
-  it('upserts joiners, drops leavers and interpolates between the states the server sent', () => {
+  it('upserts joiners, drops leavers and interpolates between the placements the server sent', () => {
     const { r } = replica();
     r.apply(tick(101, { joined: [bob] }), 1050);
     expect(r.entities.get(2)?.name).toBe('Bob');
     r.apply(tick(102, { joined: [bob] }), 1100); // a repeat announcement is harmless
     expect(r.entities.size).toBe(2);
     const e = r.entities.get(2)!;
-    r.apply(tick(103, { moves: [[2, 5.5, 4.5, 2, 1, 7]] }), 1150);
-    r.apply(tick(104, { moves: [[2, 6.5, 4.5, 2, 1, 8]] }), 1200);
+    r.apply(tick(103, { moves: [[2, 5, 4, -1, -1, 0, 2, 1, 7]] }), 1150);
+    r.apply(tick(104, { moves: [[2, 5, 4, 6, 4, 0.5, 2, 1, 8]] }), 1200); // halfway into (6, 4): drawn at 6.0
     // The clock: tick 100 arrived at 1000, so tick t shows at 1000 + (t - 100) × 50, two ticks later.
     expect(r.renderTick(1200)).toBeCloseTo(102, 6);
     expect(r.positionAt(e, 1200)).toEqual({ x: 5, y: 4.5, dir: 2, moving: true }); // tick 102: halfway from where it joined (101) to its first move (103)
-    expect(r.positionAt(e, 1275).x).toBeCloseTo(6, 6); // halfway between ticks 103 and 104
+    expect(r.positionAt(e, 1275).x).toBeCloseTo(5.75, 6); // halfway between ticks 103 (5.5) and 104 (6.0)
     expect(r.positionAt(e, 1275).moving).toBe(true);
-    expect(r.positionAt(e, 1500)).toEqual({ x: 6.5, y: 4.5, dir: 2, moving: false }); // beyond the last state: held, standing
+    expect(r.positionAt(e, 1500)).toEqual({ x: 6, y: 4.5, dir: 2, moving: false }); // beyond the last state: held, standing
     r.apply(tick(105, { left: [2] }), 1250);
     expect(r.entities.has(2)).toBe(false);
   });
 
   it('shows the freshest state the line allows: an early arrival moves the clock, a late one barely', () => {
     const { r } = replica([ada, bob]);
-    r.apply(tick(101, { moves: [[2, 5.5, 4.5, 2, 1, 1]] }), 1030); // 20 ms early
+    r.apply(tick(101, { moves: [[2, 5, 4, -1, -1, 0, 2, 1, 1]] }), 1030); // 20 ms early
     expect(r.renderTick(1030)).toBeCloseTo(99, 6);
-    r.apply(tick(102, { moves: [[2, 6.5, 4.5, 2, 1, 2]] }), 1300); // 220 ms late
+    r.apply(tick(102, { moves: [[2, 6, 4, -1, -1, 0, 2, 1, 2]] }), 1300); // 220 ms late
     expect(r.renderTick(1300)).toBeGreaterThan(104); // the clock did not jump back to hide the late packet
   });
 });

@@ -1,16 +1,16 @@
 /**
  * The client's copy of the zone. Your own character is predicted: every
- * fixed step while a key is held or a path is being walked becomes an input
- * that is applied at once and sent to the server, and when the server's
- * position for that input comes back it is checked against the prediction
- * and replayed from there only if the two differ, with the difference faded
- * out instead of snapped. Everyone else is drawn a little behind the newest
- * server tick, interpolated between the positions the server sent. Pure data
- * and arithmetic: the socket feeds it and the scene draws it.
+ * fixed step while a path is being walked becomes an input that is applied
+ * at once and sent to the server, and when the server's placement for that
+ * input comes back it is checked against the prediction and replayed from
+ * there only if the two differ, with the difference faded out instead of
+ * snapped. Everyone else is drawn a little behind the newest server tick,
+ * interpolated between the placements the server sent. Pure data and
+ * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { ClientMessage, EntitySnapshot, ServerMessage, TickDelta } from '@/net/protocol';
+import type { ClientMessage, EntitySnapshot, Placement, ServerMessage, TickDelta } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
-import { type Input, type Mover, planWalk, step, STEP_MS } from '@/world/motion';
+import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 
 export type InputMessage = Extract<ClientMessage, { t: 'input' }>;
 
@@ -54,7 +54,7 @@ export const BUBBLE_MS = 4500;
 const CHAT_LOG_CAP = 100;
 const HISTORY_CAP = 64;
 const PENDING_CAP = 64;
-/** A prediction this close to the server's position counts as right (positions travel with three decimals). */
+/** A prediction this close to the server's placement counts as right (progress travels with three decimals). */
 const AGREE = 0.002;
 /** Ticks behind the newest server tick at which other players are drawn, so jitter has room. */
 const DELAY_TICKS = 2;
@@ -65,7 +65,12 @@ const SNAP_DISTANCE = 2;
 
 interface Pending {
   msg: InputMessage;
-  after: { x: number; y: number; dir: Dir; path: Cell[] };
+  after: { cell: Cell; t: number; dir: Dir; path: Cell[] };
+}
+
+/** The drawn position for a placement from the server. */
+function placed(p: Placement): { x: number; y: number } {
+  return positionOf({ cell: { x: p.cx, y: p.cy }, t: p.t, path: p.nx >= 0 ? [{ x: p.nx, y: p.ny }] : [] });
 }
 
 export class Replica {
@@ -78,9 +83,8 @@ export class Replica {
   /** Receives every input the prediction generates, to be sent to the server. */
   onInput: ((msg: InputMessage) => void) | null = null;
   /** Your own character as predicted. */
-  readonly self: Mover & { moving: boolean } = { x: 0, y: 0, dir: 0, running: false, path: [], moving: false };
+  readonly self: Mover & { moving: boolean } = { cell: { x: 0, y: 0 }, t: 0, dir: 0, running: false, path: [], moving: false };
   private grid: Grid | null = null;
-  private input: Input = { dx: 0, dy: 0 };
   private click: Cell | null = null;
   private seq = 0;
   private pending: Pending[] = [];
@@ -94,14 +98,8 @@ export class Replica {
     return this.entities.get(this.selfId) ?? null;
   }
 
-  /** Where you stand predicted, or null before the welcome. */
   setGrid(grid: Grid): void {
     this.grid = grid;
-  }
-
-  /** The direction keys held right now. */
-  setInput(dx: -1 | 0 | 1, dy: -1 | 0 | 1): void {
-    this.input = { dx, dy };
   }
 
   /** A click: the next input plans a walk there. */
@@ -115,7 +113,7 @@ export class Replica {
 
   /** Whether there is anything to simulate for yourself right now. */
   get active(): boolean {
-    return this.input.dx !== 0 || this.input.dy !== 0 || this.self.path.length > 0 || this.click !== null;
+    return this.self.path.length > 0 || this.click !== null;
   }
 
   /** Advance the prediction by fixed steps up to `now`; every step while active becomes an input for the server. */
@@ -137,8 +135,11 @@ export class Replica {
     this.accumulator = Math.min(this.accumulator + dt, STEP_MS * 3);
     while (this.accumulator >= STEP_MS) {
       this.accumulator -= STEP_MS;
-      if (!this.active) continue;
-      const msg: InputMessage = { t: 'input', seq: ++this.seq, dx: this.input.dx, dy: this.input.dy };
+      if (!this.active) {
+        this.self.moving = false;
+        continue;
+      }
+      const msg: InputMessage = { t: 'input', seq: ++this.seq };
       if (this.click) {
         msg.to = [this.click.x, this.click.y];
         this.click = null;
@@ -164,13 +165,10 @@ export class Replica {
       this.smooth = { x: 0, y: 0 };
       this.clockOffset = now - msg.tick * msg.tickMs;
       for (const e of msg.entities) this.upsert(e, msg.tick);
-      const me = this.entities.get(msg.id);
+      const me = msg.entities.find((e) => e.id === msg.id);
       if (me) {
-        this.self.x = me.x;
-        this.self.y = me.y;
-        this.self.dir = me.dir;
+        this.place(me, me.dir);
         this.self.running = me.running;
-        this.self.path = [];
         this.self.moving = false;
       }
     } else if (msg.t === 'tick') {
@@ -180,7 +178,10 @@ export class Replica {
 
   /** Where to draw an entity at `now`: yourself as predicted, others interpolated a little behind the server. */
   positionAt(e: ReplicaEntity, now: number): Position {
-    if (e.id === this.selfId) return { x: this.self.x + this.smooth.x, y: this.self.y + this.smooth.y, dir: this.self.dir, moving: this.self.moving };
+    if (e.id === this.selfId) {
+      const at = positionOf(this.self);
+      return { x: at.x + this.smooth.x, y: at.y + this.smooth.y, dir: this.self.dir, moving: this.self.moving };
+    }
     const h = e.history;
     if (h.length === 0) return { x: e.x, y: e.y, dir: e.dir, moving: e.moving };
     const t = this.renderTick(now);
@@ -223,17 +224,19 @@ export class Replica {
     this.clockOffset = this.clockOffset === null || offset < this.clockOffset ? offset : this.clockOffset + (offset - this.clockOffset) * 0.05;
     for (const e of delta.joined) this.upsert(e, delta.tick);
     for (const id of delta.left) this.entities.delete(id);
-    for (const [id, x, y, dir, moving, seq] of delta.moves) {
+    for (const [id, cx, cy, nx, ny, t, dir, moving, seq] of delta.moves) {
+      const placement: Placement = { cx, cy, nx, ny, t };
       const e = this.entities.get(id);
       if (e) {
-        e.x = x;
-        e.y = y;
+        const at = placed(placement);
+        e.x = at.x;
+        e.y = at.y;
         e.dir = dir;
         e.moving = moving === 1;
-        e.history.push({ tick: delta.tick, x, y, dir, moving: moving === 1 });
+        e.history.push({ tick: delta.tick, x: at.x, y: at.y, dir, moving: moving === 1 });
         if (e.history.length > HISTORY_CAP) e.history.shift();
       }
-      if (id === this.selfId) this.reconcile(x, y, dir, seq);
+      if (id === this.selfId) this.reconcile(placement, dir, seq);
     }
     for (const line of delta.chat) {
       this.chat.push({ id: line.id, name: this.entities.get(line.id)?.name ?? '?', text: line.text, at: now });
@@ -241,51 +244,67 @@ export class Replica {
     }
   }
 
-  /** The server's position after applying input `seq`, against the prediction we made for the same input. */
-  private reconcile(x: number, y: number, dir: Dir, seq: number): void {
+  /** The server's placement after applying input `seq`, against the prediction we made for the same input. */
+  private reconcile(server: Placement, dir: Dir, seq: number): void {
     const index = this.pending.findIndex((p) => p.msg.seq === seq);
     if (index < 0) {
       // Nothing of ours in flight: idle, or a move the server made on its own. Take its word.
-      if (this.pending.length === 0) {
-        this.self.x = x;
-        this.self.y = y;
-        this.self.dir = dir;
-      }
+      if (this.pending.length === 0) this.place(server, dir);
       return;
     }
     const at = this.pending[index]!;
     this.pending = this.pending.slice(index + 1);
-    if (Math.abs(at.after.x - x) <= AGREE && Math.abs(at.after.y - y) <= AGREE) return;
+    const predicted = positionOf(at.after);
+    const truth = placed(server);
+    if (Math.abs(predicted.x - truth.x) <= AGREE && Math.abs(predicted.y - truth.y) <= AGREE) return;
     const grid = this.grid;
     if (!grid) return;
-    const shownX = this.self.x + this.smooth.x;
-    const shownY = this.self.y + this.smooth.y;
-    this.self.x = x;
-    this.self.y = y;
-    this.self.dir = dir;
-    this.self.path = [...at.after.path];
+    const shown = positionOf(this.self);
+    shown.x += this.smooth.x;
+    shown.y += this.smooth.y;
+    this.place(server, dir, at.after.path);
     for (const p of this.pending) {
       this.applyInput(grid, p.msg);
       p.after = this.snapshotSelf();
     }
-    this.smooth.x = shownX - this.self.x;
-    this.smooth.y = shownY - this.self.y;
+    const now = positionOf(this.self);
+    this.smooth.x = shown.x - now.x;
+    this.smooth.y = shown.y - now.y;
     if (Math.hypot(this.smooth.x, this.smooth.y) > SNAP_DISTANCE) this.smooth = { x: 0, y: 0 };
+  }
+
+  /**
+   * Put yourself where the server says. The server sends only the cell being
+   * walked into, so the rest of the way comes from `known`, the path we
+   * predicted, when it runs through that cell.
+   */
+  private place(server: Placement, dir: Dir, known: Cell[] = []): void {
+    this.self.cell = { x: server.cx, y: server.cy };
+    this.self.t = server.t;
+    this.self.dir = dir;
+    if (server.nx < 0) {
+      this.self.path = [];
+      this.self.t = 0;
+      return;
+    }
+    const index = known.findIndex((c) => c.x === server.nx && c.y === server.ny);
+    this.self.path = index >= 0 ? known.slice(index) : [{ x: server.nx, y: server.ny }];
   }
 
   private applyInput(grid: Grid, msg: InputMessage): void {
     if (msg.to) planWalk(grid, this.self, { x: msg.to[0], y: msg.to[1] });
-    this.self.moving = step(grid, this.self, msg);
+    this.self.moving = step(grid, this.self);
   }
 
   private snapshotSelf(): Pending['after'] {
-    return { x: this.self.x, y: this.self.y, dir: this.self.dir, path: [...this.self.path] };
+    return { cell: { ...this.self.cell }, t: this.self.t, dir: this.self.dir, path: this.self.path.map((c) => ({ ...c })) };
   }
 
   private upsert(e: EntitySnapshot, tick: number): void {
     const existing = this.entities.get(e.id);
     if (!existing) {
-      this.entities.set(e.id, { id: e.id, name: e.name, x: e.x, y: e.y, dir: e.dir, running: e.running, moving: e.moving, history: [{ tick, x: e.x, y: e.y, dir: e.dir, moving: e.moving }] });
+      const at = placed(e);
+      this.entities.set(e.id, { id: e.id, name: e.name, x: at.x, y: at.y, dir: e.dir, running: e.running, moving: e.moving, history: [{ tick, x: at.x, y: at.y, dir: e.dir, moving: e.moving }] });
       return;
     }
     existing.name = e.name;
