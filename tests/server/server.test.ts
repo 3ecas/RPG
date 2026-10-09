@@ -3,6 +3,7 @@ import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@/net/
 import { hashSecret } from '@/server/character';
 import { type GameServer, startServer } from '@/server/server';
 import { MemoryStore } from '@/server/store';
+import { xpForLevel } from '@/world/skills';
 
 const TICK_MS = 25;
 const GRACE_MS = 100;
@@ -336,14 +337,16 @@ describe('game server', () => {
   it('chops a tree, drops the log for the other player to find once it shows, and keeps it all in the store', async () => {
     const store = new MemoryStore();
     const base = { secretHash: hashSecret(SECRET), createdAt: 1, dir: 0 as const, running: false, zone: 'greenhollow' as const, lastSeenAt: 1 };
-    await store.save({ ...base, name: 'Ada', state: { bag: [{ itemId: 'stone_hatchet', qty: 1 }], coins: 3 }, x: 3, y: 3 }); // beside the oak at (3, 2)
+    // Beside the oak at (3, 2), and quick about it: level 99 with a rune hatchet is 26 ticks a log.
+    await store.save({ ...base, name: 'Ada', state: { bag: [{ itemId: 'rune_hatchet', qty: 1 }], skills: { lumberjack: xpForLevel(99) }, coins: 3 }, x: 3, y: 3 });
     await store.save({ ...base, name: 'Bob', state: {}, x: 5, y: 3 });
     const { port } = await start(store);
     const ada = await connect(port);
     ada.hello('Ada');
     const wa = await ada.next(isWelcome);
-    expect(wa.bag[0]).toEqual(['stone_hatchet', 1]);
-    expect(wa.skills).toContainEqual(['lumberjack', 0]);
+    expect(wa.bag[0]).toEqual(['rune_hatchet', 1]);
+    expect(wa.skills).toContainEqual(['mining', 0]);
+    expect(wa.bestiary).toEqual([]);
     expect(wa.gear).toEqual([]);
     expect(wa.stats).toEqual({ hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 });
     expect(wa.quests).toEqual([]);
@@ -356,7 +359,7 @@ describe('game server', () => {
 
     ada.send({ t: 'input', seq: 1, to: [3, 2], use: true });
     const swing = await bob.next((m) => isTick(m) && m.acts.some((a) => a[0] === wa.id && a[1] === 3));
-    expect(isTick(swing) && swing.acts).toEqual([[wa.id, 3, 2, 3]]); // facing up, at the tree
+    expect(isTick(swing) && swing.acts).toEqual([[wa.id, 3, 2, 3, 26]]); // facing up, at the tree, 26 ticks a log
     const chopped = await ada.next((m): m is You => isYou(m) && !!m.bag?.some((s) => s?.[0] === 'oak_log'), 8000);
     expect(chopped.xp?.[0]?.[0]).toBe('lumberjack');
     expect(chopped.xp?.[0]?.[1]).toBeGreaterThanOrEqual(10);

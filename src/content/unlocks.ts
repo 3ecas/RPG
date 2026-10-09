@@ -14,10 +14,10 @@ import { TIER_NAMES } from './tiers';
 
 /** The bonus every level gives, by skill. */
 export const PER_LEVEL: Readonly<Record<SkillId, string>> = {
-  lumberjack: '+2% chance to get a log each swing',
-  mining: '+2% chance to get ore each swing',
-  fishing: '+2% chance to catch each cast',
-  harvesting: '+2% chance to gather each try',
+  lumberjack: 'Each log takes 2 ticks less (250 at level 1, 50 at 100)',
+  mining: 'Each ore takes 2 ticks less (250 at level 1, 50 at 100)',
+  fishing: 'Each catch takes 2 ticks less (250 at level 1, 50 at 100)',
+  harvesting: 'Each pick takes 2 ticks less (250 at level 1, 50 at 100)',
   smithing: '+1% faster work at the furnace and anvil',
   crafting: '+1% faster work at the sawbench and tannery',
   cooking: '+1% less chance to burn what you cook',

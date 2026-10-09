@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cookChance, gatherChance, levelForTier, levelOf, MAX_LEVEL, MAX_XP, progressOf, xpForLevel } from '@/world/skills';
+import { cookChance, GATHER_TICKS_FLOOR, gatherTicks, levelForTier, levelOf, MAX_LEVEL, MAX_XP, progressOf, xpForLevel } from '@/world/skills';
 import { deriveStats, regenInterval, slotsFor, weaponSkillFor } from '@/world/stats';
 import type { SkillId } from '@/types/ids';
 
@@ -49,15 +49,21 @@ describe('skills: the curve', () => {
 });
 
 describe('skills: gathering', () => {
-  const oak = { durationMs: 3000 };
-  it('succeeds at the node pace at level 1 with a basic tool, two percent better per level and a fifth per tool tier, within bounds', () => {
-    expect(gatherChance(oak, 1, 1, 600)).toBeCloseTo(0.2, 9);
-    expect(gatherChance(oak, 11, 1, 600)).toBeCloseTo(0.24, 9);
-    expect(gatherChance(oak, 51, 1, 600)).toBeCloseTo(0.4, 9);
-    expect(gatherChance(oak, 1, 6, 600)).toBeCloseTo(0.4, 9);
-    expect(gatherChance(oak, 1, 0, 600)).toBeCloseTo(0.2, 9); // no tool counts as a basic one where none is needed
-    expect(gatherChance(oak, 100, 6, 600)).toBe(0.95);
-    expect(gatherChance({ durationMs: 60_000 }, 1, 1, 600)).toBe(0.05);
+  const oak = { tier: 1 as const };
+  const willow = { tier: 2 as const };
+  const elder = { tier: 6 as const };
+  it('takes 250 ticks an item at level 1 and 50 at level 100, longer on harder nodes, quicker with better tools, never under the floor', () => {
+    expect(gatherTicks(oak, 1, 1)).toBe(250);
+    expect(gatherTicks(oak, 25, 1)).toBe(202);
+    expect(gatherTicks(oak, 50, 1)).toBe(151);
+    expect(gatherTicks(oak, 100, 1)).toBe(50);
+    expect(gatherTicks(oak, 0, 0)).toBe(250); // no tool counts as a basic one where none is needed
+    expect(gatherTicks(oak, 999, 1)).toBe(50);
+    expect(gatherTicks(willow, 15, 1)).toBe(266);
+    expect(gatherTicks(elder, 85, 1)).toBe(161);
+    expect(gatherTicks(oak, 1, 6)).toBe(125);
+    expect(gatherTicks(oak, 100, 6)).toBe(GATHER_TICKS_FLOOR);
+    expect(gatherTicks(elder, 100, 6)).toBe(50);
   });
 });
 

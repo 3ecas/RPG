@@ -12,9 +12,10 @@
 import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
-import type { GatherNodeDef, ItemDef, MonsterDef, Objective, QuestDef, RecipeDef, SkillUnlock, ZoneDef, ZoneMapDef } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
+import type { GatherNodeDef, ItemDef, MonsterDef, NpcDef, Objective, QuestDef, RecipeDef, ShopDef, SkillUnlock, StationDef, ZoneDef, ZoneMapDef } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type ShopId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
 import { FIRE_LOGS, FIRE_STONES } from '@/world/fire';
+import { healOf } from '@/world/food';
 import { type Cell, type Grid, objectAt, parseMap } from '@/world/grid';
 import { levelForTier, progressOf } from '@/world/skills';
 import { SLOT_NAMES } from '@/world/stats';
@@ -32,15 +33,23 @@ export interface OnlineContent extends SceneContent {
   unlocks(id: SkillId): readonly SkillUnlock[];
   quest(id: QuestId): QuestDef;
   monster(id: MonsterId): MonsterDef;
-  npc(id: NpcId): { name: string; title: string; greeting: string };
+  npc(id: NpcId): NpcDef;
+  hasNpc(id: string): id is NpcId;
   zone(id: ZoneId): ZoneDef;
-  recipe(id: string): { name?: string; outputs: readonly { itemId: ItemId }[] } | undefined;
+  recipe(id: RecipeId): RecipeDef;
   recipesByStation(station: StationId): readonly RecipeDef[];
+  station(id: StationId): StationDef;
+  hasStation(id: string): id is StationId;
+  shop(id: ShopId): ShopDef;
   readonly skillIds: SkillId[];
   readonly itemIds: ItemId[];
   readonly questIds: QuestId[];
   readonly monsterIds: MonsterId[];
   readonly zoneIds: ZoneId[];
+  readonly recipeIds: RecipeId[];
+  readonly nodeIds: NodeId[];
+  readonly shopIds: ShopId[];
+  readonly npcIds: NpcId[];
 }
 
 export interface OnlineConfig {
@@ -56,8 +65,13 @@ const SESSION_KEY = 'rpg.online.session';
 const LAYOUT_KEY = 'rpg.online.layout';
 const PING_MS = 5000;
 const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
-/** What you do to a gather node, by skill. */
+/** What you do to a gather node, by skill, and the tool it takes. */
 const VERBS: Partial<Record<SkillId, string>> = { lumberjack: 'Chop', mining: 'Mine', fishing: 'Fish', harvesting: 'Harvest' };
+const TOOLS: Partial<Record<SkillId, string>> = { lumberjack: 'hatchet', mining: 'pickaxe' };
+/** What you do at a station, for its buttons. */
+const MAKE_VERBS: Partial<Record<StationId, string>> = { campfire: 'Cook', furnace: 'Smelt', anvil: 'Forge', sawbench: 'Carve', tannery: 'Tan' };
+/** Further than this from where the pointer went down, a press on a bag slot is a drag. */
+const DRAG_START = 6;
 /** The menu bar's height, which windows stay above. */
 const MENUBAR_H = 40;
 /** The windows on the menu bar, with their hotkeys. */
@@ -108,11 +122,17 @@ export class OnlineApp {
   private itemFilter = '';
   private picked: { quest: QuestId | null; monster: MonsterId | null; item: ItemId | null } = { quest: null, monster: null, item: null };
   private readonly log: { when: string; text: string }[] = [];
-  /** The second the campfire window last showed, so its countdown ticks. */
-  private fireShownSecond = -1;
+  /** The second the station window last showed, so a fire's countdown ticks. */
+  private stationShownSecond = -1;
+  private balloonTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A bag slot being dragged: where the press began, and the ghost under the pointer once it has moved. */
+  private drag: { slot: number; startX: number; startY: number; ghost: HTMLElement | null } | null = null;
+  private confirmYes: (() => void) | null = null;
   private els!: {
     zone: HTMLElement; status: HTMLElement; count: HTMLElement; tick: HTMLElement; run: HTMLButtonElement;
     stage: HTMLElement; world: HTMLElement; menubar: HTMLElement; tracker: HTMLElement; chat: HTMLElement; chatLog: HTMLElement; input: HTMLInputElement; menu: HTMLElement;
+    balloon: HTMLElement; balloonName: HTMLElement; balloonTitle: HTMLElement; balloonLines: HTMLElement;
+    confirm: HTMLElement; confirmText: HTMLElement;
     join: HTMLElement; name: HTMLInputElement; server: HTMLInputElement; hint: HTMLElement; error: HTMLElement; joinButton: HTMLButtonElement;
   };
   private bodies!: Record<string, HTMLElement>;
@@ -129,10 +149,12 @@ export class OnlineApp {
       '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R); Shift runs while held">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage stage-closed" id="on-stage"><div class="world" id="on-world"></div>' +
       '<div class="tracker" id="on-tracker" hidden></div>' +
+      '<div class="balloon" id="on-balloon" hidden><div class="balloon-head"><b id="on-balloon-name"></b><span class="muted" id="on-balloon-title"></span><button class="win-x" type="button" id="on-balloon-x" title="Close">&times;</button></div><div class="balloon-lines" id="on-balloon-lines"></div></div>' +
       '<nav class="menubar" id="on-menubar">' + PANELS.map((p) => `<button type="button" data-win="${p.id}" title="${p.title} (${p.key.toUpperCase()})">${p.title}</button>`).join('') + '</nav>' +
       '<div class="menu" id="on-menu" hidden></div>' +
+      '<div class="confirm" id="on-confirm" hidden><div class="confirm-card"><p id="on-confirm-text"></p><div class="row"><button class="menu-btn join-button" type="button" id="on-confirm-yes">Yes</button><button class="menu-btn" type="button" id="on-confirm-no">Never mind</button></div></div></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here, take quests from the journal, chop trees, fish, cook at a campfire or build your own, bank what you gather, wear what you find, and talk. Click where you want to go or on what you want to use; right-click for choices; Space stops you; Shift runs; Enter talks. The bar along the bottom opens your inventory, journal, skills, map and settings; drag any window where you like. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here, take quests from the journal, chop trees, fish, cook at a campfire or build your own, smelt and forge at the furnace and anvil in the hills, bank what you gather, wear what you find, and talk. Click where you want to go or on what you want to use; right-click for choices; Space stops you; Shift runs; Enter talks. The bar along the bottom opens your inventory, journal, skills, map and settings; drag any window where you like. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -141,6 +163,8 @@ export class OnlineApp {
     this.els = {
       zone: q('on-zone'), status: q('on-status'), count: q('on-count'), tick: q('on-tick'), run: q('on-run'),
       stage: q('on-stage'), world: q('on-world'), menubar: q('on-menubar'), tracker: q('on-tracker'), chat: q('on-chat'), chatLog: q('on-log'), input: q('on-chat-input'), menu: q('on-menu'),
+      balloon: q('on-balloon'), balloonName: q('on-balloon-name'), balloonTitle: q('on-balloon-title'), balloonLines: q('on-balloon-lines'),
+      confirm: q('on-confirm'), confirmText: q('on-confirm-text'),
       join: q('on-join'), name: q('on-name'), server: q('on-server'), hint: q('on-hint'), error: q('on-error'), joinButton: q('on-join-button'),
     };
     this.scene.mount(this.els.world);
@@ -163,6 +187,15 @@ export class OnlineApp {
       else this.els.input.blur();
     });
     this.els.run.addEventListener('click', () => this.toggleRun());
+    q('on-balloon-x').addEventListener('click', () => this.hideBalloon());
+    q('on-confirm-yes').addEventListener('click', () => {
+      const yes = this.confirmYes;
+      this.closeConfirm();
+      yes?.();
+    });
+    q('on-confirm-no').addEventListener('click', () => this.closeConfirm());
+    document.addEventListener('pointermove', (event) => this.onDragMove(event));
+    document.addEventListener('pointerup', (event) => this.onDragEnd(event));
     this.els.menu.addEventListener('contextmenu', (event) => event.preventDefault());
     document.addEventListener('pointerdown', (event) => {
       if (!this.els.menu.hidden && !this.els.menu.contains(event.target as Node)) this.closeMenu();
@@ -180,7 +213,8 @@ export class OnlineApp {
       if (this.windows.isOpen('map')) this.minimap.frame(now);
       this.refreshBar();
       if (this.replica.version !== this.shownVersion) this.renderPanels();
-      else if (this.replica.fire?.fuelMs != null && this.windows.isOpen('fire') && Math.floor(now / 1000) !== this.fireShownSecond) this.renderFire();
+      else if (this.replica.station?.fuelMs != null && this.windows.isOpen('station') && Math.floor(now / 1000) !== this.stationShownSecond) this.renderStation();
+      if (!this.els.balloon.hidden && this.replica.self.moving) this.hideBalloon();
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -199,12 +233,12 @@ export class OnlineApp {
       journal: this.windows.add({ id: 'journal', title: 'Journal', x: 290, y: 40, w: 560, h: Math.min(460, H - 60), open: false }),
       settings: this.windows.add({ id: 'settings', title: 'Settings', x: Math.round(W / 2 - 150), y: Math.round(H / 2 - 150), w: 300, h: 300, open: false }),
       bank: this.windows.add({ id: 'bank', title: 'Bank', x: Math.round(W / 2 - 190), y: Math.round(H / 2 - 170), w: 380, h: 340, open: false }),
-      fire: this.windows.add({ id: 'fire', title: 'Campfire', x: Math.round(W / 2 - 170), y: Math.max(8, H - 300), w: 340, h: 260, open: false }),
+      station: this.windows.add({ id: 'station', title: 'Station', x: Math.round(W / 2 - 170), y: Math.max(8, H - 300), w: 340, h: 260, open: false }),
     };
     this.windows.onToggle = (id, open) => {
       this.els.menubar.querySelector(`[data-win="${id}"]`)?.classList.toggle('on', open);
       if (id === 'bank' && !open && this.replica.bank !== null) this.closeBank();
-      if (id === 'fire' && !open && this.replica.fire !== null) this.closeFire();
+      if (id === 'station' && !open && this.replica.station !== null) this.leaveStation();
       if (open && id === 'journal') this.renderJournal();
       if (open && id === 'skills') this.renderSkills();
     };
@@ -214,23 +248,26 @@ export class OnlineApp {
       if (button) this.windows.toggle(button.dataset.win!);
     });
     this.minimap = new Minimap(this.bodies.map!, this.replica, () => this.scene.viewCells());
-    // The inventory: a click on a bag slot or a gear slot offers what can be done with it.
+    // The inventory: a click on a gear slot offers what can be done with it; a bag slot is pressed (a menu) or dragged, onto another slot to swap them or out of the window to throw the thing away.
     this.bodies.inventory!.addEventListener('click', (event) => {
-      const target = event.target as HTMLElement;
-      const slotEl = target.closest<HTMLElement>('[data-slot]');
-      const gearEl = target.closest<HTMLElement>('[data-gslot]');
-      const el = slotEl ?? gearEl;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (slotEl) this.openSlotMenu(Number(slotEl.dataset.slot), { x: rect.left, y: rect.bottom });
-      else this.openGearMenu(gearEl!.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
+      const gearEl = (event.target as HTMLElement).closest<HTMLElement>('[data-gslot]');
+      if (!gearEl) return;
+      const rect = gearEl.getBoundingClientRect();
+      this.openGearMenu(gearEl.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
+    });
+    this.bodies.inventory!.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const slotEl = (event.target as HTMLElement).closest<HTMLElement>('.slot-full[data-slot]');
+      if (!slotEl) return;
+      event.preventDefault();
+      this.drag = { slot: Number(slotEl.dataset.slot), startX: event.clientX, startY: event.clientY, ghost: null };
     });
     this.bodies.inventory!.addEventListener('contextmenu', (event) => event.preventDefault());
-    // The campfire: cook what is in the bag, feed the fire a log.
-    this.bodies.fire!.addEventListener('click', (event) => {
-      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-cook], [data-feed]');
+    // The station: make what the bag has the makings for; at a fire, feed it a log.
+    this.bodies.station!.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-make], [data-feed]');
       if (!button) return;
-      if (button.dataset.cook) this.socket?.send({ t: 'cook', recipe: button.dataset.cook, qty: Number(button.dataset.qty) });
+      if (button.dataset.make) this.socket?.send({ t: 'make', recipe: button.dataset.make, qty: Number(button.dataset.qty) });
       else this.socket?.send({ t: 'fire', op: 'feed' });
     });
     // The bank: a toolbar and the stacks.
@@ -286,9 +323,11 @@ export class OnlineApp {
     const typing = document.activeElement === this.els.input || (document.activeElement instanceof HTMLInputElement && document.activeElement !== this.els.name);
     if (event.key === 'Shift') this.setShift(true);
     if (event.key === 'Escape') {
-      if (!this.els.menu.hidden) this.closeMenu();
+      if (!this.els.confirm.hidden) this.closeConfirm();
+      else if (!this.els.menu.hidden) this.closeMenu();
+      else if (!this.els.balloon.hidden) this.hideBalloon();
       else if (this.replica.bank !== null) this.closeBank();
-      else if (this.replica.fire !== null) this.closeFire();
+      else if (this.replica.station !== null) this.leaveStation();
       else if (typing) (document.activeElement as HTMLElement).blur();
       return;
     }
@@ -345,6 +384,7 @@ export class OnlineApp {
     this.els.chat.hidden = true;
     this.els.stage.classList.add('stage-closed');
     this.closeMenu();
+    this.hideBalloon();
     this.els.joinButton.disabled = false;
     this.els.joinButton.textContent = 'Enter the world';
     this.showError(reason);
@@ -376,6 +416,25 @@ export class OnlineApp {
     }
     this.replica.apply(msg, now);
     if (msg.t === 'tick' && msg.chat.length > 0) this.appendChat();
+    if (msg.t === 'you' && msg.talk) this.showTalk(msg.talk.npc, msg.talk.lines);
+  }
+
+  /** Someone spoke: their words in the balloon above the menu bar, and in the journal's log for later. */
+  private showTalk(npcId: string, lines: string[]): void {
+    const npc = this.content.hasNpc(npcId) ? this.content.npc(npcId) : { name: npcId, title: '' };
+    this.els.balloonName.textContent = npc.name;
+    this.els.balloonTitle.textContent = npc.title;
+    this.els.balloonLines.innerHTML = lines.map((line, i) => `<p${i > 0 ? ' class="aside"' : ''}>${escapeHtml(line)}</p>`).join('');
+    this.els.balloon.hidden = false;
+    if (this.balloonTimer) clearTimeout(this.balloonTimer);
+    this.balloonTimer = setTimeout(() => this.hideBalloon(), 12_000);
+    for (const line of lines) this.appendLog(`${npc.name}: ${line}`);
+  }
+
+  private hideBalloon(): void {
+    this.els.balloon.hidden = true;
+    if (this.balloonTimer) clearTimeout(this.balloonTimer);
+    this.balloonTimer = null;
   }
 
   /** Shows a zone: its map on the scene, the minimap and the prediction, its name in the top bar. Returns the name. */
@@ -441,8 +500,8 @@ export class OnlineApp {
         options.push({ label: `Examine ${npc.name}`, run: () => this.appendSystem(`${npc.name}, ${npc.title.toLowerCase()}.`) });
       } else if (def.kind === 'station') {
         const station = this.content.station(def.id);
-        if (def.id === 'campfire') options.push({ label: 'Cook at Campfire', run: use, primary: true });
-        options.push({ label: `Examine ${station.name}`, run: () => this.appendSystem(def.id === 'campfire' ? 'The village fire. It never goes out, and anything raw cooks on it.' : `${station.name}. Not working yet.`) });
+        options.push({ label: `Use ${station.name}`, run: use, primary: true });
+        options.push({ label: `Examine ${station.name}`, run: () => this.appendSystem(def.id === 'campfire' ? 'The village fire. It never goes out, and anything raw cooks on it.' : `${station.name}: ${station.description}`) });
       }
     }
     for (const fire of this.replica.fires.values()) {
@@ -470,9 +529,10 @@ export class OnlineApp {
     if (!entry || !this.content.hasItem(entry[0])) return;
     const def = this.content.item(entry[0]);
     const options: Option[] = [];
+    if (healOf(def) > 0) options.push({ label: `Eat ${def.name}`, run: () => this.socket?.send({ t: 'eat', slot }) });
     if (def.equip) options.push({ label: `${def.equip.kind === 'weapon' || def.equip.kind === 'book' ? 'Wield' : 'Wear'} ${def.name}`, run: () => this.socket?.send({ t: 'equip', slot }) });
     if ((def.id === 'stone' || def.group === 'log') && this.countInBag('stone') >= FIRE_STONES && this.logsInBag() >= FIRE_LOGS) options.push({ label: 'Build a campfire here', run: () => this.socket?.send({ t: 'fire', op: 'build' }) });
-    if (def.group === 'log' && this.replica.fire?.fid != null) options.push({ label: 'Add to the fire', run: () => this.socket?.send({ t: 'fire', op: 'feed' }) });
+    if (def.group === 'log' && this.replica.station?.fid != null) options.push({ label: 'Add to the fire', run: () => this.socket?.send({ t: 'fire', op: 'feed' }) });
     if (this.replica.bank !== null) options.push({ label: `Deposit ${def.name}`, run: () => this.socket?.send({ t: 'bank', op: 'deposit', slot, qty: entry[1] }) });
     options.push({ label: `Drop ${def.name}`, run: () => this.socket?.send({ t: 'drop', slot }) });
     options.push({ label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) });
@@ -512,15 +572,81 @@ export class OnlineApp {
     this.els.menu.hidden = true;
   }
 
+  // ---- dragging a bag slot ---------------------------------------------------------
+
+  private onDragMove(event: PointerEvent): void {
+    const drag = this.drag;
+    if (!drag) return;
+    if (!drag.ghost) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_START) return;
+      const entry = this.replica.bag[drag.slot];
+      if (!entry || !this.content.hasItem(entry[0])) {
+        this.drag = null;
+        return;
+      }
+      const ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.innerHTML = icon(this.content.item(entry[0]));
+      document.body.appendChild(ghost);
+      drag.ghost = ghost;
+      this.closeMenu();
+    }
+    drag.ghost.style.left = `${event.clientX}px`;
+    drag.ghost.style.top = `${event.clientY}px`;
+  }
+
+  /** The press ends: a tap opens the slot's menu; a drag onto another slot swaps them, onto the world asks whether to throw the thing away, anywhere else is nothing. */
+  private onDragEnd(event: PointerEvent): void {
+    const drag = this.drag;
+    if (!drag) return;
+    this.drag = null;
+    if (!drag.ghost) {
+      const slotEl = this.bodies.inventory!.querySelector<HTMLElement>(`[data-slot="${drag.slot}"]`);
+      if (slotEl && slotEl.contains(event.target as Node)) {
+        const rect = slotEl.getBoundingClientRect();
+        this.openSlotMenu(drag.slot, { x: rect.left, y: rect.bottom });
+      }
+      return;
+    }
+    drag.ghost.remove();
+    const under = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    if (!under) return;
+    const onSlot = under.closest<HTMLElement>('[data-slot]');
+    if (onSlot && this.bodies.inventory!.contains(onSlot)) {
+      const to = Number(onSlot.dataset.slot);
+      if (to !== drag.slot) this.socket?.send({ t: 'swap', from: drag.slot, to });
+      return;
+    }
+    if (under.closest('.win, .menubar, .topbar, .chatbox, .balloon, .tracker')) return;
+    if (!this.els.stage.contains(under)) return;
+    const entry = this.replica.bag[drag.slot];
+    if (!entry || !this.content.hasItem(entry[0])) return;
+    const def = this.content.item(entry[0]);
+    this.confirm(`Throw away the ${def.name}${entry[1] > 1 ? ` (${entry[1]})` : ''}? It will lie where you stand for a while, then be gone for good.`, () => this.socket?.send({ t: 'drop', slot: drag.slot }));
+  }
+
+  private confirm(text: string, yes: () => void): void {
+    this.closeMenu();
+    this.els.confirmText.textContent = text;
+    this.confirmYes = yes;
+    this.els.confirm.hidden = false;
+    this.els.confirm.querySelector<HTMLButtonElement>('#on-confirm-no')?.focus();
+  }
+
+  private closeConfirm(): void {
+    this.els.confirm.hidden = true;
+    this.confirmYes = null;
+  }
+
   private closeBank(): void {
     this.socket?.send({ t: 'bank', op: 'close' });
     this.replica.bank = null;
     this.replica.version++;
   }
 
-  private closeFire(): void {
-    this.socket?.send({ t: 'fire', op: 'close' });
-    this.replica.fire = null;
+  private leaveStation(): void {
+    this.socket?.send({ t: 'station', op: 'close' });
+    this.replica.station = null;
     this.replica.version++;
   }
 
@@ -545,7 +671,7 @@ export class OnlineApp {
     if (this.windows.isOpen('journal') && this.journalTab === 'Quests') this.renderJournal();
     this.renderTracker();
     this.renderBank();
-    this.renderFire();
+    this.renderStation();
   }
 
   // ---- quests --------------------------------------------------------------------
@@ -575,8 +701,7 @@ export class OnlineApp {
       case 'collect': return `Have ${o.count} ${this.content.item(o.itemId).name}${o.count > 1 ? 's' : ''} in your bag`;
       case 'gather': return `Gather ${o.count} ${this.content.item(o.itemId).name}${o.count > 1 ? 's' : ''}`;
       case 'craft': {
-        const recipe = this.content.recipe(o.recipeId);
-        const name = recipe?.name ?? (recipe ? this.content.item(recipe.outputs[0]!.itemId).name : o.recipeId);
+        const name = this.recipeName(this.content.recipe(o.recipeId));
         return `Make ${o.count} ${name}${o.count > 1 ? 's' : ''}`;
       }
       case 'talk': return `Talk to ${this.content.npc(o.npcId).name}`;
@@ -622,10 +747,13 @@ export class OnlineApp {
     }
     gear += '</div>';
     const s = this.replica.stats;
+    const vital = (kind: string, title: string, have: number, max: number) => {
+      const pct = max > 0 ? Math.round((have / max) * 100) : 0;
+      return `<div class="vital vital-${kind}" title="${title}"><span class="vital-fill" style="width:${pct}%"></span><span class="vital-text"><span>${have} / ${max}</span><span>${pct}%</span></span></div>`;
+    };
     const stats = s
-      ? '<div class="stats">' +
-        `<div><span>Hit points</span><b>${s.hp} / ${s.maxHp}</b></div><div><span>Mana</span><b>${s.mana} / ${s.maxMana}</b></div>` +
-        `<div><span>Armor</span><b>${s.armor}</b></div><div><span>Attack</span><b>${s.attack}</b></div><div><span>Spell power</span><b>${s.spellPower}</b></div></div>`
+      ? vital('hp', 'Hit points', s.hp, s.maxHp) + vital('mana', 'Mana', s.mana, s.maxMana) +
+        `<div class="stats"><div><span>Armor</span><b>${s.armor}</b></div><div><span>Attack</span><b>${s.attack}</b></div><div><span>Spell power</span><b>${s.spellPower}</b></div></div>`
       : '';
     const slots = this.replica.bag;
     let bag = '<div class="bag">';
@@ -644,36 +772,45 @@ export class OnlineApp {
     this.bodies.inventory!.innerHTML = `<div class="inv"><div class="inv-gear">${gear}${stats}</div><div class="inv-bag">${purse}${bag}</div></div>`;
   }
 
-  /** The campfire window while you stand by a fire: how long it burns, a log for it, and what in your bag can be cooked. */
-  private renderFire(): void {
-    const fire = this.replica.fire;
-    if (fire === null) {
-      if (this.windows.isOpen('fire')) this.windows.close('fire');
+  /** The station window while you stand by one: a fire says how long it burns and takes a log; every station lists what your bag has the makings for, one or all. */
+  private renderStation(): void {
+    const session = this.replica.station;
+    if (session === null || !this.content.hasStation(session.station)) {
+      if (this.windows.isOpen('station')) this.windows.close('station');
       return;
     }
-    if (!this.windows.isOpen('fire')) this.windows.open('fire');
+    const def = this.content.station(session.station);
+    this.windows.setTitle('station', def.name);
+    if (!this.windows.isOpen('station')) this.windows.open('station');
     const now = performance.now();
-    this.fireShownSecond = Math.floor(now / 1000);
+    this.stationShownSecond = Math.floor(now / 1000);
     let head: string;
-    if (fire.fuelMs === null) head = '<div class="fire-head"><span>The village fire. It never goes out.</span></div>';
+    if (session.station !== 'campfire') head = `<div class="fire-head"><span>${escapeHtml(def.description)}</span></div>`;
+    else if (session.fuelMs === null) head = '<div class="fire-head"><span>The village fire. It never goes out.</span></div>';
     else {
-      const left = Math.max(0, fire.fuelMs - (now - this.replica.fireSeenAt));
+      const left = Math.max(0, session.fuelMs - (now - this.replica.stationSeenAt));
       const m = Math.floor(left / 60_000);
       const sec = Math.floor((left % 60_000) / 1000);
       head = `<div class="fire-head"><span>Burns for <b>${m}:${sec.toString().padStart(2, '0')}</b> more.</span><button class="menu-btn" type="button" data-feed ${this.logsInBag() > 0 ? '' : 'disabled'} title="A log keeps it going a minute per tier">Add a log</button></div>`;
     }
-    const level = progressOf(this.replica.skills.get('cooking') ?? 0).level;
+    const verb = MAKE_VERBS[session.station] ?? 'Make';
+    const recipes = this.content.recipesByStation(session.station);
     let rows = '';
-    for (const recipe of this.content.recipesByStation('campfire')) {
+    for (const recipe of recipes) {
       const can = Math.min(...recipe.inputs.map((input) => Math.floor(this.countInBag(input.itemId) / input.qty)));
       if (can === 0) continue;
       const out = this.content.item(recipe.outputs[0]!.itemId);
       const need = TIER_LEVEL(recipe.tier);
-      const locked = level < need;
-      rows += `<div class="cook-row">${icon(out)}<span class="cook-name">${escapeHtml(out.name)}${locked ? `<span class="muted small"> needs Cooking ${need}</span>` : ''}</span><span class="stack-qty">${can}</span>` +
-        `<span class="stack-buttons"><button class="menu-btn" type="button" data-cook="${recipe.id}" data-qty="1" ${locked ? 'disabled' : ''}>Cook 1</button><button class="menu-btn" type="button" data-cook="${recipe.id}" data-qty="${can}" ${locked ? 'disabled' : ''}>Cook all</button></span></div>`;
+      const locked = progressOf(this.replica.skills.get(recipe.skill) ?? 0).level < need;
+      const takes = recipe.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(', ');
+      rows += `<div class="cook-row">${icon(out)}<span class="cook-name" title="${escapeHtml(takes)}">${escapeHtml(this.recipeName(recipe))}${locked ? `<span class="muted small"> needs ${escapeHtml(this.content.skill(recipe.skill).name)} ${need}</span>` : ''}</span><span class="stack-qty">${can}</span>` +
+        `<span class="stack-buttons"><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="1" ${locked ? 'disabled' : ''}>${verb} 1</button><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="${can}" ${locked ? 'disabled' : ''}>${verb} all</button></span></div>`;
     }
-    this.bodies.fire!.innerHTML = head + (rows ? `<div class="stacks">${rows}</div>` : '<p class="muted">Nothing in your bag can be cooked. Raw fish and crops can.</p>') + '<p class="muted small">Some of what you cook burns; less so with every Cooking level.</p>';
+    const makes = recipes.map((r) => this.recipeName(r));
+    const empty = `<p class="muted">Nothing in your bag can be made here.</p><p class="muted small">This ${escapeHtml(def.name.toLowerCase())} makes ${escapeHtml(makes.slice(0, 6).join(', '))}${makes.length > 6 ? ' and more' : ''}; the Items tab of the journal says what each takes.</p>`;
+    const skill = recipes[0] ? this.content.skill(recipes[0].skill).name : 'the skill';
+    const foot = session.station === 'campfire' ? 'Some of what you cook burns; less so with every Cooking level.' : `Every ${escapeHtml(skill)} level makes the work a little quicker.`;
+    this.bodies.station!.innerHTML = head + (rows ? `<div class="stacks">${rows}</div>` : empty) + `<p class="muted small">${foot}</p>`;
   }
 
   private renderSkills(): void {
@@ -769,18 +906,23 @@ export class OnlineApp {
     return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
   }
 
+  /** The creatures you have fought are told; the rest are only counted, so the world keeps its surprises. */
   private bestiaryPane(): string {
     const monsters = this.content.monsterIds.map((id) => this.content.monster(id)).sort((a, b) => a.tier - b.tier || a.hp - b.hp);
-    if (!this.picked.monster || !this.content.monsterIds.includes(this.picked.monster)) this.picked.monster = (monsters[0]?.id as MonsterId | undefined) ?? null;
-    const list = monsters.map((m) => `<button type="button" class="jitem${m.id === this.picked.monster ? ' on' : ''}" data-pick="monster:${m.id}"><span class="jname">${escapeHtml(m.name)}</span><span class="tag">tier ${m.tier}</span></button>`).join('');
+    const known = (id: string) => this.replica.bestiary.has(id);
+    if (!this.picked.monster || !this.content.monsterIds.includes(this.picked.monster)) this.picked.monster = (monsters.find((m) => known(m.id))?.id as MonsterId | undefined) ?? (monsters[0]?.id as MonsterId | undefined) ?? null;
+    const list = monsters.map((m) => known(m.id)
+      ? `<button type="button" class="jitem${m.id === this.picked.monster ? ' on' : ''}" data-pick="monster:${m.id}"><span class="jname">${escapeHtml(m.name)}</span><span class="tag">tier ${m.tier}</span></button>`
+      : `<button type="button" class="jitem unknown${m.id === this.picked.monster ? ' on' : ''}" data-pick="monster:${m.id}"><span class="jname">???</span><span class="tag">unknown</span></button>`).join('');
     let detail = '';
-    if (this.picked.monster) {
+    if (this.picked.monster && known(this.picked.monster)) {
       const m = this.content.monster(this.picked.monster);
       const where = this.content.zoneIds.filter((z) => (this.content.zone(z).monsters as readonly string[]).includes(m.id)).map((z) => this.content.zone(z).name);
       detail = `<h3>${escapeHtml(m.name)}</h3><div class="muted">Tier ${m.tier} · HP ${m.hp} · attack ${m.attack} · armor ${m.armor}</div><p>${escapeHtml(m.description)}</p>` +
         `<h4>Found in</h4><p>${escapeHtml(where.join(', ') || 'Nowhere yet')}</p>` +
-        `<h4>Drops</h4>${m.loot.map((l) => `<div class="objective"><span>${escapeHtml(this.content.item(l.itemId).name)}${l.max > 1 ? ` (${l.min} to ${l.max})` : ''}</span><span>${Math.round(l.chance * 100)}%</span></div>`).join('') || '<p class="muted">Nothing.</p>'}` +
-        '<p class="muted small">Monsters walk the world with a later slice.</p>';
+        `<h4>Drops</h4>${m.loot.map((l) => `<div class="objective"><span>${escapeHtml(this.content.item(l.itemId).name)}${l.max > 1 ? ` (${l.min} to ${l.max})` : ''}</span><span>${Math.round(l.chance * 100)}%</span></div>`).join('') || '<p class="muted">Nothing.</p>'}`;
+    } else if (this.picked.monster) {
+      detail = `<h3>???</h3><p class="muted">You have not met this creature. Fight it, and the journal will remember what it is, where it lives and what it leaves behind.</p><p class="muted small">${this.replica.bestiary.size} of ${monsters.length} met.</p>`;
     }
     return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
   }
@@ -789,9 +931,72 @@ export class OnlineApp {
     let detail = '<p class="muted">Pick an item.</p>';
     if (this.picked.item && this.content.hasItem(this.picked.item)) {
       const i = this.content.item(this.picked.item);
-      detail = `<h3>${escapeHtml(i.name)}</h3><div class="muted">${escapeHtml(i.group)} · tier ${i.tier} · worth ${i.value}</div><p>${escapeHtml(describe(i))}</p>`;
+      const sources = this.itemSources(this.picked.item);
+      const uses = this.itemUses(this.picked.item);
+      detail = `<h3>${escapeHtml(i.name)}</h3><div class="muted">${escapeHtml(i.group)} · tier ${i.tier} · worth ${i.value}</div><p>${escapeHtml(describe(i))}</p>` +
+        `<h4>How to get it</h4>${sources.map((s) => `<p>${escapeHtml(s)}</p>`).join('')}` +
+        (uses.length > 0 ? `<h4>Good for</h4>${uses.map((u) => `<p>${escapeHtml(u)}</p>`).join('')}` : '');
     }
     return `<div class="jpane"><div class="jlist"><input id="on-item-filter" class="filter" type="text" placeholder="Filter items" value="${escapeHtml(this.itemFilter)}"><div id="on-item-list">${this.itemListHtml()}</div></div><div class="jdetail">${detail}</div></div>`;
+  }
+
+  private recipeName(recipe: RecipeDef): string {
+    return recipe.name ?? this.content.item(recipe.outputs[0]!.itemId).name;
+  }
+
+  private zonesWhere(test: (zone: ZoneDef) => boolean): string {
+    const names = this.content.zoneIds.filter((z) => test(this.content.zone(z))).map((z) => this.content.zone(z).name);
+    if (names.length === 0) return 'a place not on any map yet';
+    return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(' or ');
+  }
+
+  /** Every way an item comes into the world: made, gathered, sold, handed out, a reward, dropped by creatures you have met. */
+  private itemSources(id: ItemId): string[] {
+    const lines: string[] = [];
+    for (const rid of this.content.recipeIds) {
+      const r = this.content.recipe(rid);
+      if (!r.outputs.some((o) => o.itemId === id)) continue;
+      const inputs = r.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(' and ');
+      const where = this.zonesWhere((z) => (z.stations as readonly string[]).includes(r.station));
+      lines.push(`Made at a ${this.content.station(r.station).name.toLowerCase()} (${where}) from ${inputs}, ${this.content.skill(r.skill).name} level ${levelForTier(r.tier)}.`);
+    }
+    for (const nid of this.content.nodeIds) {
+      const n = this.content.node(nid);
+      if (n.itemId !== id) continue;
+      const where = this.zonesWhere((z) => (z.nodes as readonly string[]).includes(nid));
+      const tool = TOOLS[n.skill];
+      lines.push(`${VERBS[n.skill] ?? 'Gather'}ped from ${n.name} in ${where}, ${this.content.skill(n.skill).name} level ${levelForTier(n.tier)}${tool ? `, with a ${tool}` : ''}.`.replace('Chopped', 'Chopped').replace('Mineped', 'Mined').replace('Fishped', 'Fished').replace('Harvestped', 'Harvested').replace('Gatherped', 'Gathered'));
+    }
+    for (const sid of this.content.shopIds) {
+      const s = this.content.shop(sid);
+      if (!s.stock.some((st) => st.itemId === id)) continue;
+      lines.push(`Sold at ${s.name} in ${this.zonesWhere((z) => (z.shops as readonly string[]).includes(sid))}.`);
+    }
+    for (const nid of this.content.npcIds) {
+      const n = this.content.npc(nid);
+      if (n.handout?.itemId !== id) continue;
+      lines.push(`${n.name}, the ${n.title.toLowerCase()} in ${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}, hands one to anyone who comes without a ${TOOLS[n.handout.skill] ?? 'tool'}.`);
+    }
+    for (const qid of this.content.questIds) {
+      const q = this.content.quest(qid);
+      if (q.rewards.some((r) => r.type === 'item' && r.itemId === id)) lines.push(`A reward for the quest ${q.name}.`);
+    }
+    const droppers = this.content.monsterIds.filter((m) => this.content.monster(m).loot.some((l) => l.itemId === id));
+    if (droppers.length > 0) lines.push(`Dropped by ${droppers.map((m) => (this.replica.bestiary.has(m) ? this.content.monster(m).name : 'a creature you have not met')).join(', ')}.`);
+    if (lines.length === 0) lines.push('No way to come by this one is known yet.');
+    return lines;
+  }
+
+  /** What an item goes into. */
+  private itemUses(id: ItemId): string[] {
+    const lines: string[] = [];
+    const makes = this.content.recipeIds.map((r) => this.content.recipe(r)).filter((r) => r.inputs.some((i) => i.itemId === id)).map((r) => this.recipeName(r));
+    if (makes.length > 0) lines.push(`Goes into ${makes.join(', ')}.`);
+    const def = this.content.item(id);
+    if (id === 'stone' || def.group === 'log') lines.push(`${FIRE_STONES} stones and a log build a campfire; a log fed to a fire keeps it burning a minute per tier.`);
+    if (healOf(def) > 0) lines.push(`Eaten, it heals ${healOf(def)}.`);
+    if (def.tool) lines.push(`Lets you ${(VERBS[def.tool.skill] ?? 'gather').toLowerCase()}, at the pace of a tier ${def.tool.tier} tool.`);
+    return lines;
   }
 
   private itemListHtml(): string {
@@ -808,7 +1013,7 @@ export class OnlineApp {
       '<label><input type="checkbox" id="on-set-chat" checked> Show the chat</label>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-layout">Reset window layout</button></div>' +
       `<div class="muted small">Server: ${escapeHtml(this.config.serverUrl || 'set on the join card')}</div>` +
-      '<div class="muted small">Keys: I inventory, J journal, K skills, M map, O settings, R run, Space stop, Enter talk. Right-click people to talk to them, fires to cook, stones or logs in your bag to build a fire.</div>' +
+      '<div class="muted small">Keys: I inventory, J journal, K skills, M map, O settings, R run, Space stop, Enter talk. Click people to talk, a station (a fire, the furnace, the anvil) to make things from your bag; right-click for choices; drag a bag slot onto another to swap, or onto the world to throw it away.</div>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-leave">Leave the world</button></div></div>';
     const run = body.querySelector<HTMLInputElement>('#on-set-run')!;
     run.addEventListener('change', () => {
@@ -868,6 +1073,11 @@ export class OnlineApp {
     el.textContent = text;
     this.els.chatLog.appendChild(el);
     this.trimLog();
+    this.appendLog(text);
+  }
+
+  /** A line for the journal's log only. */
+  private appendLog(text: string): void {
     this.log.push({ when: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text });
     if (this.log.length > 200) this.log.shift();
     if (this.windows.isOpen('journal') && this.journalTab === 'Log') {
@@ -891,7 +1101,8 @@ export class OnlineApp {
     const n = this.replica.entities.size;
     const count = this.status.kind === 'open' ? `${n} ${n === 1 ? 'player' : 'players'} here` : '';
     if (this.els.count.textContent !== count) this.els.count.textContent = count;
-    const tick = this.status.kind === 'open' ? `tick ${this.replica.tick} · ${this.replica.tickMs} ms${this.rtt !== null ? ` · ping ${this.rtt} ms` : ''}` : '';
+    // The server's tick counts on for ever (timers and the clock the client follows need it to); here it goes round every thousand.
+    const tick = this.status.kind === 'open' ? `tick ${this.replica.tick % 1000} · ${this.replica.tickMs} ms${this.rtt !== null ? ` · ping ${this.rtt} ms` : ''}` : '';
     if (this.els.tick.textContent !== tick) this.els.tick.textContent = tick;
   }
 

@@ -11,7 +11,7 @@ import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -72,12 +72,18 @@ export type ClientMessage =
   | { t: 'equip'; slot: number }
   /** Takes off what is in this gear slot, into the bag. */
   | { t: 'unequip'; slot: EquipSlot }
+  /** Eats the food in this bag slot; it heals once it is down. */
+  | { t: 'eat'; slot: number }
+  /** Moves what is in one bag slot to another, swapping what was there. */
+  | { t: 'swap'; from: number; to: number }
   /** Takes a quest from the journal, or gives one up. */
   | { t: 'quest'; op: 'accept' | 'abandon'; id: string }
-  /** Campfires: build one where you stand from two stones and a log, feed the one you stand by a log, or step away from the one you were using. */
-  | { t: 'fire'; op: 'build' | 'feed' | 'close' }
-  /** Cook this many of a recipe at the fire you stand by. */
-  | { t: 'cook'; recipe: string; qty: number }
+  /** Campfires: build one where you stand from two stones and a log, or feed the one you stand by a log. */
+  | { t: 'fire'; op: 'build' | 'feed' }
+  /** Step away from the station (a fire, the furnace, the anvil…) you were using. */
+  | { t: 'station'; op: 'close' }
+  /** Make this many of a recipe at the station you stand by. */
+  | { t: 'make'; recipe: string; qty: number }
   /** The bank, while it is open: move a bag slot in, take an item out, put the whole bag in, or shut it. */
   | { t: 'bank'; op: 'deposit'; slot: number; qty: number }
   | { t: 'bank'; op: 'withdraw'; item: string; qty: number }
@@ -88,8 +94,8 @@ export type ClientMessage =
 /** Where an entity is after this tick: id, its placement, facing, whether it moved, and the last input the server applied for it. */
 export type MoveState = [id: number, cx: number, cy: number, nx: number, ny: number, t: number, dir: Dir, moving: 0 | 1, seq: number];
 
-/** An entity started working on the thing at a cell, facing it, or stopped (x = -1). */
-export type ActState = [id: number, x: number, y: number, dir: Dir];
+/** An entity started working on the thing at a cell, facing it, with the ticks each item takes, or stopped (x = -1). Sent again as each item is done, so a progress bar can follow. */
+export type ActState = [id: number, x: number, y: number, dir: Dir, ticks?: number];
 
 /** An item lying in the zone, as a client may see it. */
 export type GroundItemView = [gid: number, item: string, qty: number, x: number, y: number];
@@ -108,10 +114,17 @@ export type QuestView = [id: string, status: 'active' | 'done', progress: number
 /** A campfire a player built, burning on a cell. */
 export type FireView = [fid: number, x: number, y: number];
 
-/** The fire you stand by, while you use it: which built one (null for a village fire) and how long it burns yet (null for ever). */
-export interface FireSession {
+/** The station you stand by, while you use it: which kind; for a campfire, which built one (null for a village fire) and how long it burns yet (null for ever). */
+export interface StationSession {
+  station: string;
   fid: number | null;
   fuelMs: number | null;
+}
+
+/** What someone said to you: who, and their lines in order (the greeting, then anything they handed over). */
+export interface TalkView {
+  npc: string;
+  lines: string[];
 }
 
 /** A character's numbers as the panels show them. */
@@ -158,7 +171,7 @@ export interface ZoneSnapshot {
   seq: number;
 }
 
-/** Things only you learn: your bag after a change, xp gained, your gear and numbers after a change, your coins, the bank while it is open (null when it shuts), the fire you stand by (null when you step away), items of yours on the ground, and lines from the game. */
+/** Things only you learn: your bag after a change, xp gained, your gear and numbers after a change, your coins, the bank while it is open (null when it shuts), the station you stand by (null when you step away), items of yours on the ground, and lines from the game. */
 export interface YouDelta {
   bag?: BagView;
   xp?: [skill: string, xp: number][];
@@ -167,14 +180,18 @@ export interface YouDelta {
   quests?: QuestView[];
   coins?: number;
   bank?: StackView[] | null;
-  fire?: FireSession | null;
+  station?: StationSession | null;
+  /** Someone spoke to you. */
+  talk?: TalkView;
+  /** The creatures you have met in a fight, by id; the journal shows only these. */
+  bestiary?: string[];
   items?: GroundItemView[];
   notes?: string[];
 }
 
 export type ServerMessage =
   /** You are in the world: your id, a session token, the step length, whether this is a character coming back, your bag, skills, gear, numbers, quests and coins, and the zone you stand in. */
-  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number } & ZoneSnapshot)
+  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number; bestiary: string[] } & ZoneSnapshot)
   /** You walked into another zone: forget the old one, here is the new. Your id, token, bag and skills stay. */
   | ({ t: 'zone' } & ZoneSnapshot)
   | ({ t: 'tick' } & TickDelta)
@@ -258,12 +275,18 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'equip', slot: raw.slot } : null;
     case 'unequip':
       return typeof raw.slot === 'string' && (EQUIP_SLOTS as readonly string[]).includes(raw.slot) ? { t: 'unequip', slot: raw.slot as EquipSlot } : null;
+    case 'eat':
+      return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'eat', slot: raw.slot } : null;
+    case 'swap':
+      return isInt(raw.from, 0, LIMITS.SLOT_MAX - 1) && isInt(raw.to, 0, LIMITS.SLOT_MAX - 1) && raw.from !== raw.to ? { t: 'swap', from: raw.from, to: raw.to } : null;
     case 'quest':
       return (raw.op === 'accept' || raw.op === 'abandon') && isId(raw.id) ? { t: 'quest', op: raw.op, id: raw.id } : null;
     case 'fire':
-      return raw.op === 'build' || raw.op === 'feed' || raw.op === 'close' ? { t: 'fire', op: raw.op } : null;
-    case 'cook':
-      return isId(raw.recipe) && isInt(raw.qty, 1, LIMITS.QTY_MAX) ? { t: 'cook', recipe: raw.recipe, qty: raw.qty } : null;
+      return raw.op === 'build' || raw.op === 'feed' ? { t: 'fire', op: raw.op } : null;
+    case 'station':
+      return raw.op === 'close' ? { t: 'station', op: 'close' } : null;
+    case 'make':
+      return isId(raw.recipe) && isInt(raw.qty, 1, LIMITS.QTY_MAX) ? { t: 'make', recipe: raw.recipe, qty: raw.qty } : null;
     case 'bank':
       switch (raw.op) {
         case 'deposit':

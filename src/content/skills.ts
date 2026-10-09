@@ -8,10 +8,10 @@ const defineSkills = tableDefiner<SkillDef>();
  * (see unlocks.ts). Four gather, four make, three fight, two are the mind.
  */
 export const SKILLS = defineSkills({
-  lumberjack: { name: 'Lumberjack', verb: 'Chopping', group: 'gathering', description: 'Logs from trees, oak to elder. Every level swings a little surer.' },
-  mining: { name: 'Mining', verb: 'Mining', group: 'gathering', description: 'Ore and coal from rocks, copper to rune. Every level strikes a little truer.' },
-  fishing: { name: 'Fishing', verb: 'Fishing', group: 'gathering', description: 'Raw fish from the water, shrimp to swordfish. Every level a little luckier.' },
-  harvesting: { name: 'Harvesting', verb: 'Harvesting', group: 'gathering', description: 'Crops from fields and herbs from the wild. Every level a little quicker.' },
+  lumberjack: { name: 'Lumberjack', verb: 'Chopping', group: 'gathering', description: 'Logs from trees, oak to elder. A log takes 250 ticks at level 1 and 50 at level 100; a better hatchet is quicker still.' },
+  mining: { name: 'Mining', verb: 'Mining', group: 'gathering', description: 'Ore and coal from rocks, copper to rune. An ore takes 250 ticks at level 1 and 50 at level 100; a better pickaxe is quicker still.' },
+  fishing: { name: 'Fishing', verb: 'Fishing', group: 'gathering', description: 'Raw fish from the water, shrimp to swordfish. A catch takes 250 ticks at level 1 and 50 at level 100.' },
+  harvesting: { name: 'Harvesting', verb: 'Harvesting', group: 'gathering', description: 'Crops from fields and herbs from the wild. A pick takes 250 ticks at level 1 and 50 at level 100.' },
   smithing: { name: 'Smithing', verb: 'Smithing', group: 'production', description: 'Smelt bars in a furnace, forge metal weapons and armor at an anvil.' },
   crafting: { name: 'Crafting', verb: 'Crafting', group: 'production', description: 'Shields, bows and staffs from logs; light armor from hides.' },
   cooking: { name: 'Cooking', verb: 'Cooking', group: 'production', description: 'Raw food into meals that heal.' },

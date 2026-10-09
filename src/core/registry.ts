@@ -65,6 +65,8 @@ export class Registry {
   missionsInChapter(chapter: number): Keyed<MissionDef, MissionId>[] { return this.missionIds.map((id) => this.mission(id)).filter((m) => m.chapter === chapter); }
 
   get skillIds(): SkillId[] { return Object.keys(this.tables.skills) as SkillId[]; }
+  get nodeIds(): NodeId[] { return Object.keys(this.tables.nodes) as NodeId[]; }
+  get npcIds(): NpcId[] { return Object.keys(this.tables.npcs) as NpcId[]; }
   get stationIds(): StationId[] { return Object.keys(this.tables.stations) as StationId[]; }
   get itemIds(): ItemId[] { return Object.keys(this.tables.items) as ItemId[]; }
   get recipeIds(): RecipeId[] { return Object.keys(this.tables.recipes) as RecipeId[]; }
@@ -178,7 +180,6 @@ export class Registry {
       check(def.skill in t.skills, `node ${id}: unknown skill '${def.skill}'`);
       check(def.itemId in t.items, `node ${id}: unknown item '${def.itemId}'`);
       check(validTier(def.tier), `node ${id}: bad tier ${def.tier}`);
-      check(def.durationMs > 0, `node ${id}: durationMs must be > 0`);
       if (def.deplete) {
         check(def.deplete.chance > 0 && def.deplete.chance <= 1, `node ${id}: deplete chance must be in (0, 1]`);
         check(def.deplete.respawnMs > 0, `node ${id}: respawnMs must be > 0`);

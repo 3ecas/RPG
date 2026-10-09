@@ -8,16 +8,18 @@ import type { ZoneMapDef } from '@/types/content';
 import type { Cell } from '@/world/grid';
 import { countInBag } from '@/world/bag';
 import { FIRE_MAX_MS, fuelMs } from '@/world/fire';
+import { EAT_TICKS } from '@/world/food';
 import { STEP_MS } from '@/world/motion';
+import { xpForLevel } from '@/world/skills';
 
-/** A corner of the village: Rowan and Greta, the village fire, a pile of loose stones, and room to walk around a fire. */
+/** A corner of the village: Rowan and Greta, the village fire, a pile of loose stones, a furnace and an anvil, and room to walk around a fire. */
 const map: ZoneMapDef = {
   biome: 'meadow',
   rows: [
     '^^^^^^^^^^^^',
     '^S.....W...^',
     '^..F...G...^',
-    '^.R........^',
+    '^.R...U.N..^',
     '^..........^',
     '^..........^',
     '^^^^^^^^^^^^',
@@ -27,9 +29,13 @@ const map: ZoneMapDef = {
     W: { kind: 'npc', id: 'lumberjack_rowan' },
     G: { kind: 'npc', id: 'mason_greta' },
     F: { kind: 'station', id: 'campfire' },
+    U: { kind: 'station', id: 'furnace' },
+    N: { kind: 'station', id: 'anvil' },
     R: { kind: 'node', id: 'rubble' },
   },
 };
+const FURNACE: Cell = { x: 6, y: 3 };
+const ANVIL: Cell = { x: 8, y: 3 };
 /** One cell with nothing free around it. */
 const pocket: ZoneMapDef = {
   biome: 'meadow',
@@ -88,15 +94,17 @@ describe('tools from people', () => {
     const seq = { n: 0 };
     useAndArrive(r, p, ROWAN, seq);
     const y1 = you(r, p)!;
-    expect(y1.notes?.[0]).toContain('Rowan: The oaks are all yours');
-    expect(y1.notes).toContain('Rowan hands you a stone hatchet.');
+    expect(y1.talk?.npc).toBe('lumberjack_rowan');
+    expect(y1.talk?.lines[0]).toContain('The oaks are all yours');
+    expect(y1.talk?.lines[1]).toBe('Rowan hands you a stone hatchet.');
+    expect(y1.notes).toBeUndefined(); // words go to the balloon, not the chat
     expect(countInBag(p.bag, 'stone_hatchet')).toBe(1);
     useAndArrive(r, p, ROWAN, seq);
     const y2 = you(r, p)!;
-    expect(y2.notes).toHaveLength(1); // the greeting only: you have one
+    expect(y2.talk?.lines).toHaveLength(1); // the greeting only: you have one
     expect(countInBag(p.bag, 'stone_hatchet')).toBe(1);
     useAndArrive(r, p, GRETA, seq);
-    expect(you(r, p)?.notes).toContain('Greta hands you a stone pickaxe.');
+    expect(you(r, p)?.talk?.lines[1]).toBe('Greta hands you a stone pickaxe.');
     expect(countInBag(p.bag, 'stone_pickaxe')).toBe(1);
   });
 
@@ -105,8 +113,49 @@ describe('tools from people', () => {
     const p = enterOk(r, 'Bob', { x: 6, y: 2 }, { bag: new Array(28).fill(stack('oak_log')) });
     r.takeYou();
     useAndArrive(r, p, GRETA, { n: 0 });
-    expect(you(r, p)?.notes).toContain('Greta has a stone pickaxe for you, but your bag is full.');
+    expect(you(r, p)?.talk?.lines[1]).toBe('Greta has a stone pickaxe for you, but your bag is full.');
     expect(countInBag(p.bag, 'stone_pickaxe')).toBe(0);
+  });
+});
+
+describe('eating', () => {
+  it('takes the food now and heals 35 ticks later, one thing at a time, and only food', () => {
+    const r = room();
+    const p = enterOk(r, 'Jem', null, { hp: 3, bag: [stack('shrimp'), stack('shrimp'), stack('oak_log')] });
+    expect(p.hp).toBe(3);
+    r.takeYou();
+    expect(r.eat(p.id, 2)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(["You can't eat the oak log."]);
+    expect(r.eat(p.id, 5)).toBe(false);
+    expect(r.eat(p.id, 0)).toBe(true);
+    expect(p.bag[0]).toBeNull();
+    expect(you(r, p)?.bag?.[0]).toBeNull();
+    expect(r.eat(p.id, 1)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['You are still eating.']);
+    for (let i = 0; i < EAT_TICKS - 1; i++) r.advance();
+    expect(p.hp).toBe(5); // two points came back on their own meanwhile; the shrimp is still going down
+    r.advance();
+    expect(p.hp).toBe(11); // a shrimp is six
+    const y = you(r, p)!;
+    expect(y.stats?.hp).toBe(11);
+    expect(y.notes).toEqual(['You eat the shrimp.']);
+    p.hp = 2;
+    expect(r.eat(p.id, 1)).toBe(true);
+    for (let i = 0; i < EAT_TICKS; i++) r.advance();
+    expect(p.hp).toBeGreaterThanOrEqual(8);
+    expect(p.hp).toBeLessThanOrEqual(11); // never past the maximum
+  });
+
+  it('remembers the creatures met, and tells the journal', () => {
+    const r = room();
+    const p = enterOk(r, 'Kit', null, { bestiary: ['rat', 'nope'] });
+    expect(p.bestiary).toEqual(['rat']);
+    expect(r.youOf(p.id)?.bestiary).toEqual(['rat']);
+    r.takeYou();
+    expect(r.meet(p.id, 'rat')).toBe(false);
+    expect(r.meet(p.id, 'dragon')).toBe(false);
+    expect(r.meet(p.id, 'goblin')).toBe(true);
+    expect(you(r, p)?.bestiary).toEqual(['rat', 'goblin']);
   });
 });
 
@@ -132,7 +181,8 @@ describe('campfires', () => {
 
     // Using it: the session says how long it burns; it goes out on time, for everyone, and the session with it.
     useAndArrive(r, p, { x: 2, y: 4 }, { n: 0 });
-    const session = you(r, p)!.fire!;
+    const session = you(r, p)!.station!;
+    expect(session.station).toBe('campfire');
     expect(session.fid).toBe(1);
     expect(session.fuelMs).toBeGreaterThan(fuelMs(1) - 20 * STEP_MS);
     expect(session.fuelMs).toBeLessThanOrEqual(fuelMs(1));
@@ -143,7 +193,7 @@ describe('campfires', () => {
     }
     expect(out?.doused).toEqual([1]);
     const gone = you(r, p)!;
-    expect(gone.fire).toBeNull();
+    expect(gone.station).toBeNull();
     expect(gone.notes).toEqual(['The fire has gone out.']);
     expect(r.snapshotFor(p.id)?.fires).toEqual([]);
   });
@@ -186,7 +236,7 @@ describe('campfires', () => {
       if (q.path.length > 0) r.queueInput(q.id, { seq: 201 + i });
     }
     expect(q.cell).toEqual({ x: fireCell.x + 1, y: fireCell.y });
-    expect(you(r, q)?.fire?.fid).toBe(1);
+    expect(you(r, q)?.station?.fid).toBe(1);
 
     // Hemmed in, there is nowhere to step off to; standing on the fire, no second one fits.
     const r2 = room({}, pocket);
@@ -204,21 +254,21 @@ describe('campfires', () => {
     const p = enterOk(r, 'Fay', { x: 2, y: 4 }, { bag: [stack('stone'), stack('stone'), ...logs] });
     r.takeYou();
     expect(r.fire(p.id, { t: 'fire', op: 'feed' })).toBe(false);
-    expect(you(r, p)?.notes).toEqual(['Stand by a fire first.']);
+    expect(you(r, p)?.notes).toEqual(['Stand by a campfire first.']);
     expect(r.fire(p.id, { t: 'fire', op: 'build' })).toBe(true);
     expect(countInBag(p.bag, 'oak_log')).toBe(9); // an oak log burnt, the willow kept
     useAndArrive(r, p, { x: 2, y: 4 }, { n: 0 });
     r.takeYou();
     expect(r.fire(p.id, { t: 'fire', op: 'feed' })).toBe(true);
     const fed = you(r, p)!;
-    expect(fed.fire?.fuelMs).toBeGreaterThan(fuelMs(1) + fuelMs(1) - 30 * STEP_MS);
+    expect(fed.station?.fuelMs).toBeGreaterThan(fuelMs(1) + fuelMs(1) - 30 * STEP_MS);
     expect(fed.xp).toEqual([['crafting', 20]]);
     expect(fed.notes).toEqual(['You add an oak log to the fire.']);
     for (let i = 0; i < 8; i++) expect(r.fire(p.id, { t: 'fire', op: 'feed' })).toBe(true);
     expect(countInBag(p.bag, 'oak_log')).toBe(0);
-    expect(you(r, p)?.fire?.fuelMs).toBeGreaterThan(FIRE_MAX_MS - 1000); // ten minutes less the ticks that passed
+    expect(you(r, p)?.station?.fuelMs).toBeGreaterThan(FIRE_MAX_MS - 1000); // ten minutes less the ticks that passed
     expect(r.fire(p.id, { t: 'fire', op: 'feed' })).toBe(true); // the first willow tops it up to the cap
-    expect(you(r, p)?.fire?.fuelMs).toBe(FIRE_MAX_MS);
+    expect(you(r, p)?.station?.fuelMs).toBe(FIRE_MAX_MS);
     expect(r.fire(p.id, { t: 'fire', op: 'feed' })).toBe(false); // the second cannot go in
     expect(you(r, p)?.notes).toEqual(['The fire is burning as high as it can.']);
     expect(countInBag(p.bag, 'willow_log')).toBe(1);
@@ -230,16 +280,17 @@ describe('cooking', () => {
     const r = room({ rng: new ScriptedRng([true, false, true]) });
     const p = enterOk(r, 'Gil', { x: 2, y: 2 }, { bag: [stack('raw_shrimp'), stack('raw_shrimp'), stack('raw_shrimp'), stack('raw_trout')] });
     r.takeYou();
-    expect(r.cook(p.id, 'cook_shrimp', 3)).toBe(false);
-    expect(you(r, p)?.notes).toEqual(['Stand by a fire first.']);
+    expect(r.make(p.id, 'cook_shrimp', 3)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['Stand by a campfire first.']);
     useAndArrive(r, p, VILLAGE_FIRE, { n: 0 });
-    expect(you(r, p)?.fire).toEqual({ fid: null, fuelMs: null });
-    expect(r.cook(p.id, 'cook_trout', 1)).toBe(false);
-    expect(you(r, p)?.notes).toEqual(['You need Cooking level 15 to cook trout.']);
-    expect(r.cook(p.id, 'smelt_bronze_bar', 1)).toBe(false); // not a campfire recipe
-    expect(r.cook(p.id, 'cook_shrimp', 3)).toBe(true);
-    expect(p.action).toEqual({ kind: 'cook', recipe: 'cook_shrimp', left: 3, cell: VILLAGE_FIRE });
-    expect(r.advance().acts).toEqual([[p.id, 3, 2, 2]]); // facing the fire
+    expect(you(r, p)?.station).toEqual({ station: 'campfire', fid: null, fuelMs: null });
+    expect(r.make(p.id, 'cook_trout', 1)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['You need Cooking level 15 to make trout.']);
+    expect(r.make(p.id, 'smelt_bronze_bar', 1)).toBe(false); // not a campfire recipe
+    expect(you(r, p)?.notes).toEqual(['You need a furnace to make bronze bar.']);
+    expect(r.make(p.id, 'cook_shrimp', 3)).toBe(true);
+    expect(p.action).toEqual({ kind: 'make', recipe: 'cook_shrimp', left: 3, cell: VILLAGE_FIRE });
+    expect(r.advance().acts).toEqual([[p.id, 3, 2, 2, 36]]); // facing the fire, 36 ticks a shrimp
     for (let i = 1; i < SHRIMP_STEPS; i++) r.advance();
     const first = you(r, p)!;
     expect(countInBag(p.bag, 'shrimp')).toBe(1);
@@ -260,8 +311,48 @@ describe('cooking', () => {
     expect(p.action).toBeNull();
     expect(p.skills.cooking).toBe(60);
     r.takeYou();
-    expect(r.cook(p.id, 'cook_shrimp', 1)).toBe(false);
+    expect(r.make(p.id, 'cook_shrimp', 1)).toBe(false);
     expect(you(r, p)?.notes).toEqual(['You have nothing to make shrimp from.']);
+  });
+
+  it('smelts bars at the furnace and forges a dagger at the anvil, by level, quicker with every level', () => {
+    const r = room();
+    const p = enterOk(r, 'Lia', { x: 5, y: 3 }, { bag: [stack('copper_ore'), stack('tin_ore'), stack('copper_ore'), stack('tin_ore'), stack('iron_ore'), stack('oak_log')] });
+    r.takeYou();
+    r.acceptQuest(p.id, 'apprentice_smith');
+    useAndArrive(r, p, FURNACE, { n: 0 });
+    expect(you(r, p)?.station).toEqual({ station: 'furnace', fid: null, fuelMs: null });
+    expect(r.make(p.id, 'smelt_iron_bar', 1)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['You need Smithing level 15 to make iron bar.']);
+    expect(r.make(p.id, 'smith_bronze_dagger', 1)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['You need an anvil to make bronze dagger.']);
+    expect(r.make(p.id, 'smelt_bronze_bar', 5)).toBe(true); // only the makings for two
+    expect(p.action).toMatchObject({ kind: 'make', recipe: 'smelt_bronze_bar', left: 2 });
+    expect(r.advance().acts).toEqual([[p.id, 6, 3, 2, 60]]); // 3000 ms at level 1, in 100 ms action ticks
+    for (let i = 1; i < 60; i++) r.advance();
+    expect(countInBag(p.bag, 'bronze_bar')).toBe(1);
+    expect(countInBag(p.bag, 'copper_ore')).toBe(1);
+    for (let i = 0; i < 60; i++) r.advance();
+    expect(countInBag(p.bag, 'bronze_bar')).toBe(2);
+    expect(countInBag(p.bag, 'copper_ore')).toBe(0);
+    expect(p.action).toBeNull();
+    expect(p.skills.smithing).toBe(16);
+    expect(you(r, p)?.quests).toEqual([['apprentice_smith', 'active', [2, 0]]]);
+    useAndArrive(r, p, ANVIL, { n: 50 });
+    expect(you(r, p)?.station?.station).toBe('anvil');
+    expect(r.make(p.id, 'smith_bronze_dagger', 1)).toBe(true);
+    for (let i = 0; i < 60; i++) r.advance();
+    expect(countInBag(p.bag, 'bronze_dagger')).toBe(1);
+    expect(countInBag(p.bag, 'bronze_bar')).toBe(1);
+    expect(countInBag(p.bag, 'oak_log')).toBe(0);
+    expect(p.skills.smithing).toBe(28);
+    expect(you(r, p)?.quests).toEqual([['apprentice_smith', 'active', [2, 1]]]);
+    // A seasoned smith works faster: level 51 is half the time.
+    const q = enterOk(r, 'Mo', { x: 7, y: 3 }, { skills: { smithing: xpForLevel(51) }, bag: [stack('copper_ore'), stack('tin_ore')] });
+    useAndArrive(r, q, FURNACE, { n: 0 });
+    r.takeYou();
+    expect(r.make(q.id, 'smelt_bronze_bar', 1)).toBe(true);
+    expect(r.advance().acts).toEqual([[q.id, 6, 3, 1, 30]]);
   });
 
   it('stops, and leaves the fire, when you walk away', () => {
@@ -269,13 +360,13 @@ describe('cooking', () => {
     const p = enterOk(r, 'Hal', { x: 2, y: 2 }, { bag: [stack('raw_shrimp'), stack('raw_shrimp')] });
     useAndArrive(r, p, VILLAGE_FIRE, { n: 0 });
     r.takeYou();
-    expect(r.cook(p.id, 'cook_shrimp', 2)).toBe(true);
+    expect(r.make(p.id, 'cook_shrimp', 2)).toBe(true);
     r.advance();
     r.queueInput(p.id, { seq: 50, to: { x: 2, y: 4 } });
     const t = r.advance();
     expect(t.acts).toEqual([[p.id, -1, -1, 2]]);
     expect(p.action).toBeNull();
-    expect(you(r, p)?.fire).toBeNull();
+    expect(you(r, p)?.station).toBeNull();
     expect(countInBag(p.bag, 'raw_shrimp')).toBe(2);
   });
 

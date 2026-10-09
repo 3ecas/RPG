@@ -175,12 +175,27 @@ export class Windows {
   }
 
   private front(el: HTMLElement): void {
-    el.style.zIndex = String(++this.z);
+    this.raise(el);
   }
 
   /** Nothing is left off the stage when it shrinks or when the stage first shows. */
   layout(): void {
     this.keepInside();
+  }
+
+  setTitle(id: string, title: string): void {
+    const win = this.wins.get(id);
+    if (win) win.el.querySelector('.win-title')!.textContent = title;
+  }
+
+  /** To the front. Windows stay below the menus, the balloon and the dialogs (z 900 and up): when the counter nears them, every window is renumbered in its present order. */
+  private raise(el: HTMLElement): void {
+    if (this.z >= 800) {
+      const inOrder = [...this.wins.values()].map((w) => w.el).sort((a, b) => Number(a.style.zIndex || 0) - Number(b.style.zIndex || 0));
+      this.z = 20;
+      for (const w of inOrder) w.style.zIndex = String(++this.z);
+    }
+    el.style.zIndex = String(++this.z);
   }
 
   private keepInside(): void {

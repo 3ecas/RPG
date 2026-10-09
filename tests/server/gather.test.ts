@@ -8,6 +8,7 @@ import { parseState, stateOf } from '@/server/state';
 import type { ZoneMapDef } from '@/types/content';
 import type { Cell } from '@/world/grid';
 import { freeSlots } from '@/world/bag';
+import { MAX_XP, xpForLevel } from '@/world/skills';
 
 /** A field with an oak, a willow, a bank chest and a spawn. */
 const map: ZoneMapDef = {
@@ -32,7 +33,7 @@ const WILLOW: Cell = { x: 7, y: 4 };
 const BANK: Cell = { x: 7, y: 2 };
 const content = new Registry(CONTENT);
 
-/** Dice that answer as told, then as a seeded Rng would. The room rolls success first, then depletion, on every success. */
+/** Dice that answer as told, then as a seeded Rng would. The room rolls only whether a node empties, once per item. */
 class ScriptedRng extends Rng {
   constructor(private readonly answers: boolean[] = []) {
     super(7);
@@ -74,33 +75,51 @@ const you = (r: Room, p: RoomPlayer) => r.takeYou().get(p.id);
 const logsIn = (p: RoomPlayer) => p.bag.filter((s) => s?.itemId === 'oak_log').length;
 
 describe('gathering: chopping a tree', () => {
-  it('walks up to the clicked tree, faces it, and chops a log on every action tick that succeeds', () => {
-    const r = room({ rng: new ScriptedRng([true, false, false, true, false]) });
+  it('walks up to the clicked tree, faces it, and chops a log every 250 ticks at level 1', () => {
+    const r = room({ rng: new ScriptedRng([false, false, false]) }); // the tree stands
     const p = enterOk(r, 'Ada');
     const seq = { n: 0 };
     useAndArrive(r, p, OAK, seq);
     expect(p.cell).toEqual({ x: 3, y: 1 }); // beside the oak, which stands at (3, 2)
-    expect(p.action).toEqual({ kind: 'gather', object: oakIndex(r), cell: OAK });
+    expect(p.action).toMatchObject({ kind: 'gather', object: oakIndex(r), cell: OAK, ticks: 250 });
     expect(p.dir).toBe(0); // facing down, at the tree
     expect(r.snapshot()[0]?.act).toEqual([3, 2]);
     r.takeYou();
-    // Two action ticks: the first succeeds (no depletion), the second fails, the third succeeds.
-    r.advance();
-    const first = r.advance();
-    expect(first.acts).toEqual([]);
-    expect(logsIn(p)).toBe(1);
+    const untilLog = (n: number) => {
+      let ticks = 0;
+      const acts = [];
+      while (logsIn(p) < n && ticks < 1000) {
+        acts.push(...r.advance().acts);
+        ticks++;
+      }
+      return { ticks, acts };
+    };
+    const first = untilLog(1);
+    expect(first.ticks).toBe(250);
+    expect(first.acts).toEqual([[p.id, 3, 2, 0, 250]]); // the next log is timed again, for the progress bar
     const y1 = you(r, p)!;
     expect(y1.bag?.filter((s) => s?.[0] === 'oak_log')).toHaveLength(1);
     expect(y1.xp).toEqual([['lumberjack', 10]]);
     expect(p.skills.lumberjack).toBe(10);
-    r.advance();
-    r.advance();
-    expect(logsIn(p)).toBe(1);
-    r.advance();
-    r.advance();
-    expect(logsIn(p)).toBe(2);
+    expect(untilLog(2).ticks).toBe(250);
     expect(p.skills.lumberjack).toBe(20);
     expect(p.action).not.toBeNull(); // still at it
+  });
+
+  it('is quicker with levels and a better hatchet, never under 25 ticks', () => {
+    const r = room({ rng: new ScriptedRng(new Array(10).fill(false)) });
+    const mid = enterOk(r, 'Mid', { x: 3, y: 1 }, { skills: { lumberjack: xpForLevel(50) } });
+    useAndArrive(r, mid, OAK, { n: 0 });
+    expect(mid.action).toMatchObject({ ticks: 151 });
+    const pro = enterOk(r, 'Pro', { x: 2, y: 2 }, { skills: { lumberjack: MAX_XP }, bag: [{ itemId: 'rune_hatchet', qty: 1 }] });
+    useAndArrive(r, pro, OAK, { n: 0 });
+    expect(pro.action).toMatchObject({ ticks: 25 });
+    let ticks = 0;
+    while (logsIn(pro) < 1 && ticks < 100) {
+      r.advance();
+      ticks++;
+    }
+    expect(ticks).toBe(25);
   });
 
   it('announces the swing to the room and the stop when the walk is interrupted by another click', () => {
@@ -113,7 +132,7 @@ describe('gathering: chopping a tree', () => {
       acts.push(...r.advance().acts);
       if (p.path.length > 0) r.queueInput(p.id, { seq: ++seq.n });
     }
-    expect(acts).toEqual([[p.id, OAK.x, OAK.y, 0]]);
+    expect(acts).toEqual([[p.id, OAK.x, OAK.y, 0, 250]]);
     r.queueInput(p.id, { seq: ++seq.n, to: { x: 1, y: 3 } });
     expect(r.advance().acts).toEqual([[p.id, -1, -1, 0]]);
     expect(p.action).toBeNull();
@@ -145,12 +164,12 @@ describe('gathering: chopping a tree', () => {
   });
 
   it('fills the bag, says so, and stops', () => {
-    const r = room({ rng: new ScriptedRng(new Array(60).fill(null).flatMap(() => [true, false])) });
+    const r = room({ rng: new ScriptedRng(new Array(10).fill(false)) });
     const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: new Array(26).fill({ itemId: 'stone_hatchet', qty: 1 }) });
     const seq = { n: 0 };
     useAndArrive(r, p, OAK, seq);
     expect(freeSlots(p.bag)).toBe(2);
-    for (let i = 0; i < 4; i++) r.advance();
+    for (let i = 0; i < 600 && p.action; i++) r.advance();
     expect(freeSlots(p.bag)).toBe(0);
     expect(p.action).toBeNull();
     expect(you(r, p)?.notes).toEqual(['Your bag is full.']);
@@ -169,7 +188,7 @@ describe('gathering: chopping a tree', () => {
     expect(ada.action && bob.action).toBeTruthy();
     const index = oakIndex(r);
     let fell = null;
-    for (let i = 0; i < 6 && !fell; i++) {
+    for (let i = 0; i < 260 && !fell; i++) {
       const delta = r.advance();
       if (delta.nodes.length > 0) fell = delta;
     }
@@ -196,8 +215,7 @@ describe('gathering: chopping a tree', () => {
     const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { skills: { lumberjack: 80 } });
     useAndArrive(r, p, OAK, { n: 0 });
     r.takeYou();
-    r.advance();
-    r.advance();
+    for (let i = 0; i < 260 && p.skills.lumberjack < 90; i++) r.advance();
     expect(p.skills.lumberjack).toBe(90);
     expect(you(r, p)?.notes).toEqual(['Congratulations, your Lumberjack level is now 2.']);
   });
@@ -259,6 +277,24 @@ describe('items on the ground', () => {
     useAndArrive(r, full, { x: 2, y: 3 }, { n: 0 });
     expect(you(r, full)?.notes).toEqual(['Your bag is full.']);
     expect(r.groundItem(2)).not.toBeNull();
+  });
+});
+
+describe('moving things about the bag', () => {
+  it('swaps two slots, either of which may be empty, and refuses nonsense', () => {
+    const r = room();
+    const p = enterOk(r, 'Ada', null, { bag: [{ itemId: 'oak_log', qty: 1 }, { itemId: 'stone_hatchet', qty: 1 }] });
+    r.takeYou();
+    expect(r.swap(p.id, 0, 1)).toBe(true);
+    expect(p.bag[0]).toEqual({ itemId: 'stone_hatchet', qty: 1 });
+    expect(p.bag[1]).toEqual({ itemId: 'oak_log', qty: 1 });
+    expect(you(r, p)?.bag?.slice(0, 2)).toEqual([['stone_hatchet', 1], ['oak_log', 1]]);
+    expect(r.swap(p.id, 1, 27)).toBe(true);
+    expect(p.bag[1]).toBeNull();
+    expect(p.bag[27]).toEqual({ itemId: 'oak_log', qty: 1 });
+    expect(r.swap(p.id, 2, 3)).toBe(false); // nothing in either
+    expect(r.swap(p.id, 0, 0)).toBe(false);
+    expect(r.swap(p.id, 0, 99)).toBe(false);
   });
 });
 

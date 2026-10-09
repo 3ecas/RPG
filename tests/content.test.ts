@@ -72,7 +72,7 @@ describe('content', () => {
     }
     expect(registry.unlocks('lumberjack')[0]?.text).toContain('Oak Tree');
     expect(registry.unlocks('lumberjack')[14]?.text).toContain('Willow Tree');
-    expect(registry.unlocks('lumberjack')[1]?.text).toBe('+2% chance to get a log each swing');
+    expect(registry.unlocks('lumberjack')[1]?.text).toBe('Each log takes 2 ticks less (250 at level 1, 50 at 100)');
     expect(registry.unlocks('vitality')[9]?.text).toContain('HP comes back faster');
     expect(registry.unlocks('magic')[29]?.text).toContain('Tome of Tides');
     expect(registry.unlocks('bows')[49]?.text).toContain('Yew Bow');

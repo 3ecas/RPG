@@ -96,7 +96,7 @@ describe('quests: the helpers', () => {
 
 describe('quests: in the room', () => {
   it('is taken from the journal, moves on talk and gather, and completes with its rewards', () => {
-    const r = room({ rng: new YesRng(new Array(20).fill(null).flatMap(() => [true, false])) });
+    const r = room({ rng: new YesRng(new Array(20).fill(false)) }); // the oak never falls
     const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: [{ itemId: 'stone_hatchet', qty: 1 }] });
     r.takeYou();
     expect(r.acceptQuest(p.id, 'timber_for_pell')).toBe(true);
@@ -108,12 +108,12 @@ describe('quests: in the room', () => {
     const seq = { n: 0 };
     useAndArrive(r, p, PELL, seq);
     const y2 = you(r, p)!;
-    expect(y2.notes?.[0]).toContain('Pell:');
+    expect(y2.talk?.npc).toBe('keeper_pell');
     expect(y2.quests).toEqual([['timber_for_pell', 'active', [1, 0]]]);
     useAndArrive(r, p, OAK, seq);
     expect(p.action).not.toBeNull();
     let done = null;
-    for (let i = 0; i < 60 && !done; i++) {
+    for (let i = 0; i < 1400 && !done; i++) {
       r.advance();
       const y = you(r, p);
       if (y?.quests?.[0]?.[1] === 'done') done = y;

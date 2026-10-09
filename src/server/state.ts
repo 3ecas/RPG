@@ -6,7 +6,7 @@
  * a brand new character gets the starting kit.
  */
 import type { EquipInfo, ItemStack, Objective } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type QuestId, type SkillId } from '@/types/ids';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type QuestId, type SkillId } from '@/types/ids';
 import { addToBag, addToStacks, type Bag, BAG_SLOTS, emptyBag } from '@/world/bag';
 import { MAX_XP } from '@/world/skills';
 import { slotsFor } from '@/world/stats';
@@ -27,6 +27,8 @@ export interface PlayerState {
   quests: QuestState;
   /** The purse: coins are a number on the character, not an item in the bag. */
   coins: number;
+  /** The creatures met in a fight, in the order met; the journal shows only these. */
+  bestiary: MonsterId[];
 }
 
 /** Items that changed their name; a stored record naming the old one gets the new. */
@@ -37,6 +39,7 @@ export interface StateContent {
   item(id: ItemId): { readonly stackable?: boolean; readonly equip?: EquipInfo };
   hasQuest(id: string): id is QuestId;
   quest(id: QuestId): { readonly objectives: readonly Objective[] };
+  hasMonster(id: string): id is MonsterId;
   readonly skillIds: SkillId[];
 }
 
@@ -98,7 +101,9 @@ export function parseState(raw: Record<string, unknown>, content: StateContent, 
     }
   }
   const coins = typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins > 0 ? Math.floor(raw.coins) : 0;
-  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana), quests, coins };
+  const bestiary: MonsterId[] = [];
+  if (Array.isArray(raw.bestiary)) for (const id of raw.bestiary) if (typeof id === 'string' && content.hasMonster(id) && !bestiary.includes(id)) bestiary.push(id);
+  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana), quests, coins, bestiary };
 }
 
 /** The document to store, a copy. */
@@ -117,5 +122,6 @@ export function stateOf(state: PlayerState): Record<string, unknown> {
     mana: state.mana,
     quests: Object.fromEntries(Object.entries(state.quests).flatMap(([id, q]) => (q ? [[id, { status: q.status, progress: [...q.progress] }]] : []))),
     coins: state.coins,
+    bestiary: [...state.bestiary],
   };
 }

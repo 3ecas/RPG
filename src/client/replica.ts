@@ -9,7 +9,7 @@
  * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { BagView, ClientMessage, EntitySnapshot, FireSession, GearView, Placement, QuestView, ServerMessage, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { BagView, ClientMessage, EntitySnapshot, GearView, Placement, QuestView, ServerMessage, StackView, StationSession, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 import type { PathOptions } from '@/world/path';
@@ -127,11 +127,15 @@ export class Replica {
   coins = 0;
   /** Total xp per skill. */
   readonly skills = new Map<string, number>();
+  /** The creatures you have met in a fight; the journal shows only these. */
+  readonly bestiary = new Set<string>();
+  /** What you are working on: when the current item started and how many ticks it takes, for a progress bar. */
+  work: { since: number; ticks: number } | null = null;
   /** The bank while it is open. */
   bank: StackView[] | null = null;
-  /** The fire you stand by while you use it, and when the server said how much fuel it had. */
-  fire: FireSession | null = null;
-  fireSeenAt = 0;
+  /** The station you stand by while you use it, and when the server said how much fuel a fire had. */
+  station: StationSession | null = null;
+  stationSeenAt = 0;
   readonly xpDrops: XpDrop[] = [];
   /** Bumped whenever the bag, the skills, the gear, the quests, the coins, the bank or the fire change, so panels know to redraw. */
   version = 0;
@@ -240,6 +244,8 @@ export class Replica {
       this.stats = msg.stats;
       this.quests = msg.quests;
       this.coins = msg.coins;
+      this.bestiary.clear();
+      for (const id of msg.bestiary) this.bestiary.add(id);
       this.skills.clear();
       for (const [skill, xp] of msg.skills) this.skills.set(skill, xp);
       this.bank = null;
@@ -267,13 +273,14 @@ export class Replica {
     for (const index of msg.nodes) this.depleted.add(index);
     this.fires.clear();
     for (const [fid, x, y] of msg.fires) this.fires.set(fid, { fid, x, y });
-    if (this.bank !== null || this.fire !== null) {
+    if (this.bank !== null || this.station !== null) {
       this.bank = null;
-      this.fire = null;
+      this.station = null;
       this.version++;
     }
     this.pending = [];
     this.click = null;
+    this.work = null;
     this.accumulator = 0;
     this.smooth = { x: 0, y: 0 };
     this.clockOffset = now - msg.tick * this.tickMs;
@@ -348,7 +355,7 @@ export class Replica {
       }
       if (id === this.selfId) this.reconcile(placement, dir, seq);
     }
-    for (const [id, x, y, dir] of delta.acts) {
+    for (const [id, x, y, dir, ticks] of delta.acts) {
       const e = this.entities.get(id);
       if (!e) continue;
       e.act = x >= 0 ? { x, y } : null;
@@ -356,7 +363,10 @@ export class Replica {
       // Facing something is a state like any other, so others see the turn.
       e.history.push({ tick: delta.tick, x: e.x, y: e.y, dir, moving: false });
       if (e.history.length > HISTORY_CAP) e.history.shift();
-      if (id === this.selfId) this.self.dir = dir;
+      if (id === this.selfId) {
+        this.self.dir = dir;
+        this.work = x >= 0 && ticks ? { since: now, ticks } : null;
+      }
     }
     for (const [index, depleted] of delta.nodes) {
       if (depleted === 1) this.depleted.add(index);
@@ -385,13 +395,17 @@ export class Replica {
     if (you.stats) this.stats = you.stats;
     if (you.quests) this.quests = you.quests;
     if (you.coins !== undefined) this.coins = you.coins;
+    if (you.bestiary) {
+      this.bestiary.clear();
+      for (const id of you.bestiary) this.bestiary.add(id);
+    }
     if (you.bank !== undefined) this.bank = you.bank;
-    if (you.fire !== undefined) {
-      this.fire = you.fire;
-      this.fireSeenAt = now;
+    if (you.station !== undefined) {
+      this.station = you.station;
+      this.stationSeenAt = now;
     }
     if (you.items) for (const [gid, item, qty, x, y] of you.items) this.items.set(gid, { gid, item, qty, x, y });
-    if (you.bag || you.xp || you.gear || you.stats || you.quests || you.coins !== undefined || you.bank !== undefined || you.fire !== undefined) this.version++;
+    if (you.bag || you.xp || you.gear || you.stats || you.quests || you.coins !== undefined || you.bank !== undefined || you.station !== undefined || you.bestiary) this.version++;
     if (you.notes) for (const note of you.notes) this.onNote?.(note);
   }
 

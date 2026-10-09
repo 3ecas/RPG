@@ -145,6 +145,14 @@ export class World {
     return this.roomOf(id)?.unequip(id, slot) ?? false;
   }
 
+  eat(id: number, slot: number): boolean {
+    return this.roomOf(id)?.eat(id, slot) ?? false;
+  }
+
+  swap(id: number, from: number, to: number): boolean {
+    return this.roomOf(id)?.swap(id, from, to) ?? false;
+  }
+
   acceptQuest(id: number, questId: string): boolean {
     return this.roomOf(id)?.acceptQuest(id, questId) ?? false;
   }
@@ -157,8 +165,12 @@ export class World {
     return this.roomOf(id)?.fire(id, command) ?? false;
   }
 
-  cook(id: number, recipe: string, qty: number): boolean {
-    return this.roomOf(id)?.cook(id, recipe, qty) ?? false;
+  make(id: number, recipe: string, qty: number): boolean {
+    return this.roomOf(id)?.make(id, recipe, qty) ?? false;
+  }
+
+  leaveStation(id: number): boolean {
+    return this.roomOf(id)?.leaveStation(id) ?? false;
   }
 
   /** Everyone's private events since the last call, wherever they stand. */

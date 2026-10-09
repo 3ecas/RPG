@@ -120,10 +120,9 @@ export interface GatherNodeDef {
   readonly name: string;
   readonly description: string;
   readonly skill: SkillId;
+  /** The tier sets the level it opens at and how much longer than a tier 1 node each item takes (world/skills.ts, gatherTicks). */
   readonly tier: Tier;
   readonly itemId: ItemId;
-  /** Expected time per item for a character at the tier's level with a tier 1 tool; the success chance per action tick comes from it. */
-  readonly durationMs: number;
   readonly xp: number;
   /** Shared and depletable: after each success, this chance the node empties for everyone until it respawns. Absent means it never runs out. */
   readonly deplete?: { readonly chance: number; readonly respawnMs: number };

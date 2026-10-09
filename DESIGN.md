@@ -82,12 +82,15 @@ Starting values. Expect to tune them after the first playable slice.
   Mining stays because Smithing eats ore.
 - **Every level gives something.** The content of a tier opens at the tier's
   level (1, 15, 30, 50, 70, 85); every other level gives the skill's small
-  bonus: +2% chance per swing, cast or try for the gathering skills (slow at
-  first, nearly every swing by the end), +1% faster work for the making
-  skills, +1% damage for Hand Weapons and Bows, +1 max HP for Vitality and
-  +1 max mana for Spirit with faster return every ten levels, +1 spell power
-  for Magic, +1% potion strength for Witchcraft. The skills panel lists all
-  hundred.
+  bonus. Gathering is paced in ticks (50 ms): an item takes 250 ticks at
+  level 1 and 50 at level 100, about two fewer per level, a fifth longer
+  per node tier past the first and a fifth shorter per tool tier past the
+  first, never under 25; slow at first, quick by the end. The making skills
+  work 1% faster per level (half the time from level 51), except Cooking,
+  which burns 1% less per level. +1% damage for Hand Weapons and Bows, +1
+  max HP for Vitality and +1 max mana for Spirit with faster return every
+  ten levels, +1 spell power for Magic, +1% potion strength for Witchcraft.
+  The skills panel lists all hundred.
 - **The character's numbers**: hit points (10 + Vitality + gear), mana (5 +
   Spirit + gear), armor (gear; shields count), attack (1 + the weapon's
   attack scaled by its skill, + gear), spell power (Magic − 1 + staffs and
@@ -110,6 +113,10 @@ Starting values. Expect to tune them after the first playable slice.
   hands a stone hatchet to anyone who talks to him without one, Greta the
   stonemason a stone pickaxe, and the village store sells both. Fishing and
   harvesting need no tool.
+- **Making happens at stations.** Stand by one and it lists what your bag
+  has the makings for, one or all: the campfire cooks, the furnace smelts,
+  the anvil forges, the sawbench carves, the tannery tans. Nothing is made
+  from the inventory alone.
 - **Cooking happens at campfires.** Every settlement has one that never
   goes out. A player builds one anywhere from two stones (broken from the
   loose rock by the village outcrop with a pickaxe) and a log; it burns a
@@ -117,6 +124,8 @@ Starting values. Expect to tune them after the first playable slice.
   keeps it going, up to ten minutes. Building and feeding give Crafting xp.
   A cook takes a couple of seconds and two thirds come out right at the
   level the food opens at, a percent more per level after, never all.
+- **Food heals when it is down.** Eating takes 35 ticks and then heals (a
+  shrimp 6), one thing at a time, never past the maximum.
 - **The progression tree goes.** Zones open by walking, with danger and quests
   as the gates. Features it granted (dual wield, auto-eat, the market) become
   quest rewards or plain features.
@@ -172,15 +181,21 @@ with the first handful of real ones.
 ## 10. UI and art
 
 - **Chrome:** a menu bar fixed along the bottom that opens windows for the
-  inventory (gear laid out as a body, the numbers, the purse and the bag in
-  one panel), the journal (horizontal tabs: quests, the adventure log, the
-  bestiary, the item database; each tab a list on the left and the page on
-  the right, the quest page with one button to accept), the skills and the
-  settings; every window drags, resizes and closes with its X, and the
-  layout is remembered per browser. Active quests sit top left with their
-  objectives red until done, then green. A minimap in the top right. A
-  docked chatbox. Right-click menus. The bank, the campfire, shops and
-  crafting are windows too. Space stops you.
+  inventory (gear laid out as a body, hit points and mana as coloured
+  sliders with the number on the left and the percentage on the right, the
+  purse and the bag in one panel), the journal (horizontal tabs: quests, the
+  adventure log, the bestiary, the item database; each tab a list on the
+  left and the page on the right, the quest page with one button to
+  accept), the skills and the settings; every window drags, resizes and
+  closes with its X, and the layout is remembered per browser; menus open
+  above every window. A bag slot drags onto another to swap, or onto the
+  world to throw the thing away after a yes-or-no. Active quests sit top
+  left with their objectives red until done, then green. People speak in a
+  balloon above the menu bar, with their role under their name on the map.
+  The bestiary tells only creatures you have fought; the item database
+  tells how to come by everything. A minimap in the top right. A docked
+  chatbox. Right-click menus. The bank, the stations and shops are windows
+  too. Space stops you.
 - **Art:** simple shapes for now: flat tiles, discs for people, boxes and
   circles for what stands on the map. The renderer is one file, so pixel art
   can replace it once the mechanics are in. When it does: 16-pixel tiles,
@@ -235,7 +250,7 @@ Each step is playable or demonstrable on its own. Status in the last column.
 | 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, all of it in the character's document | Durations as ticks, shared nodes, item replication | done |
 | 2b | **Skills, numbers, gear and windows**: the thirteen skills to level 100 with an unlock on every level, hit points, mana, armor, attack and spell power from levels and gear, nine gear slots with wear and remove, Space to stop, and the UI as a draggable menu bar, draggable and resizable windows and a minimap | Stats and gear replicate, the chrome the rest of the game will live in | done |
 | 2c | **Quests, campfires, the village's tools**: quests taken from a journal of tabs with a list and a page, tracked top left, finished by events and paid in coins, xp and items; no starting kit, Rowan and Greta handing out stone tools; stones from loose rock; campfires that are built, burn down and are fed, and cooking on any fire; fishing spots in the water; one inventory panel with gear, numbers, purse and bag; the menu bar along the bottom | Objectives from events, timed objects shared by a zone, a session like the bank's | done |
-| 3 | The furnace, the anvil, the sawbench and the tannery the way the campfire works | Nothing new, breadth | |
+| 3 | **Every station, and the pace**: the furnace, the anvil, the sawbench and the tannery the way the campfire works, gathering timed in ticks by level with a bar over your head, eating, the talk balloon, the hidden bestiary, item pages that say how to get everything, sliders for HP and mana, dragging bag slots | Nothing new, breadth | done |
 | 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
 | 5 | Accounts (replacing the browser secret), names, chat channels, mute and ban, rate limits | Safety | |
 | 6 | Tutorial island map and guides, the starting town, the first quest | Onboarding | |

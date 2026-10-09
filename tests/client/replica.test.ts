@@ -17,7 +17,7 @@ const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, 
 const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false, act: null };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], fires: [[3, 5, 5]], seq, resumed: false, bag: [['stone_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 }, quests: [['village_tour', 'active', [0, 0, 0, 0]]], coins: 7 };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], fires: [[3, 5, 5]], seq, resumed: false, bag: [['stone_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 }, quests: [['village_tour', 'active', [0, 0, 0, 0]]], coins: 7, bestiary: ['rat'] };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
@@ -240,13 +240,13 @@ describe('replica: the zone around you', () => {
     const v = r.version;
     r.apply(tick(102, { fires: [[4, 6, 6]], doused: [3] }), 2300);
     expect([...r.fires.keys()]).toEqual([4]);
-    r.apply({ t: 'you', coins: 32, fire: { fid: 4, fuelMs: 59_000 } }, 2400);
+    r.apply({ t: 'you', coins: 32, station: { station: 'campfire', fid: 4, fuelMs: 59_000 } }, 2400);
     expect(r.coins).toBe(32);
-    expect(r.fire).toEqual({ fid: 4, fuelMs: 59_000 });
-    expect(r.fireSeenAt).toBe(2400);
+    expect(r.station).toEqual({ station: 'campfire', fid: 4, fuelMs: 59_000 });
+    expect(r.stationSeenAt).toBe(2400);
     expect(r.version).toBeGreaterThan(v);
-    r.apply({ t: 'you', fire: null }, 2500);
-    expect(r.fire).toBeNull();
+    r.apply({ t: 'you', station: null }, 2500);
+    expect(r.station).toBeNull();
     r.apply({ t: 'you', bank: null }, 2200);
     expect(r.bank).toBeNull();
     r.update(2000 + XP_DROP_MS + 100);
@@ -264,5 +264,24 @@ describe('replica: chat', () => {
     expect(r.bubbles(1700).find((b) => b.id === 2)?.text).toBe('again');
     expect(r.bubbles(1300 + BUBBLE_MS + 1).map((b) => b.id)).toEqual([2]);
     expect(r.bubbles(1600 + BUBBLE_MS + 1)).toEqual([]);
+  });
+});
+
+describe('replica: work, the creatures met', () => {
+  it('times what you work on from the act that says how long each item takes, and keeps the creatures met', () => {
+    const r = new Replica();
+    r.apply(welcome([{ id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false, act: null }]), 1000);
+    expect([...r.bestiary]).toEqual(['rat']);
+    expect(r.work).toBeNull();
+    r.apply(tick(101, { acts: [[1, 3, 2, 0, 250]] }), 1500);
+    expect(r.work).toEqual({ since: 1500, ticks: 250 });
+    r.apply(tick(102, { acts: [[1, 3, 2, 0, 250]] }), 14_000);
+    expect(r.work?.since).toBe(14_000);
+    r.apply(tick(103, { acts: [[1, -1, -1, 0]] }), 14_500);
+    expect(r.work).toBeNull();
+    const v = r.version;
+    r.apply({ t: 'you', bestiary: ['rat', 'goblin'] }, 15_000);
+    expect([...r.bestiary]).toEqual(['rat', 'goblin']);
+    expect(r.version).toBe(v + 1);
   });
 });

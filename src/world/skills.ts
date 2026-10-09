@@ -55,15 +55,22 @@ export function cookChance(level: number, need: number): number {
   return Math.min(0.98, 0.66 + 0.01 * Math.max(0, level - need));
 }
 
+/** Ticks (50 ms steps) one gathered item takes at level 1 and at level 100, on a tier 1 node with a tier 1 tool. */
+export const GATHER_TICKS_AT_1 = 250;
+export const GATHER_TICKS_AT_MAX = 50;
+/** Nothing is ever gathered quicker than this, whatever the tool. */
+export const GATHER_TICKS_FLOOR = 25;
+
 /**
- * The chance that one try at a gather node succeeds: the node's expected
- * time per item for a level 1 character with a tier 1 tool, two percent
- * better for every level after the first and a fifth per tool tier, never
- * below one in twenty nor above nineteen in twenty. Slow at first, quick
- * by the end.
+ * How many ticks one item takes: 250 at level 1 down to 50 at level 100,
+ * about two fewer per level, so the early game is slow and the late game
+ * quick. A harder node adds a fifth per tier past the first; a better tool
+ * takes a fifth off per tier past the first; never under the floor.
  */
-export function gatherChance(node: { durationMs: number }, level: number, toolTier: number, actionMs: number): number {
-  const base = actionMs / node.durationMs;
-  const chance = base * (1 + 0.02 * (Math.max(1, level) - 1)) * (1 + 0.2 * (Math.max(1, toolTier) - 1));
-  return Math.min(0.95, Math.max(0.05, chance));
+export function gatherTicks(node: { tier: Tier }, level: number, toolTier: number): number {
+  const at = Math.min(MAX_LEVEL, Math.max(1, level));
+  const base = GATHER_TICKS_AT_1 - ((GATHER_TICKS_AT_1 - GATHER_TICKS_AT_MAX) * (at - 1)) / (MAX_LEVEL - 1);
+  const harder = 1 + 0.2 * (node.tier - 1);
+  const tool = 1 + 0.2 * (Math.max(1, toolTier) - 1);
+  return Math.max(GATHER_TICKS_FLOOR, Math.round((base * harder) / tool));
 }

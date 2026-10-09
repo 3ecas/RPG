@@ -38,7 +38,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
 .world { position: absolute; inset: 0; overflow: hidden; }
 .world-canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
-.stage-closed .win, .stage-closed .menubar { display: none !important; }
+.stage-closed .win, .stage-closed .menubar, .stage-closed .balloon { display: none !important; }
 .menubar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; z-index: 15; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; background: rgba(26, 29, 35, 0.94); border-top: 1px solid var(--border); user-select: none; }
 .menubar button { font: inherit; font-size: 12px; padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; }
 .menubar button:hover { background: var(--bg-3); }
@@ -67,7 +67,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .coin { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe08a, #c9962a 70%, #8a6412); box-shadow: 0 0 0 1px #5a4310 inset; flex: none; }
 .bag { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; align-content: start; }
 .slot { position: relative; aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
-.slot-full { cursor: pointer; }
+.slot-full { cursor: grab; touch-action: none; }
 .slot-full:hover { border-color: var(--accent-2); }
 .icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #1b1520; letter-spacing: 0.02em; flex: none; }
 .qty { position: absolute; right: 3px; bottom: 2px; font-size: 10px; color: #f0c674; text-shadow: 0 0 2px #000; }
@@ -77,7 +77,12 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .gslot-name { font-size: 10px; color: var(--muted); }
 .gslot-full { border-style: solid; cursor: pointer; }
 .gslot-full:hover { border-color: var(--accent-2); }
-.stats { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 11px; }
+.vital { position: relative; height: 20px; margin-top: 6px; border-radius: 6px; background: var(--bg-4); border: 1px solid var(--border); overflow: hidden; }
+.vital-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; transition: width 0.25s ease; }
+.vital-hp .vital-fill { background: linear-gradient(180deg, #e2574d, #a8302a); }
+.vital-mana .vital-fill { background: linear-gradient(180deg, #4d8de2, #2a5aa8); }
+.vital-text { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 7px; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.stats { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 11px; }
 .stats div { display: flex; justify-content: space-between; padding: 2px 6px; border-radius: 5px; background: var(--bg-3); }
 .stats b { color: var(--accent); }
 
@@ -126,6 +131,24 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-4); color: var(--muted); white-space: nowrap; }
 .filter { width: 100%; font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 
+/* ---- what people say to you, above the menu bar ---- */
+.balloon { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); z-index: 900; padding: 8px 12px 10px; border-radius: 10px; background: rgba(26, 29, 35, 0.96); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); font-size: 13px; }
+.balloon[hidden] { display: none; }
+.balloon-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.balloon-head b { color: #f0c674; }
+.balloon-head .win-x { margin-left: auto; align-self: center; }
+.balloon-lines p { margin: 2px 0; }
+.balloon-lines p.aside { color: var(--muted); font-style: italic; }
+.jitem.unknown .jname { color: var(--muted); letter-spacing: 0.12em; }
+
+/* ---- a yes-or-no, over everything ---- */
+.confirm { position: absolute; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+.confirm[hidden] { display: none; }
+.confirm-card { width: min(380px, calc(100% - 32px)); padding: 14px 16px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); font-size: 13px; }
+.confirm-card p { margin: 0 0 12px; }
+.confirm-card .row { display: flex; gap: 8px; justify-content: flex-end; }
+.drag-ghost { position: fixed; z-index: 1200; pointer-events: none; transform: translate(-50%, -50%) scale(1.1); opacity: 0.9; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5)); }
+
 /* ---- the quest tracker, top left ---- */
 .tracker { position: absolute; left: 12px; top: 10px; z-index: 12; width: 240px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .tracker[hidden] { display: none; }
@@ -137,7 +160,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .settings .row { display: flex; gap: 8px; }
 
 /* ---- menus and the bank's stacks ---- */
-.menu { position: absolute; z-index: 40; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.menu { position: absolute; z-index: 1000; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
 .menu[hidden] { display: none; }
 .menu button { font: inherit; font-size: 12px; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; }
 .menu button:hover { background: var(--bg-3); color: var(--accent); }

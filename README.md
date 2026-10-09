@@ -6,7 +6,7 @@ world is drawn with simple shapes for now; art comes once the mechanics are
 in. [DESIGN.md](DESIGN.md) is the design and the build order;
 [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is put together.
 
-## What works today (slices 1 to 2c: walk together, characters that last, gathering end to end, skills, gear and windows, quests, campfires and cooking)
+## What works today (slices 1 to 3: walk together, characters that last, gathering and making end to end, skills, gear and windows, quests, campfires, cooking, smelting and forging)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
 - **Tools from people.** You start with nothing in your bag. Rowan the
@@ -14,20 +14,30 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   anyone who talks to him without one; Greta the stonemason, by the rocks to
   the east, does the same with a stone pickaxe. Hollow Goods sells both too.
 - **Chop trees, break stones, fish.** Click an oak (or right-click it for
-  Chop, Examine, Walk here) and you walk up beside it and swing. Every
-  action tick (600 ms) rolls for a log, better with your level and your
-  hatchet's tier. The loose stones by the outcrop give stones to a pickaxe;
-  the shrimp waters, in the pond right off the bank, give raw shrimp to
-  anyone. Everything goes into a bag of 28 slots, one each; xp floats up and
-  the Skills window shows the level. A tree sometimes falls, for everyone,
-  and grows back a few seconds later.
-- **Cook at a campfire, or build your own.** The village fire never goes
-  out: stand by it, and the Campfire window lists what in your bag can be
-  cooked, one or all. Every cook takes a couple of seconds; some burn, fewer
-  with every Cooking level. Two stones and a log in your bag build a fire
-  where you stand (right-click a stone or a log); it burns a minute per tier
-  of the log, anyone can cook on it, and a log fed to it keeps it going, up
-  to ten minutes. Building and feeding train Crafting.
+  Chop, Examine, Walk here) and you walk up beside it and swing. An item
+  takes 250 ticks (12.5 s) at level 1 and 50 ticks at level 100, about two
+  fewer per level; a harder node takes longer, a better tool is quicker; a
+  bar over your head shows how far along the next one is. The loose stones
+  by the outcrop give stones to a pickaxe; the shrimp waters, in the pond
+  right off the bank, give raw shrimp to anyone. Everything goes into a bag
+  of 28 slots, one each; xp floats up and the Skills window shows the level.
+  A tree sometimes falls, for everyone, and grows back a few seconds later.
+- **Make things at stations.** Stand by a station and click it: its window
+  lists what your bag has the makings for, one or all, and what it takes.
+  The campfire cooks raw food (some burns, less with every Cooking level);
+  the furnace in Copper Hills smelts ore into bars and the anvil there
+  forges bars into weapons and armor; the sawbench (logs into shields) and
+  the tannery (hides into light armor) work the same way. Every Smithing or
+  Crafting level makes the work a little quicker, half the time from level
+  51. The Items tab of the journal says where each thing is made and from
+  what.
+- **Campfires of your own.** The village fire never goes out. Two stones and
+  a log in your bag build a fire where you stand (right-click a stone or a
+  log); it burns a minute per tier of the log, anyone can cook on it, and a
+  log fed to it keeps it going, up to ten minutes. Building and feeding
+  train Crafting.
+- **Eat.** Click food in the bag and Eat: it leaves the bag at once and heals
+  when it is down, 35 ticks later. A shrimp heals 6.
 - **Quests.** The Journal's Quests tab lists every quest down the left and
   tells the picked one on the right: who gives it, the task, the objectives,
   the rewards, and one button to accept it. An accepted quest shows top
@@ -35,6 +45,15 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   one pays coins, xp and items. Two can be finished today: Timber for Pell
   (talk to Pell, chop five oak logs) and A Walk Around the Village (meet
   three people and see the hills).
+- **The journal's other tabs.** The Bestiary tells only the creatures you
+  have fought; the rest are ??? until you meet them. The Items tab gives
+  every item its brief, how to come by it (made at which station from what,
+  gathered from which node in which zone, sold where, handed out by whom, a
+  quest's reward, dropped by creatures you have met) and what it is good
+  for. The Log keeps what was said and done.
+- **People talk in a balloon** above the menu bar when you click them, with
+  their role under their name on the map; Rowan the lumberjack and Greta the
+  stonemason hand out their tools there.
 - **Coins** are a purse on the character, shown in the inventory, not an
   item in the bag.
 - **Drop and take.** Click a bag slot for Drop or Examine. A dropped item
@@ -56,13 +75,16 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   the inventory, remove from the Gear window; too high a tier and the game
   says which level you need. Hatchets and pickaxes can be wielded.
 - **Windows.** The menu bar sits along the bottom and opens the Inventory
-  (what you wear in nine slots laid out as a body, your numbers, your coins
-  and the bag in one panel), the Journal (quests, your adventure log, a
-  bestiary, the item database, each as a tab with a list on the left and
-  the page on the right), Skills, Map and Settings. Every window drags by
-  its title, resizes by its corner, and closes with its X; the layout is
-  remembered per browser. The map sits top right. Keys: I, J, K, M, O for
-  the windows, R to run, Space to stop, Enter to talk.
+  (what you wear in nine slots laid out as a body, hit points and mana as
+  coloured sliders with the numbers on the left and the percentage on the
+  right, your coins and the bag in one panel), the Journal (quests, your
+  adventure log, the bestiary, the item database, each as a tab with a list
+  on the left and the page on the right), Skills, Map and Settings. Every
+  window drags by its title, resizes by its corner, and closes with its X;
+  the layout is remembered per browser; menus always open above the
+  windows. Drag a bag slot onto another to swap them, or onto the world to
+  throw the thing away after a yes-or-no. The map sits top right. Keys: I,
+  J, K, M, O for the windows, R to run, Space to stop, Enter to talk.
 - Skills, bag, bank, gear, hit points, mana, coins and quests are saved with
   the character.
 - Your character is saved under its name: leave and come back, on the same
@@ -165,9 +187,9 @@ npm start              # runs the built server
 | `src/types/`    | Shared types, typed content ids                             | content, type-only      |
 | `src/content/`  | The world's data: zones, tile maps, and the tables they list | types                  |
 | `src/core/`     | The content registry with its validation, the seeded RNG    | types                   |
-| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve and the cook roll, the bag rules, the character's numbers, the campfire rules | types |
+| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve, the gather pace and the cook roll, the bag rules, the character's numbers, the campfire and eating rules | types |
 | `src/net/`      | The wire protocol: message types and the strict parser      | types, world            |
-| `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank, quests, campfires and cooking), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
+| `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank, quests, stations, campfires, eating), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
 | `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net    |
 | `src/ui/`       | The page: the shapes renderer, the minimap, the window manager, the shell with its windows, the quest tracker and the menus, the join card, chat | client, net, world, types |
 | `src/main.ts`   | The entry point                                             | everything              |
@@ -177,6 +199,6 @@ ESLint fails the build if a layer imports something it should not.
 
 ## Next
 
-Slice 3 of the build order in DESIGN.md: the furnace, the anvil, the
-sawbench and the tannery the way the campfire works, so every production
-skill runs on the server; the other gather nodes already do.
+Slice 4 of the build order in DESIGN.md: monsters as entities in the
+zones, combat, the single-combat lock, death and drops. The bestiary and
+the kill objectives are waiting for them.

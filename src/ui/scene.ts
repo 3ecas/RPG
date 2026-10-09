@@ -14,7 +14,7 @@ import { type Cell, type Dir, type Grid, inBounds, type PlacedObject } from '@/w
 
 export interface SceneContent {
   zone(id: ZoneId): { name: string };
-  npc(id: NpcId): { name: string };
+  npc(id: NpcId): { name: string; title: string };
   node(id: NodeId): { name: string; skill: SkillId };
   shop(id: ShopId): { name: string };
   station(id: StationId): { name: string };
@@ -324,7 +324,9 @@ export class OnlineScene {
         const lx = Math.max(half, Math.min(this.canvas.clientWidth - half, cx));
         text(ctx, label, lx, above ? sy(obj.y * TILE) - 4 : sy((obj.y + 1) * TILE) + 12, '#e4e6ea', 11);
       } else if (def.kind === 'npc') {
-        text(ctx, this.content.npc(def.id).name, cx, sy(obj.y * TILE) - 5, '#c9ccd3', 10);
+        const npc = this.content.npc(def.id);
+        text(ctx, npc.name, cx, sy(obj.y * TILE) - 5, '#c9ccd3', 10);
+        text(ctx, npc.title, cx, sy((obj.y + 1) * TILE) + 10, '#9aa0ab', 9);
       } else if (near(obj)) {
         const label = def.kind === 'node' ? this.content.node(def.id).name : def.kind === 'shop' ? this.content.shop(def.id).name : def.kind === 'market' ? 'Market' : def.kind === 'trader' ? this.content.trader(def.id).name : def.kind === 'station' ? this.content.station(def.id).name : def.kind === 'bank' ? 'Bank' : null;
         if (label) text(ctx, label, cx, sy((obj.y + obj.h) * TILE) + 11, '#c9ccd3', 10);
@@ -359,6 +361,15 @@ export class OnlineScene {
       const top = sy(at.y * TILE - TILE / 2);
       const isSelf = e.id === this.replica.selfId;
       text(ctx, e.name, cx, top - 5, isSelf ? SELF_COLOR : '#e4e6ea', 11, isSelf);
+      // How far along the thing you are working on is, over your own head.
+      const work = isSelf ? this.replica.work : null;
+      if (work) {
+        const f = Math.max(0, Math.min(1, (this.now - work.since) / (work.ticks * this.replica.tickMs)));
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fillRect(cx - 17, top - 23, 34, 6);
+        ctx.fillStyle = '#f0c674';
+        ctx.fillRect(cx - 16, top - 22, 32 * f, 4);
+      }
       const bubble = bubbles.get(e.id);
       if (bubble) this.drawBubble(bubble.text, cx, top - 20, (this.now - bubble.at) / 1000);
     }
