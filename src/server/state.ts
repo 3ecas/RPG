@@ -6,8 +6,8 @@
  * a brand new character gets the starting kit.
  */
 import type { EquipInfo, ItemStack, Objective } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type QuestId, type SkillId } from '@/types/ids';
-import { addToBag, addToStacks, type Bag, BAG_SLOTS, emptyBag } from '@/world/bag';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type QuestId, type SkillId, TOOL_SKILLS } from '@/types/ids';
+import { addToBag, addToStacks, type Bag, BAG_SLOTS, type Belt, emptyBag } from '@/world/bag';
 import { MAX_XP } from '@/world/skills';
 import { slotsFor } from '@/world/stats';
 import type { QuestState } from './quests';
@@ -21,6 +21,8 @@ export interface PlayerState {
   bag: Bag;
   bank: ItemStack[];
   gear: Gear;
+  /** The tool belt: a hatchet, a pickaxe, a fishing rod, worn rather than carried. */
+  belt: Belt;
   /** Current hit points and mana; Infinity when unknown, which the room reads as full. */
   hp: number;
   mana: number;
@@ -36,7 +38,7 @@ const RENAMED: Readonly<Record<string, string>> = { bronze_hatchet: 'stone_hatch
 
 export interface StateContent {
   hasItem(id: string): id is ItemId;
-  item(id: ItemId): { readonly stackable?: boolean; readonly equip?: EquipInfo };
+  item(id: ItemId): { readonly stackable?: boolean; readonly equip?: EquipInfo; readonly tool?: { readonly skill: SkillId } };
   hasQuest(id: string): id is QuestId;
   quest(id: QuestId): { readonly objectives: readonly Objective[] };
   hasMonster(id: string): id is MonsterId;
@@ -91,6 +93,13 @@ export function parseState(raw: Record<string, unknown>, content: StateContent, 
       if (stack && equip && slotsFor(equip.kind).includes(slot)) gear[slot] = { itemId: stack.itemId, qty: 1 };
     }
   }
+  const belt: Belt = {};
+  if (isRecord(raw.belt)) {
+    for (const skill of TOOL_SKILLS) {
+      const stack = parseStack(raw.belt[skill], content);
+      if (stack && content.item(stack.itemId).tool?.skill === skill) belt[skill] = { itemId: stack.itemId, qty: 1 };
+    }
+  }
   const quests: QuestState = {};
   if (isRecord(raw.quests)) {
     for (const [id, entry] of Object.entries(raw.quests)) {
@@ -103,7 +112,7 @@ export function parseState(raw: Record<string, unknown>, content: StateContent, 
   const coins = typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins > 0 ? Math.floor(raw.coins) : 0;
   const bestiary: MonsterId[] = [];
   if (Array.isArray(raw.bestiary)) for (const id of raw.bestiary) if (typeof id === 'string' && content.hasMonster(id) && !bestiary.includes(id)) bestiary.push(id);
-  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana), quests, coins, bestiary };
+  return { skills, bag, bank, gear, belt, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana), quests, coins, bestiary };
 }
 
 /** The document to store, a copy. */
@@ -113,11 +122,17 @@ export function stateOf(state: PlayerState): Record<string, unknown> {
     const worn = state.gear[slot];
     if (worn) gear[slot] = { itemId: worn.itemId, qty: worn.qty };
   }
+  const belt: Record<string, ItemStack> = {};
+  for (const skill of TOOL_SKILLS) {
+    const tool = state.belt[skill];
+    if (tool) belt[skill] = { itemId: tool.itemId, qty: 1 };
+  }
   return {
     skills: { ...state.skills },
     bag: state.bag.map((s) => (s ? { itemId: s.itemId, qty: s.qty } : null)),
     bank: state.bank.map((s) => ({ itemId: s.itemId, qty: s.qty })),
     gear,
+    belt,
     hp: state.hp,
     mana: state.mana,
     quests: Object.fromEntries(Object.entries(state.quests).flatMap(([id, q]) => (q ? [[id, { status: q.status, progress: [...q.progress] }]] : []))),

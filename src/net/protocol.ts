@@ -11,7 +11,7 @@ import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -74,6 +74,9 @@ export type ClientMessage =
   | { t: 'unequip'; slot: EquipSlot }
   /** Eats the food in this bag slot; it heals once it is down. */
   | { t: 'eat'; slot: number }
+  /** The tool belt: puts the tool in this bag slot on it (what hung there takes the bag slot), or takes the tool for a skill off it into the bag. */
+  | { t: 'belt'; op: 'on'; slot: number }
+  | { t: 'belt'; op: 'off'; skill: string }
   /** Moves what is in one bag slot to another, swapping what was there. */
   | { t: 'swap'; from: number; to: number }
   /** Takes a quest from the journal, or gives one up. */
@@ -107,6 +110,9 @@ export type StackView = [item: string, qty: number];
 
 /** What is worn: one entry per filled gear slot. */
 export type GearView = [slot: EquipSlot, item: string, qty: number][];
+
+/** The tool belt: one entry per tool skill with a tool hanging there. */
+export type BeltView = [skill: string, item: string][];
 
 /** A quest the character has taken or finished, with how far each objective is. */
 export type QuestView = [id: string, status: 'active' | 'done', progress: number[]];
@@ -176,6 +182,7 @@ export interface YouDelta {
   bag?: BagView;
   xp?: [skill: string, xp: number][];
   gear?: GearView;
+  belt?: BeltView;
   stats?: StatsView;
   quests?: QuestView[];
   coins?: number;
@@ -191,7 +198,7 @@ export interface YouDelta {
 
 export type ServerMessage =
   /** You are in the world: your id, a session token, the step length, whether this is a character coming back, your bag, skills, gear, numbers, quests and coins, and the zone you stand in. */
-  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number; bestiary: string[] } & ZoneSnapshot)
+  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; belt: BeltView; stats: StatsView; quests: QuestView[]; coins: number; bestiary: string[] } & ZoneSnapshot)
   /** You walked into another zone: forget the old one, here is the new. Your id, token, bag and skills stay. */
   | ({ t: 'zone' } & ZoneSnapshot)
   | ({ t: 'tick' } & TickDelta)
@@ -277,6 +284,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return typeof raw.slot === 'string' && (EQUIP_SLOTS as readonly string[]).includes(raw.slot) ? { t: 'unequip', slot: raw.slot as EquipSlot } : null;
     case 'eat':
       return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'eat', slot: raw.slot } : null;
+    case 'belt':
+      if (raw.op === 'on') return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'belt', op: 'on', slot: raw.slot } : null;
+      if (raw.op === 'off') return isId(raw.skill) ? { t: 'belt', op: 'off', skill: raw.skill } : null;
+      return null;
     case 'swap':
       return isInt(raw.from, 0, LIMITS.SLOT_MAX - 1) && isInt(raw.to, 0, LIMITS.SLOT_MAX - 1) && raw.from !== raw.to ? { t: 'swap', from: raw.from, to: raw.to } : null;
     case 'quest':

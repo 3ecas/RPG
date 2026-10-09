@@ -4,6 +4,7 @@ import { Registry } from '@/core/registry';
 import { Rng } from '@/core/rng';
 import type { Character } from '@/server/character';
 import { Room, type RoomOptions, type RoomPlayer } from '@/server/room';
+import { stateOf } from '@/server/state';
 import type { ZoneMapDef } from '@/types/content';
 import type { Cell } from '@/world/grid';
 import { countInBag } from '@/world/bag';
@@ -17,7 +18,7 @@ const map: ZoneMapDef = {
   biome: 'meadow',
   rows: [
     '^^^^^^^^^^^^',
-    '^S.....W...^',
+    '^S.....W.O.^',
     '^..F...G...^',
     '^.R...U.N..^',
     '^..........^',
@@ -28,6 +29,7 @@ const map: ZoneMapDef = {
     S: { kind: 'spawn' },
     W: { kind: 'npc', id: 'lumberjack_rowan' },
     G: { kind: 'npc', id: 'mason_greta' },
+    O: { kind: 'npc', id: 'angler_tobb' },
     F: { kind: 'station', id: 'campfire' },
     U: { kind: 'station', id: 'furnace' },
     N: { kind: 'station', id: 'anvil' },
@@ -44,6 +46,7 @@ const pocket: ZoneMapDef = {
 };
 const ROWAN: Cell = { x: 7, y: 1 };
 const GRETA: Cell = { x: 7, y: 2 };
+const TOBB: Cell = { x: 9, y: 1 };
 const VILLAGE_FIRE: Cell = { x: 3, y: 2 };
 const content = new Registry(CONTENT);
 
@@ -86,10 +89,11 @@ const stack = (itemId: string, qty = 1) => ({ itemId, qty });
 const SHRIMP_STEPS = 36;
 
 describe('tools from people', () => {
-  it('starts you with nothing; Rowan hands over a stone hatchet once, and Greta a pickaxe', () => {
+  it('starts you with nothing; Rowan hands over a stone hatchet once, Greta a pickaxe, Tobb a rod, all onto the belt', () => {
     const r = room();
     const p = enterOk(r, 'Ada', { x: 6, y: 1 });
     expect(p.bag.every((s) => s === null)).toBe(true);
+    expect(p.belt).toEqual({});
     r.takeYou();
     const seq = { n: 0 };
     useAndArrive(r, p, ROWAN, seq);
@@ -98,23 +102,34 @@ describe('tools from people', () => {
     expect(y1.talk?.lines[0]).toContain('The oaks are all yours');
     expect(y1.talk?.lines[1]).toBe('Rowan hands you a stone hatchet.');
     expect(y1.notes).toBeUndefined(); // words go to the balloon, not the chat
-    expect(countInBag(p.bag, 'stone_hatchet')).toBe(1);
+    expect(y1.belt).toEqual([['lumberjack', 'stone_hatchet']]);
+    expect(y1.bag).toBeUndefined(); // the belt took it, not the bag
+    expect(p.belt.lumberjack?.itemId).toBe('stone_hatchet');
+    expect(countInBag(p.bag, 'stone_hatchet')).toBe(0);
     useAndArrive(r, p, ROWAN, seq);
     const y2 = you(r, p)!;
     expect(y2.talk?.lines).toHaveLength(1); // the greeting only: you have one
-    expect(countInBag(p.bag, 'stone_hatchet')).toBe(1);
     useAndArrive(r, p, GRETA, seq);
     expect(you(r, p)?.talk?.lines[1]).toBe('Greta hands you a stone pickaxe.');
-    expect(countInBag(p.bag, 'stone_pickaxe')).toBe(1);
+    expect(p.belt.mining?.itemId).toBe('stone_pickaxe');
+    useAndArrive(r, p, TOBB, seq);
+    expect(you(r, p)?.talk?.lines[1]).toBe('Tobb hands you an oak fishing rod.');
+    expect(p.belt.fishing?.itemId).toBe('oak_rod');
+    expect(r.youOf(p.id)?.belt).toEqual([['lumberjack', 'stone_hatchet'], ['mining', 'stone_pickaxe'], ['fishing', 'oak_rod']]);
   });
 
-  it('says so when the bag is full', () => {
+  it('hangs the tool on the belt even when the bag is full, and knows a tool in the bag counts too', () => {
     const r = room();
     const p = enterOk(r, 'Bob', { x: 6, y: 2 }, { bag: new Array(28).fill(stack('oak_log')) });
     r.takeYou();
     useAndArrive(r, p, GRETA, { n: 0 });
-    expect(you(r, p)?.talk?.lines[1]).toBe('Greta has a stone pickaxe for you, but your bag is full.');
-    expect(countInBag(p.bag, 'stone_pickaxe')).toBe(0);
+    expect(you(r, p)?.talk?.lines[1]).toBe('Greta hands you a stone pickaxe.');
+    expect(p.belt.mining?.itemId).toBe('stone_pickaxe');
+    const q = enterOk(r, 'Cat', { x: 6, y: 1 }, { bag: [stack('iron_hatchet')] });
+    r.takeYou();
+    useAndArrive(r, q, ROWAN, { n: 0 });
+    expect(you(r, q)?.talk?.lines).toHaveLength(1); // a hatchet in the bag is a hatchet
+    expect(q.belt.lumberjack).toBeUndefined();
   });
 });
 
@@ -370,11 +385,13 @@ describe('cooking', () => {
     expect(countInBag(p.bag, 'raw_shrimp')).toBe(2);
   });
 
-  it('is kept with the character: coins and the stone tools read back', () => {
+  it('is kept with the character: coins, the stone tools and the belt read back', () => {
     const r = room();
-    const p = enterOk(r, 'Ivy', null, { coins: 40, bag: [stack('bronze_hatchet')] });
+    const p = enterOk(r, 'Ivy', null, { coins: 40, bag: [stack('bronze_hatchet')], belt: { mining: stack('bronze_pickaxe'), fishing: stack('oak_log'), lumberjack: stack('oak_rod') } });
     expect(p.coins).toBe(40);
     expect(r.youOf(p.id)?.coins).toBe(40);
     expect(p.bag[0]).toEqual({ itemId: 'stone_hatchet', qty: 1 });
+    expect(p.belt).toEqual({ mining: { itemId: 'stone_pickaxe', qty: 1 } }); // a log is no tool, a rod is no hatchet
+    expect(stateOf(p).belt).toEqual({ mining: { itemId: 'stone_pickaxe', qty: 1 } });
   });
 });

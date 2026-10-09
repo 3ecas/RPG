@@ -17,7 +17,7 @@ const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, 
 const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false, act: null };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], fires: [[3, 5, 5]], seq, resumed: false, bag: [['stone_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 }, quests: [['village_tour', 'active', [0, 0, 0, 0]]], coins: 7, bestiary: ['rat'] };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], fires: [[3, 5, 5]], seq, resumed: false, bag: [['stone_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], belt: [['fishing', 'oak_rod']], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 }, quests: [['village_tour', 'active', [0, 0, 0, 0]]], coins: 7, bestiary: ['rat'] };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
@@ -231,6 +231,9 @@ describe('replica: the zone around you', () => {
     r.apply({ t: 'you', gear: [['main_hand', 'bronze_sword', 1]], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 6, spellPower: 0 } }, 2150);
     expect(r.gear).toEqual([['main_hand', 'bronze_sword', 1]]);
     expect(r.stats?.attack).toBe(6);
+    expect(r.belt).toEqual([['fishing', 'oak_rod']]);
+    r.apply({ t: 'you', belt: [['lumberjack', 'stone_hatchet'], ['fishing', 'oak_rod']] }, 2160);
+    expect(r.belt).toHaveLength(2);
     expect(r.quests).toEqual([['village_tour', 'active', [0, 0, 0, 0]]]);
     r.apply({ t: 'you', quests: [['village_tour', 'done', [1, 1, 1, 1]]] }, 2200);
     expect(r.quests[0]?.[1]).toBe('done');

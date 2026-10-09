@@ -280,6 +280,57 @@ describe('items on the ground', () => {
   });
 });
 
+/** A pond: a shrimp spot in the water, land beside it. */
+const fishMap: ZoneMapDef = {
+  biome: 'meadow',
+  rows: ['^^^^^^', '^S..B^', '^....^', '^^^^^^'],
+  legend: { S: { kind: 'spawn' }, B: { kind: 'node', id: 'shrimp_spot', terrain: 'water' } },
+};
+
+describe('the tool belt', () => {
+  it('takes a tool from the bag, gives one back, swaps with what hung there, and refuses what is not a tool', () => {
+    const r = room();
+    const p = enterOk(r, 'Ada', null, { bag: [{ itemId: 'stone_hatchet', qty: 1 }, { itemId: 'iron_hatchet', qty: 1 }, { itemId: 'oak_log', qty: 1 }] });
+    r.takeYou();
+    expect(r.belt(p.id, { t: 'belt', op: 'on', slot: 2 })).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['The oak log does not go on the belt.']);
+    expect(r.belt(p.id, { t: 'belt', op: 'on', slot: 0 })).toBe(true);
+    expect(p.belt.lumberjack).toEqual({ itemId: 'stone_hatchet', qty: 1 });
+    expect(p.bag[0]).toBeNull();
+    const y = you(r, p)!;
+    expect(y.belt).toEqual([['lumberjack', 'stone_hatchet']]);
+    expect(y.bag?.[0]).toBeNull();
+    expect(r.belt(p.id, { t: 'belt', op: 'on', slot: 1 })).toBe(true); // the iron one takes the belt, the stone one its slot
+    expect(p.belt.lumberjack?.itemId).toBe('iron_hatchet');
+    expect(p.bag[1]).toEqual({ itemId: 'stone_hatchet', qty: 1 });
+    expect(r.belt(p.id, { t: 'belt', op: 'off', skill: 'lumberjack' })).toBe(true);
+    expect(p.belt.lumberjack).toBeUndefined();
+    expect(p.bag[0]).toEqual({ itemId: 'iron_hatchet', qty: 1 });
+    expect(r.belt(p.id, { t: 'belt', op: 'off', skill: 'lumberjack' })).toBe(false);
+    expect(r.belt(p.id, { t: 'belt', op: 'off', skill: 'cooking' })).toBe(false);
+    const full = enterOk(r, 'Full', null, { belt: { mining: { itemId: 'stone_pickaxe', qty: 1 } }, bag: new Array(28).fill({ itemId: 'oak_log', qty: 1 }) });
+    r.takeYou();
+    expect(r.belt(full.id, { t: 'belt', op: 'off', skill: 'mining' })).toBe(false);
+    expect(you(r, full)?.notes).toEqual(['Your bag is full.']);
+  });
+
+  it('counts for gathering: a hatchet on the belt chops, and fishing needs a rod there or in the bag', () => {
+    const r = room({ rng: new ScriptedRng(new Array(10).fill(false)) });
+    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: [], belt: { lumberjack: { itemId: 'iron_hatchet', qty: 1 } } });
+    useAndArrive(r, p, OAK, { n: 0 });
+    expect(p.action).toMatchObject({ kind: 'gather', ticks: 208 }); // 250 over the iron hatchet's fifth
+    const pond = room({}, fishMap);
+    const bare = enterOk(pond, 'Bare', { x: 3, y: 1 }, { bag: [] });
+    pond.takeYou();
+    useAndArrive(pond, bare, { x: 4, y: 1 }, { n: 0 });
+    expect(bare.action).toBeNull();
+    expect(you(pond, bare)?.notes).toEqual(['You need a fishing rod for that.']);
+    const angler = enterOk(pond, 'Angler', { x: 3, y: 2 }, { bag: [], belt: { fishing: { itemId: 'oak_rod', qty: 1 } } });
+    useAndArrive(pond, angler, { x: 4, y: 1 }, { n: 0 });
+    expect(angler.action).toMatchObject({ kind: 'gather', ticks: 250 });
+  });
+});
+
 describe('moving things about the bag', () => {
   it('swaps two slots, either of which may be empty, and refuses nonsense', () => {
     const r = room();

@@ -9,7 +9,7 @@
  * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { BagView, ClientMessage, EntitySnapshot, GearView, Placement, QuestView, ServerMessage, StackView, StationSession, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { BagView, BeltView, ClientMessage, EntitySnapshot, GearView, Placement, QuestView, ServerMessage, StackView, StationSession, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 import type { PathOptions } from '@/world/path';
@@ -121,6 +121,8 @@ export class Replica {
   };
   bag: BagView = [];
   gear: GearView = [];
+  /** The tool belt: the tool hanging there per tool skill. */
+  belt: BeltView = [];
   stats: StatsView | null = null;
   /** The quests taken or finished, with the progress of each objective. */
   quests: QuestView[] = [];
@@ -241,6 +243,7 @@ export class Replica {
       this.chat.length = 0;
       this.bag = msg.bag;
       this.gear = msg.gear;
+      this.belt = msg.belt;
       this.stats = msg.stats;
       this.quests = msg.quests;
       this.coins = msg.coins;
@@ -392,6 +395,7 @@ export class Replica {
       }
     }
     if (you.gear) this.gear = you.gear;
+    if (you.belt) this.belt = you.belt;
     if (you.stats) this.stats = you.stats;
     if (you.quests) this.quests = you.quests;
     if (you.coins !== undefined) this.coins = you.coins;
@@ -405,7 +409,7 @@ export class Replica {
       this.stationSeenAt = now;
     }
     if (you.items) for (const [gid, item, qty, x, y] of you.items) this.items.set(gid, { gid, item, qty, x, y });
-    if (you.bag || you.xp || you.gear || you.stats || you.quests || you.coins !== undefined || you.bank !== undefined || you.station !== undefined || you.bestiary) this.version++;
+    if (you.bag || you.xp || you.gear || you.belt || you.stats || you.quests || you.coins !== undefined || you.bank !== undefined || you.station !== undefined || you.bestiary) this.version++;
     if (you.notes) for (const note of you.notes) this.onNote?.(note);
   }
 

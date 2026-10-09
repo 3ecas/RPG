@@ -149,13 +149,21 @@ first stops whatever was being done.
 - **Talking** (`talk`): the person's lines go to the player as `talk` in
   its `you` message (the greeting, then what they handed over), which the
   client shows in a balloon; one with a `handout` (Rowan's stone hatchet,
-  Greta's stone pickaxe) gives it to a player with no tool of that skill in
-  the bag or hand; a quest waiting on the talk hears of it. There is no
-  starting kit: tools come from people.
+  Greta's stone pickaxe, Tobb's oak rod) gives it to a player with no tool
+  of that skill on the belt, in the bag or in hand, and it hangs on the
+  belt; a quest waiting on the talk hears of it. There is no starting kit:
+  tools come from people.
+- **The tool belt** (`belt`): one tool per tool skill (a hatchet, a pickaxe,
+  a fishing rod), worn rather than carried. `belt on` hangs the tool in a
+  bag slot there (what hung there takes the bag slot), `belt off` puts it
+  back in the bag; anything given to a player that is a tool with a free
+  belt slot goes straight on the belt. `bestTool` looks on the belt, in the
+  bag and in the main hand.
 - **Gathering** (`startGather`, `work`): the node must have something left,
   the skill must be at the tier's level (`levelForTier`), the skill's tool
-  (a hatchet for woodcutting, a pickaxe for mining; fishing and harvesting
-  need none) must be in the bag or in hand, and the bag must have a slot.
+  (a hatchet for woodcutting, a pickaxe for mining, a rod for fishing;
+  harvesting needs none) must hang on the belt or be in the bag or in hand,
+  and the bag must have a slot.
   Each item is timed: `gatherTicks` (`world/skills.ts`) gives 250 ticks at
   level 1 down to 50 at level 100, a fifth more per node tier past the
   first, a fifth less per tool tier past the first, never under 25. The
@@ -240,8 +248,8 @@ clears the intent and the action, and shuts the bank and the station; the
 client predicts the same cut, so the two agree. `swap` moves a bag slot
 onto another.
 
-A character's skills, bag, bank, gear, hit points, mana, quests, coins and
-bestiary are the typed `PlayerState` (`state.ts`), read from the record's
+A character's skills, bag, bank, gear, belt, hit points, mana, quests,
+coins and bestiary are the typed `PlayerState` (`state.ts`), read from the record's
 `state` document when it enters (unknown items and skills dropped, a
 renamed item read under its new name, hit points and mana full when
 unknown) and written back by `stateOf`. Monsters are not in the room yet
@@ -266,14 +274,15 @@ session token or null), `input` (one step: a sequence number, the clicked
 cell to walk to when there is one, `use` when the click was on something to
 use once there, `stop` to halt at the next cell), `run` (on or off), `chat`
 (text), `drop` (a bag slot), `equip` (a bag slot), `unequip` (a gear slot),
-`eat` (a bag slot), `swap` (two bag slots), `quest` (`accept` or `abandon`
-an id), `fire` (`build` one where you stand, `feed` the one you stand by),
+`eat` (a bag slot), `swap` (two bag slots), `belt` (`on` with a bag slot,
+`off` with a skill), `quest` (`accept` or `abandon` an id), `fire` (`build`
+one where you stand, `feed` the one you stand by),
 `station` (`close`: step away from the one you use), `make` (a recipe and
 how many), `bank` (`deposit` a slot and quantity, `withdraw` an item and
 quantity, `all`, `close`), `ping`.
 Server → client: `welcome` (your id, a session token, the step length,
 whether this is a saved character coming back, your bag, skills, gear,
-numbers, quests, coins and bestiary, and the zone: its id, the server tick,
+belt, numbers, quests, coins and bestiary, and the zone: its id, the server tick,
 a full snapshot of the entities, the items you can see, the empty nodes,
 the fires burning, and the number of your last input it knows),
 `zone` (the same zone snapshot for the zone you just walked into; id, token,
@@ -285,8 +294,8 @@ takes, sent again as each lands) or stopped (x = -1), `nodes` as
 `[object index, 1 or 0]` for nodes emptied or back, `drops` and `taken` for
 items that appeared for everyone or are gone, `fires` as `[id, x, y]` for
 campfires lit and `doused` for ones gone out, `chat`), `you` (what only you
-learn: your bag after a change, xp per skill, your gear and numbers after a
-change, your quests with their progress, your coins, the bank while it is
+learn: your bag after a change, xp per skill, your gear, belt and numbers
+after a change, your quests with their progress, your coins, the bank while it is
 open or null when it shuts, the station you stand by or null when you step
 away, what someone said to you (`talk`), the creatures you have met, your
 own drops, notes), `reject` (a reason, then the socket closes), `pong`. A
@@ -406,7 +415,8 @@ character store behind it.
   page was built without one), the top bar (zone, connection, players, tick,
   ping), the menu bar along the bottom (Inventory, Journal, Skills, Map,
   Settings, with I, J, K, M, O as keys), the windows' contents (the
-  inventory as the nine gear slots laid out as a body, hit points and mana
+  inventory as the tool belt (hatchet, pickaxe, fishing rod) down the left,
+  the nine gear slots laid out as a body, hit points and mana
   as sliders with the numbers on the left and the percentage on the right,
   the other numbers, the purse, and the bag as 28 slots with coloured
   initials for icons; the journal as tabs across the top, each a list on
@@ -426,11 +436,13 @@ character store behind it.
   tree, talk to someone, use the bank or a station) or walks; a right click
   lists the choices (`optionsAt`: Take, Chop/Mine/Fish/Harvest, Talk to, Use
   Bank, Use Furnace, Use Campfire, Examine, Walk here); a press on a bag
-  slot offers Eat, Wear or Wield, Build a campfire here (with two stones and
-  a log in the bag), Add to the fire (a log, by a built fire), Deposit
-  (while the bank is open), Drop and Examine, and a drag of it onto another
-  slot swaps them or onto the world asks whether to throw it away; a click
-  on a gear slot offers Remove and Examine. Menus sit above every window.
+  slot offers Eat, Put on the belt (a tool), Wear or Wield, Build a campfire
+  here (with two stones and a log in the bag), Add to the fire (a log, by a
+  built fire), Deposit (while the bank is open), Drop and Examine, and a
+  drag of it onto another slot swaps them, onto the belt hangs it there, or
+  onto the world asks whether to throw it away; a click on a gear slot
+  offers Remove and Examine, on a belt slot Take off and Examine. Menus sit
+  above every window.
   Shift held or R toggled runs, Space stops, Enter talks, Escape closes a
   dialog, a menu, the balloon, the bank, the station, or the chat box. The
   tick in the top bar goes round every thousand; the server's own counter

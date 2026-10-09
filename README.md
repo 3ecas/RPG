@@ -9,17 +9,21 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
 ## What works today (slices 1 to 3: walk together, characters that last, gathering and making end to end, skills, gear and windows, quests, campfires, cooking, smelting and forging)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
-- **Tools from people.** You start with nothing in your bag. Rowan the
-  lumberjack, by the oak grove west of the village, hands a stone hatchet to
-  anyone who talks to him without one; Greta the stonemason, by the rocks to
-  the east, does the same with a stone pickaxe. Hollow Goods sells both too.
+- **Tools from people, on a belt.** You start with nothing in your bag.
+  Rowan the lumberjack, by the oak grove west of the village, hands a stone
+  hatchet to anyone who talks to him without one; Greta the stonemason, by
+  the rocks to the east, a stone pickaxe; Tobb the angler, at the pond, an
+  oak fishing rod. Tools hang on your tool belt, the column left of your
+  gear in the Inventory, so they never take a bag slot: one you find or buy
+  goes on it with Put on the belt (or a drag onto the belt) and comes off
+  with Take off. Hollow Goods sells all three.
 - **Chop trees, break stones, fish.** Click an oak (or right-click it for
   Chop, Examine, Walk here) and you walk up beside it and swing. An item
   takes 250 ticks (12.5 s) at level 1 and 50 ticks at level 100, about two
   fewer per level; a harder node takes longer, a better tool is quicker; a
   bar over your head shows how far along the next one is. The loose stones
   by the outcrop give stones to a pickaxe; the shrimp waters, in the pond
-  right off the bank, give raw shrimp to anyone. Everything goes into a bag
+  right off the bank, give raw shrimp to a rod. Everything goes into a bag
   of 28 slots, one each; xp floats up and the Skills window shows the level.
   A tree sometimes falls, for everyone, and grows back a few seconds later.
 - **Make things at stations.** Stand by a station and click it: its window

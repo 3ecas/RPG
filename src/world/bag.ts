@@ -5,9 +5,19 @@
  * has as many stacks as it needs.
  */
 import type { ItemStack } from '@/types/content';
-import type { ItemId } from '@/types/ids';
+import type { ItemId, ToolSkill } from '@/types/ids';
 
 export const BAG_SLOTS = 28;
+
+/** The tool belt: one tool per tool skill, worn, never in a bag slot. */
+export type Belt = Partial<Record<ToolSkill, ItemStack>>;
+
+/** What the tool of each tool skill is called. */
+export const TOOL_NAMES: Readonly<Record<ToolSkill, string>> = { lumberjack: 'hatchet', mining: 'pickaxe', fishing: 'fishing rod' };
+
+export function isToolSkill(skill: string): skill is ToolSkill {
+  return skill === 'lumberjack' || skill === 'mining' || skill === 'fishing';
+}
 
 export type Slot = ItemStack | null;
 export type Bag = Slot[];

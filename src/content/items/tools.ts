@@ -1,6 +1,6 @@
 import type { ItemDef } from '@/types/content';
 import { tieredDefiner } from '../define';
-import { scaled, titleCase, TOOL_MATERIALS } from '../tiers';
+import { scaled, titleCase, TOOL_MATERIALS, WOODS } from '../tiers';
 
 const defineTiered = tieredDefiner<ItemDef>();
 
@@ -15,4 +15,9 @@ export const PICKAXES = defineTiered(TOOL_MATERIALS, '', '_pickaxe', (material, 
   equip: { kind: 'weapon', weaponType: 'axe', stats: { attack: 2 * tier }, attackIntervalMs: 3000 },
 }));
 
-export const TOOLS = { ...HATCHETS, ...PICKAXES };
+/** Fishing rods by wood. Tobb at the pond gives the first one away. Not weapons: they stay on the belt. */
+export const RODS = defineTiered(WOODS, '', '_rod', (wood, tier) => ({
+  name: `${titleCase(wood)} Fishing Rod`, description: `A ${wood} rod with a good line.`, category: 'misc', group: 'tool', tier, value: scaled(12, tier), tool: { skill: 'fishing', tier },
+}));
+
+export const TOOLS = { ...HATCHETS, ...PICKAXES, ...RODS };

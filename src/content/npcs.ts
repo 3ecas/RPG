@@ -7,7 +7,10 @@ export const NPCS = defineNpcs({
   elder_maren: { name: 'Maren', title: 'Village Elder', greeting: 'Welcome to Greenhollow. Small place, big problems. The cellar is full of rats, for a start.' },
   captain_bram: { name: 'Bram', title: 'Guard Captain', greeting: 'Goblins in the hills again. I have two guards and one of them is my nephew.' },
   smith_orla: { name: 'Orla', title: 'Blacksmith', greeting: 'Furnace is hot, anvil is free. Bring me something worth hitting.' },
-  angler_tobb: { name: 'Tobb', title: 'Angler', greeting: 'Shrimp in the shallows, trout past the woods. Cook them before you eat them, unlike some people.' },
+  angler_tobb: {
+    name: 'Tobb', title: 'Angler', greeting: 'Shrimp in the shallows, trout past the woods. Cook them before you eat them, unlike some people. No rod? Take this one; the shrimp do not mind what it is made of.',
+    handout: { itemId: 'oak_rod', skill: 'fishing', line: 'Tobb hands you an oak fishing rod.' },
+  },
   keeper_pell: { name: 'Pell', title: 'Shopkeeper', greeting: 'Hollow Goods: if we do not have it, you probably do not need it. Buying, selling, no questions.' },
   lumberjack_rowan: {
     name: 'Rowan', title: 'Lumberjack', greeting: 'The oaks are all yours; they grow back faster than I can cut them. No hatchet? Take one of mine, I have more hatchets than hands.',

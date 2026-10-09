@@ -35,5 +35,9 @@ export type EquipSlot = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'main_hand
 export const EQUIP_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet', 'main_hand', 'off_hand', 'trinket_1', 'trinket_2'];
 export const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
 
+/** The gathering skills that need a tool; each has a slot on the tool belt. */
+export type ToolSkill = 'lumberjack' | 'mining' | 'fishing';
+export const TOOL_SKILLS: readonly ToolSkill[] = ['lumberjack', 'mining', 'fishing'];
+
 /** What kind of gear an item is; decides which slots accept it. Tomes are books for the off hand. */
 export type GearKind = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'weapon' | 'shield' | 'book' | 'trinket';

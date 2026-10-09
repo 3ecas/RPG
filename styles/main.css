@@ -59,6 +59,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 
 /* ---- the bag and the gear ---- */
 .inv { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.inv-belt { flex: 0 0 46px; }
+.belt { display: flex; flex-direction: column; gap: 4px; }
+.bslot { width: 46px; aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; text-align: center; }
+.bslot-full { border-style: solid; cursor: pointer; }
+.bslot-full:hover { border-color: var(--accent-2); }
 .inv-gear { flex: 0 0 150px; }
 .inv-bag { flex: 1; min-width: 160px; }
 .purse { display: flex; align-items: center; gap: 6px; padding: 4px 6px; margin-bottom: 6px; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); font-size: 12px; }

@@ -348,6 +348,7 @@ describe('game server', () => {
     expect(wa.skills).toContainEqual(['mining', 0]);
     expect(wa.bestiary).toEqual([]);
     expect(wa.gear).toEqual([]);
+    expect(wa.belt).toEqual([]);
     expect(wa.stats).toEqual({ hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 });
     expect(wa.quests).toEqual([]);
     expect(wa.coins).toBe(3);

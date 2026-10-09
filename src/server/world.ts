@@ -12,7 +12,7 @@ import type { TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { EquipSlot, ZoneId } from '@/types/ids';
 import type { Result } from '@/types/result';
 import type { CharacterRecord } from './character';
-import { type BankCommand, type FireCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
+import { type BankCommand, type BeltCommand, type FireCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
 import { stateOf } from './state';
 
 export interface WorldOptions {
@@ -147,6 +147,10 @@ export class World {
 
   eat(id: number, slot: number): boolean {
     return this.roomOf(id)?.eat(id, slot) ?? false;
+  }
+
+  belt(id: number, command: BeltCommand): boolean {
+    return this.roomOf(id)?.belt(id, command) ?? false;
   }
 
   swap(id: number, from: number, to: number): boolean {

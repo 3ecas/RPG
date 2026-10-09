@@ -108,11 +108,13 @@ Starting values. Expect to tune them after the first playable slice.
   A tier is a **level band**, which is literally the RuneScape metal ladder.
 - **Tools replace perks.** Gather speed comes from the pickaxe or hatchet in
   your bag or hand, by tier, so speed is crafted and can be lost. Without one
-  you cannot gather at all. Tools run stone → iron → steel → mithril →
-  adamant → rune. A new character starts with nothing: Rowan the lumberjack
-  hands a stone hatchet to anyone who talks to him without one, Greta the
-  stonemason a stone pickaxe, and the village store sells both. Fishing and
-  harvesting need no tool.
+  you cannot gather at all. Hatchets and pickaxes run stone → iron → steel
+  → mithril → adamant → rune; fishing rods run oak → elder. Tools hang on a
+  tool belt (one hatchet, one pickaxe, one rod), never in a bag slot. A new
+  character starts with nothing: Rowan the lumberjack hands a stone hatchet
+  to anyone who talks to him without one, Greta the stonemason a stone
+  pickaxe, Tobb the angler an oak rod, straight onto the belt; the village
+  store sells all three. Harvesting needs no tool.
 - **Making happens at stations.** Stand by one and it lists what your bag
   has the makings for, one or all: the campfire cooks, the furnace smelts,
   the anvil forges, the sawbench carves, the tannery tans. Nothing is made

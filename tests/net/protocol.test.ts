@@ -43,6 +43,8 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'quest', op: 'accept', id: 'timber_for_pell' })).toEqual({ t: 'quest', op: 'accept', id: 'timber_for_pell' });
     expect(parseClientMessage({ t: 'quest', op: 'abandon', id: 'village_tour' })).toEqual({ t: 'quest', op: 'abandon', id: 'village_tour' });
     expect(parseClientMessage({ t: 'eat', slot: 4 })).toEqual({ t: 'eat', slot: 4 });
+    expect(parseClientMessage({ t: 'belt', op: 'on', slot: 2 })).toEqual({ t: 'belt', op: 'on', slot: 2 });
+    expect(parseClientMessage({ t: 'belt', op: 'off', skill: 'mining' })).toEqual({ t: 'belt', op: 'off', skill: 'mining' });
     expect(parseClientMessage({ t: 'fire', op: 'build' })).toEqual({ t: 'fire', op: 'build' });
     expect(parseClientMessage({ t: 'fire', op: 'feed' })).toEqual({ t: 'fire', op: 'feed' });
     expect(parseClientMessage({ t: 'station', op: 'close' })).toEqual({ t: 'station', op: 'close' });
@@ -85,6 +87,9 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'fire', op: 'close' })).toBeNull();
     expect(parseClientMessage({ t: 'station', op: 'open' })).toBeNull();
     expect(parseClientMessage({ t: 'eat', slot: -1 })).toBeNull();
+    expect(parseClientMessage({ t: 'belt', op: 'on', skill: 'mining' })).toBeNull();
+    expect(parseClientMessage({ t: 'belt', op: 'off', skill: 'Mining!' })).toBeNull();
+    expect(parseClientMessage({ t: 'belt', op: 'hang', slot: 1 })).toBeNull();
     expect(parseClientMessage({ t: 'swap', from: 3, to: 3 })).toBeNull();
     expect(parseClientMessage({ t: 'make', recipe: 'cook_shrimp', qty: 0 })).toBeNull();
     expect(parseClientMessage({ t: 'make', recipe: 'Cook Shrimp', qty: 1 })).toBeNull();

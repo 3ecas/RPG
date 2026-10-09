@@ -13,7 +13,8 @@ import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
 import type { GatherNodeDef, ItemDef, MonsterDef, NpcDef, Objective, QuestDef, RecipeDef, ShopDef, SkillUnlock, StationDef, ZoneDef, ZoneMapDef } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type ShopId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type ShopId, type SkillId, type StationId, TOOL_SKILLS, type ToolSkill, type ZoneId } from '@/types/ids';
+import { isToolSkill, TOOL_NAMES } from '@/world/bag';
 import { FIRE_LOGS, FIRE_STONES } from '@/world/fire';
 import { healOf } from '@/world/food';
 import { type Cell, type Grid, objectAt, parseMap } from '@/world/grid';
@@ -65,9 +66,10 @@ const SESSION_KEY = 'rpg.online.session';
 const LAYOUT_KEY = 'rpg.online.layout';
 const PING_MS = 5000;
 const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
-/** What you do to a gather node, by skill, and the tool it takes. */
+/** What you do to a gather node, by skill. */
 const VERBS: Partial<Record<SkillId, string>> = { lumberjack: 'Chop', mining: 'Mine', fishing: 'Fish', harvesting: 'Harvest' };
-const TOOLS: Partial<Record<SkillId, string>> = { lumberjack: 'hatchet', mining: 'pickaxe' };
+/** The tool belt's slot labels. */
+const BELT_LABELS: Readonly<Record<ToolSkill, string>> = { lumberjack: 'Hatchet', mining: 'Pickaxe', fishing: 'Rod' };
 /** What you do at a station, for its buttons. */
 const MAKE_VERBS: Partial<Record<StationId, string>> = { campfire: 'Cook', furnace: 'Smelt', anvil: 'Forge', sawbench: 'Carve', tannery: 'Tan' };
 /** Further than this from where the pointer went down, a press on a bag slot is a drag. */
@@ -228,7 +230,7 @@ export class OnlineApp {
     this.windows = new Windows(stage, LAYOUT_KEY, { bottom: MENUBAR_H });
     this.bodies = {
       map: this.windows.add({ id: 'map', title: 'Map', x: W - 236, y: 8, w: 228, h: 160, open: true }),
-      inventory: this.windows.add({ id: 'inventory', title: 'Inventory', x: W - 372, y: 176, w: 364, h: Math.min(420, H - 186), open: true }),
+      inventory: this.windows.add({ id: 'inventory', title: 'Inventory', x: W - 428, y: 176, w: 420, h: Math.min(420, H - 186), open: true }),
       skills: this.windows.add({ id: 'skills', title: 'Skills', x: 12, y: 150, w: 270, h: Math.min(440, H - 160), open: false }),
       journal: this.windows.add({ id: 'journal', title: 'Journal', x: 290, y: 40, w: 560, h: Math.min(460, H - 60), open: false }),
       settings: this.windows.add({ id: 'settings', title: 'Settings', x: Math.round(W / 2 - 150), y: Math.round(H / 2 - 150), w: 300, h: 300, open: false }),
@@ -248,12 +250,16 @@ export class OnlineApp {
       if (button) this.windows.toggle(button.dataset.win!);
     });
     this.minimap = new Minimap(this.bodies.map!, this.replica, () => this.scene.viewCells());
-    // The inventory: a click on a gear slot offers what can be done with it; a bag slot is pressed (a menu) or dragged, onto another slot to swap them or out of the window to throw the thing away.
+    // The inventory: a click on a gear or belt slot offers what can be done with it; a bag slot is pressed (a menu) or dragged, onto another slot to swap them, onto the belt to hang a tool there, or out of the window to throw the thing away.
     this.bodies.inventory!.addEventListener('click', (event) => {
-      const gearEl = (event.target as HTMLElement).closest<HTMLElement>('[data-gslot]');
-      if (!gearEl) return;
-      const rect = gearEl.getBoundingClientRect();
-      this.openGearMenu(gearEl.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
+      const target = event.target as HTMLElement;
+      const gearEl = target.closest<HTMLElement>('[data-gslot]');
+      const beltEl = target.closest<HTMLElement>('[data-bslot]');
+      const el = gearEl ?? beltEl;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (gearEl) this.openGearMenu(gearEl.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
+      else this.openBeltMenu(beltEl!.dataset.bslot as ToolSkill, { x: rect.left, y: rect.bottom });
     });
     this.bodies.inventory!.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
@@ -403,7 +409,7 @@ export class OnlineApp {
       this.runToggled = false;
       this.applyRunning(true);
       if (!this.pingTimer) this.pingTimer = setInterval(() => this.socket?.send({ t: 'ping', at: performance.now() }), PING_MS);
-      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}. Rowan, by the oaks to the west, has a hatchet for you; Greta, by the rocks to the east, a pickaxe. Press J for the journal and its quests.`);
+      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}. Rowan, by the oaks to the west, has a hatchet for you; Greta, by the rocks to the east, a pickaxe; Tobb at the pond a fishing rod. They hang on your tool belt. Press J for the journal and its quests.`);
     } else if (msg.t === 'zone') {
       this.closeMenu();
       this.appendSystem(`You enter ${this.showZone(msg.zone)}.`);
@@ -530,6 +536,7 @@ export class OnlineApp {
     const def = this.content.item(entry[0]);
     const options: Option[] = [];
     if (healOf(def) > 0) options.push({ label: `Eat ${def.name}`, run: () => this.socket?.send({ t: 'eat', slot }) });
+    if (def.tool && isToolSkill(def.tool.skill)) options.push({ label: 'Put on the belt', run: () => this.socket?.send({ t: 'belt', op: 'on', slot }) });
     if (def.equip) options.push({ label: `${def.equip.kind === 'weapon' || def.equip.kind === 'book' ? 'Wield' : 'Wear'} ${def.name}`, run: () => this.socket?.send({ t: 'equip', slot }) });
     if ((def.id === 'stone' || def.group === 'log') && this.countInBag('stone') >= FIRE_STONES && this.logsInBag() >= FIRE_LOGS) options.push({ label: 'Build a campfire here', run: () => this.socket?.send({ t: 'fire', op: 'build' }) });
     if (def.group === 'log' && this.replica.station?.fid != null) options.push({ label: 'Add to the fire', run: () => this.socket?.send({ t: 'fire', op: 'feed' }) });
@@ -537,6 +544,16 @@ export class OnlineApp {
     options.push({ label: `Drop ${def.name}`, run: () => this.socket?.send({ t: 'drop', slot }) });
     options.push({ label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) });
     this.openMenu(options, at);
+  }
+
+  private openBeltMenu(skill: ToolSkill, at: { x: number; y: number }): void {
+    const hung = this.replica.belt.find((b) => b[0] === skill);
+    if (!hung || !this.content.hasItem(hung[1])) return;
+    const def = this.content.item(hung[1]);
+    this.openMenu([
+      { label: `Take off ${def.name}`, run: () => this.socket?.send({ t: 'belt', op: 'off', skill }) },
+      { label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) },
+    ], at);
   }
 
   private openGearMenu(slot: EquipSlot, at: { x: number; y: number }): void {
@@ -615,6 +632,10 @@ export class OnlineApp {
     if (onSlot && this.bodies.inventory!.contains(onSlot)) {
       const to = Number(onSlot.dataset.slot);
       if (to !== drag.slot) this.socket?.send({ t: 'swap', from: drag.slot, to });
+      return;
+    }
+    if (under.closest('[data-bslot]') && this.bodies.inventory!.contains(under)) {
+      this.socket?.send({ t: 'belt', op: 'on', slot: drag.slot });
       return;
     }
     if (under.closest('.win, .menubar, .topbar, .chatbox, .balloon, .tracker')) return;
@@ -734,8 +755,18 @@ export class OnlineApp {
     }).join('');
   }
 
-  /** One panel: what is worn and the numbers on the left, the purse and the bag on the right. */
+  /** One panel: the tool belt, then what is worn and the numbers, then the purse and the bag. */
   private renderInventory(): void {
+    const hung = new Map(this.replica.belt.map((b) => [b[0], b[1]]));
+    let belt = '<div class="belt">';
+    for (const skill of TOOL_SKILLS) {
+      const item = hung.get(skill);
+      const def = item && this.content.hasItem(item) ? this.content.item(item) : null;
+      belt += def
+        ? `<div class="bslot bslot-full" data-bslot="${skill}" title="${escapeHtml(def.name)}">${icon(def)}</div>`
+        : `<div class="bslot" data-bslot="${skill}" title="${escapeHtml(TOOL_NAMES[skill])}"><span class="gslot-name">${BELT_LABELS[skill]}</span></div>`;
+    }
+    belt += '</div>';
     const worn = new Map(this.replica.gear.map((g) => [g[0], g[1]]));
     let gear = '<div class="gear-grid">';
     for (const slot of GEAR_LAYOUT) {
@@ -769,7 +800,7 @@ export class OnlineApp {
     bag += '</div>';
     const used = slots.filter((s) => s !== null).length;
     const purse = `<div class="purse" title="Coins"><span class="coin"></span><b id="on-coins">${this.replica.coins.toLocaleString()}</b><span class="muted">coins</span><span class="bag-foot muted">${used} / ${slots.length || 28} slots</span></div>`;
-    this.bodies.inventory!.innerHTML = `<div class="inv"><div class="inv-gear">${gear}${stats}</div><div class="inv-bag">${purse}${bag}</div></div>`;
+    this.bodies.inventory!.innerHTML = `<div class="inv"><div class="inv-belt" title="The tool belt: a hatchet, a pickaxe, a fishing rod">${belt}</div><div class="inv-gear">${gear}${stats}</div><div class="inv-bag">${purse}${bag}</div></div>`;
   }
 
   /** The station window while you stand by one: a fire says how long it burns and takes a log; every station lists what your bag has the makings for, one or all. */
@@ -964,7 +995,7 @@ export class OnlineApp {
       const n = this.content.node(nid);
       if (n.itemId !== id) continue;
       const where = this.zonesWhere((z) => (z.nodes as readonly string[]).includes(nid));
-      const tool = TOOLS[n.skill];
+      const tool = isToolSkill(n.skill) ? TOOL_NAMES[n.skill] : null;
       lines.push(`${VERBS[n.skill] ?? 'Gather'}ped from ${n.name} in ${where}, ${this.content.skill(n.skill).name} level ${levelForTier(n.tier)}${tool ? `, with a ${tool}` : ''}.`.replace('Chopped', 'Chopped').replace('Mineped', 'Mined').replace('Fishped', 'Fished').replace('Harvestped', 'Harvested').replace('Gatherped', 'Gathered'));
     }
     for (const sid of this.content.shopIds) {
@@ -975,7 +1006,7 @@ export class OnlineApp {
     for (const nid of this.content.npcIds) {
       const n = this.content.npc(nid);
       if (n.handout?.itemId !== id) continue;
-      lines.push(`${n.name}, the ${n.title.toLowerCase()} in ${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}, hands one to anyone who comes without a ${TOOLS[n.handout.skill] ?? 'tool'}.`);
+      lines.push(`${n.name}, the ${n.title.toLowerCase()} in ${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}, hands one to anyone who comes without a ${isToolSkill(n.handout.skill) ? TOOL_NAMES[n.handout.skill] : 'tool'}.`);
     }
     for (const qid of this.content.questIds) {
       const q = this.content.quest(qid);
@@ -995,7 +1026,7 @@ export class OnlineApp {
     const def = this.content.item(id);
     if (id === 'stone' || def.group === 'log') lines.push(`${FIRE_STONES} stones and a log build a campfire; a log fed to a fire keeps it burning a minute per tier.`);
     if (healOf(def) > 0) lines.push(`Eaten, it heals ${healOf(def)}.`);
-    if (def.tool) lines.push(`Lets you ${(VERBS[def.tool.skill] ?? 'gather').toLowerCase()}, at the pace of a tier ${def.tool.tier} tool.`);
+    if (def.tool) lines.push(`Hangs on the tool belt and lets you ${(VERBS[def.tool.skill] ?? 'gather').toLowerCase()}, at the pace of a tier ${def.tool.tier} tool.`);
     return lines;
   }
 
@@ -1129,7 +1160,7 @@ function describe(def: ItemDef): string {
     const req = def.equip.requirements?.map((r) => `${r.skill.replace('_', ' ')} tier ${r.tier}`);
     if (req && req.length > 0) parts.push(`Needs ${req.join(', ')}.`);
   }
-  if (def.tool) parts.push(`A ${def.tool.skill} tool, tier ${def.tool.tier}.`);
+  if (def.tool) parts.push(`A ${isToolSkill(def.tool.skill) ? TOOL_NAMES[def.tool.skill] : 'tool'} of tier ${def.tool.tier}; it hangs on the tool belt.`);
   if (def.consume) for (const effect of def.consume.effects) if (effect.type === 'heal') parts.push(`Heals ${effect.amount}.`);
   return parts.join(' ');
 }

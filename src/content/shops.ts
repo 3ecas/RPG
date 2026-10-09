@@ -21,6 +21,7 @@ export const SHOPS = defineShops({
       { itemId: 'oak_log', qty: 'infinite' },
       { itemId: 'stone_hatchet', qty: 'infinite' },
       { itemId: 'stone_pickaxe', qty: 'infinite' },
+      { itemId: 'oak_rod', qty: 'infinite' },
       { itemId: 'rusty_dagger', qty: 'infinite' },
       { itemId: 'leather_gloves', qty: 3 },
       { itemId: 'wheat', qty: 20 },

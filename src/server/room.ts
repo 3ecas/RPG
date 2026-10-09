@@ -22,11 +22,11 @@ import { CONTENT } from '@/content';
 import { STARTING_KIT } from '@/content/starting-kit';
 import { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
-import type { ActState, BagView, ChatLine, ClientMessage, EntitySnapshot, FireView, GearView, GroundItemView, MoveState, Placement, QuestView, StackView, StationSession, StatsView, TalkView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { ActState, BagView, BeltView, ChatLine, ClientMessage, EntitySnapshot, FireView, GearView, GroundItemView, MoveState, Placement, QuestView, StackView, StationSession, StatsView, TalkView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { EquipInfo, GatherNodeDef, ItemDef, ItemStack, NpcDef, QuestDef, RecipeDef, ZoneMapDef } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type GearKind, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
+import { EQUIP_SLOTS, type EquipSlot, type GearKind, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type SkillId, type StationId, TOOL_SKILLS, type ZoneId } from '@/types/ids';
 import { fail, ok, type Result } from '@/types/result';
-import { addToBag, addToStacks, type Bag, countInBag, countInStacks, freeSlots, roomFor, takeFromBag, takeFromSlot, takeFromStacks } from '@/world/bag';
+import { addToBag, addToStacks, type Bag, type Belt, countInBag, countInStacks, freeSlots, isToolSkill, roomFor, takeFromBag, takeFromSlot, takeFromStacks, TOOL_NAMES } from '@/world/bag';
 import { feedXp, FIRE_BUILD_XP, FIRE_LOGS, FIRE_MAX_MS, FIRE_STONES, fuelMs } from '@/world/fire';
 import { EAT_TICKS, healOf } from '@/world/food';
 import { type Cell, dirOf, type Grid, isWalkable, objectAt, parseMap, type PlacedObject } from '@/world/grid';
@@ -134,6 +134,7 @@ interface YouPending {
   bag: boolean;
   bank: boolean;
   gear: boolean;
+  belt: boolean;
   stats: boolean;
   quests: boolean;
   coins: boolean;
@@ -196,13 +197,14 @@ export interface GroundItem {
 
 export type BankCommand = Extract<ClientMessage, { t: 'bank' }>;
 export type FireCommand = Extract<ClientMessage, { t: 'fire' }>;
+export type BeltCommand = Extract<ClientMessage, { t: 'belt' }>;
 
 /** Inputs waiting per player; more than this and the client is running ahead of the server. */
 const MAX_QUEUED = 8;
 /** Inputs applied per tick per player: one in the steady state, a few to catch up after a hiccup. */
 const MAX_PER_TICK = 3;
-/** Skills that need a tool in the bag, and what it is called. */
-const TOOL_FOR: Partial<Record<SkillId, string>> = { lumberjack: 'hatchet', mining: 'pickaxe' };
+/** What a gathering skill's tool is called, or null for the skills that need none. */
+const toolFor = (skill: SkillId): string | null => (isToolSkill(skill) ? TOOL_NAMES[skill] : null);
 const BAG_FULL = 'Your bag is full.';
 const CANT_REACH = "You can't reach that from here.";
 const NO_FIRE = 'Stand by a campfire first.';
@@ -277,11 +279,11 @@ export class Room {
     return { zone: this.zoneId, tick: this.tick, entities: this.snapshot(), items: this.itemsFor(p), nodes: [...this.depleted.keys()], fires: [...this.fires.values()].map(fireView), seq: p.seq };
   }
 
-  /** What only this player gets on joining: its bag, skills, gear, numbers, quests, coins and the creatures it has met. */
-  youOf(id: number): { bag: BagView; skills: [SkillId, number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number; bestiary: string[] } | null {
+  /** What only this player gets on joining: its bag, skills, gear, belt, numbers, quests, coins and the creatures it has met. */
+  youOf(id: number): { bag: BagView; skills: [SkillId, number][]; gear: GearView; belt: BeltView; stats: StatsView; quests: QuestView[]; coins: number; bestiary: string[] } | null {
     const p = this.byId.get(id);
     if (!p) return null;
-    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]), gear: gearView(p.gear), stats: this.statsView(p), quests: questView(p.quests), coins: p.coins, bestiary: [...p.bestiary] };
+    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]), gear: gearView(p.gear), belt: beltView(p.belt), stats: this.statsView(p), quests: questView(p.quests), coins: p.coins, bestiary: [...p.bestiary] };
   }
 
   /** A character's numbers from its levels and gear. */
@@ -335,7 +337,7 @@ export class Room {
     const state = parseState(character.state, this.content, this.kit);
     const player: RoomPlayer = {
       name: character.name, secretHash: character.secretHash, createdAt: character.createdAt, dir: character.dir, running: character.running,
-      skills: state.skills, bag: state.bag, bank: state.bank, gear: state.gear, hp: state.hp, mana: state.mana, quests: state.quests, coins: state.coins, bestiary: state.bestiary,
+      skills: state.skills, bag: state.bag, bank: state.bank, gear: state.gear, belt: state.belt, hp: state.hp, mana: state.mana, quests: state.quests, coins: state.coins, bestiary: state.bestiary,
       id: this.ids(), cell, t: 0, path: [], moving: false, seq: 0, inputs: [], connected: true, disconnectedAt: 0,
       intent: null, action: null, nextActionAt: 0, nextHpAt: this.tick, nextManaAt: this.tick, bankOpen: false, station: null, eating: null, nudged: false, you: pending(),
     };
@@ -388,10 +390,11 @@ export class Room {
       const y = p.you;
       // Objectives read off the character (have an item, reach a tier, wear a kind) follow whatever changed.
       if (y.bag || y.gear || y.xp.length > 0) this.refreshQuests(p);
-      if (!y.bag && !y.bank && !y.gear && !y.stats && !y.quests && !y.coins && !y.station && !y.bestiary && !y.talk && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
+      if (!y.bag && !y.bank && !y.gear && !y.belt && !y.stats && !y.quests && !y.coins && !y.station && !y.bestiary && !y.talk && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
       const delta: YouDelta = {};
       if (y.bag) delta.bag = bagView(p.bag);
       if (y.gear) delta.gear = gearView(p.gear);
+      if (y.belt) delta.belt = beltView(p.belt);
       if (y.stats) delta.stats = this.statsView(p);
       if (y.quests) delta.quests = questView(p.quests);
       if (y.coins) delta.coins = p.coins;
@@ -526,6 +529,40 @@ export class Room {
     p.bag[from] = b;
     p.bag[to] = a;
     p.you.bag = true;
+    return true;
+  }
+
+  /** The tool belt: a tool from a bag slot hangs on it (what hung there takes the bag slot), or a tool comes off it into the bag. */
+  belt(id: number, command: BeltCommand): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected) return false;
+    if (command.op === 'on') {
+      const stack = p.bag[command.slot];
+      if (!stack) return false;
+      const def = this.content.item(stack.itemId);
+      const skill = def.tool?.skill;
+      if (!skill || !isToolSkill(skill)) {
+        this.note(p, `The ${def.name.toLowerCase()} does not go on the belt.`);
+        return false;
+      }
+      const previous = p.belt[skill];
+      takeFromSlot(p.bag, command.slot, 1);
+      p.belt[skill] = { itemId: stack.itemId, qty: 1 };
+      if (previous && p.bag[command.slot] === null) p.bag[command.slot] = previous;
+      else if (previous) addToBag(p.bag, previous.itemId, 1, false);
+    } else {
+      if (!isToolSkill(command.skill)) return false;
+      const tool = p.belt[command.skill];
+      if (!tool) return false;
+      if (freeSlots(p.bag) === 0) {
+        this.note(p, BAG_FULL);
+        return false;
+      }
+      delete p.belt[command.skill];
+      addToBag(p.bag, tool.itemId, 1, false);
+    }
+    p.you.bag = true;
+    p.you.belt = true;
     return true;
   }
 
@@ -854,11 +891,8 @@ export class Room {
     const lines = [npc.greeting];
     const gift = npc.handout;
     if (gift && this.bestTool(p, gift.skill) === 0) {
-      if (freeSlots(p.bag) === 0) lines.push(`${npc.name} has a ${this.content.item(gift.itemId).name.toLowerCase()} for you, but your bag is full.`);
-      else {
-        this.giveItem(p, gift.itemId, 1);
-        lines.push(gift.line);
-      }
+      this.giveItem(p, gift.itemId, 1); // a tool with a free belt slot hangs there, whatever the bag holds
+      lines.push(gift.line);
     }
     p.you.talk = { npc: npcId, lines };
     this.questEvent(p, 'talk', npcId);
@@ -870,7 +904,7 @@ export class Room {
     const need = levelForTier(def.tier);
     const level = levelOf(p.skills[def.skill]);
     if (level < need) return this.note(p, `You need ${this.content.skill(def.skill).name} level ${need} for the ${def.name.toLowerCase()}.`);
-    const toolName = TOOL_FOR[def.skill];
+    const toolName = toolFor(def.skill);
     if (toolName && this.bestTool(p, def.skill) === 0) return this.note(p, `You need a ${toolName} for that.`);
     if (freeSlots(p.bag) === 0) return this.note(p, BAG_FULL);
     const ticks = this.gatherTicksFor(p, def);
@@ -882,8 +916,7 @@ export class Room {
 
   /** Ticks per item for this player at this node: by level, the node's tier and the best tool. */
   private gatherTicksFor(p: RoomPlayer, def: GatherNodeDef): number {
-    const toolName = TOOL_FOR[def.skill];
-    return gatherTicks(def, levelOf(p.skills[def.skill]), toolName ? this.bestTool(p, def.skill) : 1);
+    return gatherTicks(def, levelOf(p.skills[def.skill]), toolFor(def.skill) ? this.bestTool(p, def.skill) : 1);
   }
 
   /**
@@ -897,7 +930,7 @@ export class Room {
     const obj = this.grid.objects[action.object];
     if (!obj || obj.def.kind !== 'node' || this.depleted.has(action.object)) return this.stopAction(p);
     const def = this.content.node(obj.def.id);
-    const toolName = TOOL_FOR[def.skill];
+    const toolName = toolFor(def.skill);
     if (toolName && this.bestTool(p, def.skill) === 0) {
       this.note(p, `You need a ${toolName} for that.`);
       return this.stopAction(p);
@@ -938,9 +971,16 @@ export class Room {
     }
   }
 
-  /** Something given to the player: into the bag, or at its feet when the bag is full. */
+  /** Something given to the player: a tool onto a free belt slot, else into the bag, or at its feet when the bag is full. */
   private giveItem(p: RoomPlayer, itemId: ItemId, qty: number): void {
-    const stackable = this.content.item(itemId).stackable === true;
+    const def = this.content.item(itemId);
+    const toolSkill = def.tool?.skill;
+    if (qty === 1 && toolSkill && isToolSkill(toolSkill) && !p.belt[toolSkill]) {
+      p.belt[toolSkill] = { itemId, qty: 1 };
+      p.you.belt = true;
+      return;
+    }
+    const stackable = def.stackable === true;
     const left = addToBag(p.bag, itemId, qty, stackable);
     p.you.bag = true;
     if (left === 0) return;
@@ -1035,10 +1075,10 @@ export class Room {
     this.acts.push([p.id, -1, -1, p.dir]);
   }
 
-  /** The best tool for a skill in the bag or in hand, by tier; 0 for none. */
+  /** The best tool for a skill on the belt, in the bag or in hand, by tier; 0 for none. */
   private bestTool(p: RoomPlayer, skill: SkillId): number {
     let best = 0;
-    for (const slot of [...p.bag, p.gear.main_hand ?? null]) {
+    for (const slot of [isToolSkill(skill) ? p.belt[skill] ?? null : null, ...p.bag, p.gear.main_hand ?? null]) {
       if (!slot) continue;
       const tool = this.content.item(slot.itemId).tool;
       if (tool && tool.skill === skill && tool.tier > best) best = tool.tier;
@@ -1289,7 +1329,7 @@ export class Room {
 }
 
 function pending(): YouPending {
-  return { bag: false, bank: false, gear: false, stats: false, quests: false, coins: false, station: false, bestiary: false, talk: null, xp: [], items: [], notes: [] };
+  return { bag: false, bank: false, gear: false, belt: false, stats: false, quests: false, coins: false, station: false, bestiary: false, talk: null, xp: [], items: [], notes: [] };
 }
 
 function fireView(fire: Campfire): FireView {
@@ -1326,6 +1366,15 @@ export function gearView(gear: Gear): GearView {
   for (const slot of EQUIP_SLOTS) {
     const worn = gear[slot];
     if (worn) out.push([slot, worn.itemId, worn.qty]);
+  }
+  return out;
+}
+
+export function beltView(belt: Belt): BeltView {
+  const out: BeltView = [];
+  for (const skill of TOOL_SKILLS) {
+    const tool = belt[skill];
+    if (tool) out.push([skill, tool.itemId]);
   }
   return out;
 }
