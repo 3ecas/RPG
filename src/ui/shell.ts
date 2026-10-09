@@ -156,7 +156,7 @@ export class OnlineApp {
       '<div class="menu" id="on-menu" hidden></div>' +
       '<div class="confirm" id="on-confirm" hidden><div class="confirm-card"><p id="on-confirm-text"></p><div class="row"><button class="menu-btn join-button" type="button" id="on-confirm-yes">Yes</button><button class="menu-btn" type="button" id="on-confirm-no">Never mind</button></div></div></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here, take quests from the journal, chop trees, fish, cook at a campfire or build your own, smelt and forge at the furnace and anvil in the hills, bank what you gather, wear what you find, and talk. Click where you want to go or on what you want to use; right-click for choices; Space stops you; Shift runs; Enter talks. The bar along the bottom opens your inventory, journal, skills, map and settings; drag any window where you like. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Click to walk, click things to use them, right-click for choices. Your character is saved under its name and answers only to this browser until there are accounts.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -401,7 +401,7 @@ export class OnlineApp {
       const me = msg.entities.find((e) => e.id === msg.id);
       const name = me?.name ?? this.els.name.value;
       write(sessionStorage, SESSION_KEY, JSON.stringify({ name, token: msg.token } satisfies Session));
-      const zoneName = this.showZone(msg.zone);
+      this.showZone(msg.zone);
       this.els.join.hidden = true;
       this.els.chat.hidden = false;
       this.els.stage.classList.remove('stage-closed');
@@ -409,7 +409,7 @@ export class OnlineApp {
       this.runToggled = false;
       this.applyRunning(true);
       if (!this.pingTimer) this.pingTimer = setInterval(() => this.socket?.send({ t: 'ping', at: performance.now() }), PING_MS);
-      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}. Rowan, by the oaks to the west, has a hatchet for you; Greta, by the rocks to the east, a pickaxe; Tobb at the pond a fishing rod. They hang on your tool belt. Press J for the journal and its quests.`);
+      this.appendSystem(msg.resumed ? `Welcome back, ${name}.` : `Welcome, ${name}. Rowan (oaks), Greta (rocks) and Tobb (pond) have tools for you. J opens the journal.`);
     } else if (msg.t === 'zone') {
       this.closeMenu();
       this.appendSystem(`You enter ${this.showZone(msg.zone)}.`);
@@ -816,8 +816,8 @@ export class OnlineApp {
     const now = performance.now();
     this.stationShownSecond = Math.floor(now / 1000);
     let head: string;
-    if (session.station !== 'campfire') head = `<div class="fire-head"><span>${escapeHtml(def.description)}</span></div>`;
-    else if (session.fuelMs === null) head = '<div class="fire-head"><span>The village fire. It never goes out.</span></div>';
+    if (session.station !== 'campfire') head = '';
+    else if (session.fuelMs === null) head = '<div class="fire-head"><span class="muted">Never goes out.</span></div>';
     else {
       const left = Math.max(0, session.fuelMs - (now - this.replica.stationSeenAt));
       const m = Math.floor(left / 60_000);
@@ -838,10 +838,8 @@ export class OnlineApp {
         `<span class="stack-buttons"><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="1" ${locked ? 'disabled' : ''}>${verb} 1</button><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="${can}" ${locked ? 'disabled' : ''}>${verb} all</button></span></div>`;
     }
     const makes = recipes.map((r) => this.recipeName(r));
-    const empty = `<p class="muted">Nothing in your bag can be made here.</p><p class="muted small">This ${escapeHtml(def.name.toLowerCase())} makes ${escapeHtml(makes.slice(0, 6).join(', '))}${makes.length > 6 ? ' and more' : ''}; the Items tab of the journal says what each takes.</p>`;
-    const skill = recipes[0] ? this.content.skill(recipes[0].skill).name : 'the skill';
-    const foot = session.station === 'campfire' ? 'Some of what you cook burns; less so with every Cooking level.' : `Every ${escapeHtml(skill)} level makes the work a little quicker.`;
-    this.bodies.station!.innerHTML = head + (rows ? `<div class="stacks">${rows}</div>` : empty) + `<p class="muted small">${foot}</p>`;
+    const empty = `<p class="muted">Nothing to make from your bag.</p><div class="chips">${makes.slice(0, 8).map((m) => `<span class="chip">${escapeHtml(m)}</span>`).join('')}${makes.length > 8 ? `<span class="chip">+${makes.length - 8}</span>` : ''}</div>`;
+    this.bodies.station!.innerHTML = head + (rows ? `<div class="stacks">${rows}</div>` : empty);
   }
 
   private renderSkills(): void {
@@ -953,20 +951,24 @@ export class OnlineApp {
         `<h4>Found in</h4><p>${escapeHtml(where.join(', ') || 'Nowhere yet')}</p>` +
         `<h4>Drops</h4>${m.loot.map((l) => `<div class="objective"><span>${escapeHtml(this.content.item(l.itemId).name)}${l.max > 1 ? ` (${l.min} to ${l.max})` : ''}</span><span>${Math.round(l.chance * 100)}%</span></div>`).join('') || '<p class="muted">Nothing.</p>'}`;
     } else if (this.picked.monster) {
-      detail = `<h3>???</h3><p class="muted">You have not met this creature. Fight it, and the journal will remember what it is, where it lives and what it leaves behind.</p><p class="muted small">${this.replica.bestiary.size} of ${monsters.length} met.</p>`;
+      detail = `<h3>???</h3><p class="muted">Not met yet.</p><div class="chips"><span class="chip">${this.replica.bestiary.size} / ${monsters.length} met</span></div>`;
     }
     return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
   }
 
+  /** An item's page: the name; type, tier and worth as chips; one line about it; then where it comes from and what it goes into, as bullets. */
   private itemsPane(): string {
     let detail = '<p class="muted">Pick an item.</p>';
     if (this.picked.item && this.content.hasItem(this.picked.item)) {
       const i = this.content.item(this.picked.item);
       const sources = this.itemSources(this.picked.item);
       const uses = this.itemUses(this.picked.item);
-      detail = `<h3>${escapeHtml(i.name)}</h3><div class="muted">${escapeHtml(i.group)} · tier ${i.tier} · worth ${i.value}</div><p>${escapeHtml(describe(i))}</p>` +
-        `<h4>How to get it</h4>${sources.map((s) => `<p>${escapeHtml(s)}</p>`).join('')}` +
-        (uses.length > 0 ? `<h4>Good for</h4>${uses.map((u) => `<p>${escapeHtml(u)}</p>`).join('')}` : '');
+      const bullets = (lines: string[]) => `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
+      detail = `<h3>${escapeHtml(i.name)}</h3>` +
+        `<div class="chips"><span class="chip">${escapeHtml(i.group)}</span><span class="chip">tier ${i.tier}</span><span class="chip"><span class="coin"></span>${i.value}</span>${itemChips(i).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('')}</div>` +
+        `<p>${escapeHtml(i.description)}</p>` +
+        `<h4>How to get it</h4>${bullets(sources)}` +
+        (uses.length > 0 ? `<h4>Used in</h4>${bullets(uses)}` : '');
     }
     return `<div class="jpane"><div class="jlist"><input id="on-item-filter" class="filter" type="text" placeholder="Filter items" value="${escapeHtml(this.itemFilter)}"><div id="on-item-list">${this.itemListHtml()}</div></div><div class="jdetail">${detail}</div></div>`;
   }
@@ -975,58 +977,61 @@ export class OnlineApp {
     return recipe.name ?? this.content.item(recipe.outputs[0]!.itemId).name;
   }
 
+  /** The zones that pass `test`, two at most by name, the rest counted. */
   private zonesWhere(test: (zone: ZoneDef) => boolean): string {
     const names = this.content.zoneIds.filter((z) => test(this.content.zone(z))).map((z) => this.content.zone(z).name);
-    if (names.length === 0) return 'a place not on any map yet';
-    return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(' or ');
+    if (names.length === 0) return 'nowhere yet';
+    return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
   }
 
-  /** Every way an item comes into the world: made, gathered, sold, handed out, a reward, dropped by creatures you have met. */
+  /** Every way an item comes into the world, one short line each: made, gathered, sold, handed out, a reward, dropped. */
   private itemSources(id: ItemId): string[] {
     const lines: string[] = [];
     for (const rid of this.content.recipeIds) {
       const r = this.content.recipe(rid);
       if (!r.outputs.some((o) => o.itemId === id)) continue;
-      const inputs = r.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(' and ');
+      const inputs = r.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(' + ');
       const where = this.zonesWhere((z) => (z.stations as readonly string[]).includes(r.station));
-      lines.push(`Made at a ${this.content.station(r.station).name.toLowerCase()} (${where}) from ${inputs}, ${this.content.skill(r.skill).name} level ${levelForTier(r.tier)}.`);
+      lines.push(`${this.content.station(r.station).name} (${where}): ${inputs} · ${this.content.skill(r.skill).name} ${levelForTier(r.tier)}`);
     }
     for (const nid of this.content.nodeIds) {
       const n = this.content.node(nid);
       if (n.itemId !== id) continue;
       const where = this.zonesWhere((z) => (z.nodes as readonly string[]).includes(nid));
-      const tool = isToolSkill(n.skill) ? TOOL_NAMES[n.skill] : null;
-      lines.push(`${VERBS[n.skill] ?? 'Gather'}ped from ${n.name} in ${where}, ${this.content.skill(n.skill).name} level ${levelForTier(n.tier)}${tool ? `, with a ${tool}` : ''}.`.replace('Chopped', 'Chopped').replace('Mineped', 'Mined').replace('Fishped', 'Fished').replace('Harvestped', 'Harvested').replace('Gatherped', 'Gathered'));
+      const tool = isToolSkill(n.skill) ? ` · ${TOOL_NAMES[n.skill]}` : '';
+      lines.push(`${n.name} (${where}) · ${this.content.skill(n.skill).name} ${levelForTier(n.tier)}${tool}`);
     }
     for (const sid of this.content.shopIds) {
       const s = this.content.shop(sid);
-      if (!s.stock.some((st) => st.itemId === id)) continue;
-      lines.push(`Sold at ${s.name} in ${this.zonesWhere((z) => (z.shops as readonly string[]).includes(sid))}.`);
+      if (s.stock.some((st) => st.itemId === id)) lines.push(`${s.name} (${this.zonesWhere((z) => (z.shops as readonly string[]).includes(sid))}) · sold`);
     }
     for (const nid of this.content.npcIds) {
       const n = this.content.npc(nid);
-      if (n.handout?.itemId !== id) continue;
-      lines.push(`${n.name}, the ${n.title.toLowerCase()} in ${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}, hands one to anyone who comes without a ${isToolSkill(n.handout.skill) ? TOOL_NAMES[n.handout.skill] : 'tool'}.`);
+      if (n.handout?.itemId === id) lines.push(`${n.name} the ${n.title.toLowerCase()} (${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}) · free`);
     }
     for (const qid of this.content.questIds) {
       const q = this.content.quest(qid);
-      if (q.rewards.some((r) => r.type === 'item' && r.itemId === id)) lines.push(`A reward for the quest ${q.name}.`);
+      if (q.rewards.some((r) => r.type === 'item' && r.itemId === id)) lines.push(`Quest: ${q.name}`);
     }
-    const droppers = this.content.monsterIds.filter((m) => this.content.monster(m).loot.some((l) => l.itemId === id));
-    if (droppers.length > 0) lines.push(`Dropped by ${droppers.map((m) => (this.replica.bestiary.has(m) ? this.content.monster(m).name : 'a creature you have not met')).join(', ')}.`);
-    if (lines.length === 0) lines.push('No way to come by this one is known yet.');
+    for (const m of this.content.monsterIds) {
+      if (this.content.monster(m).loot.some((l) => l.itemId === id)) lines.push(`Dropped by ${this.replica.bestiary.has(m) ? this.content.monster(m).name : '???'}`);
+    }
+    if (lines.length === 0) lines.push('Unknown');
     return lines;
   }
 
-  /** What an item goes into. */
+  /** What an item goes into, one short line each. */
   private itemUses(id: ItemId): string[] {
     const lines: string[] = [];
-    const makes = this.content.recipeIds.map((r) => this.content.recipe(r)).filter((r) => r.inputs.some((i) => i.itemId === id)).map((r) => this.recipeName(r));
-    if (makes.length > 0) lines.push(`Goes into ${makes.join(', ')}.`);
+    for (const rid of this.content.recipeIds) {
+      const r = this.content.recipe(rid);
+      if (r.inputs.some((i) => i.itemId === id)) lines.push(`${this.recipeName(r)} · ${this.content.station(r.station).name}`);
+    }
     const def = this.content.item(id);
-    if (id === 'stone' || def.group === 'log') lines.push(`${FIRE_STONES} stones and a log build a campfire; a log fed to a fire keeps it burning a minute per tier.`);
-    if (healOf(def) > 0) lines.push(`Eaten, it heals ${healOf(def)}.`);
-    if (def.tool) lines.push(`Hangs on the tool belt and lets you ${(VERBS[def.tool.skill] ?? 'gather').toLowerCase()}, at the pace of a tier ${def.tool.tier} tool.`);
+    if (id === 'stone' || def.group === 'log') lines.push(`Campfire: ${FIRE_STONES} stones + 1 log`);
+    if (def.group === 'log') lines.push('Feeds a campfire');
+    if (healOf(def) > 0) lines.push(`Eat: +${healOf(def)} HP`);
+    if (def.tool) lines.push(`Belt: ${VERBS[def.tool.skill] ?? 'gather'}`);
     return lines;
   }
 
@@ -1044,7 +1049,7 @@ export class OnlineApp {
       '<label><input type="checkbox" id="on-set-chat" checked> Show the chat</label>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-layout">Reset window layout</button></div>' +
       `<div class="muted small">Server: ${escapeHtml(this.config.serverUrl || 'set on the join card')}</div>` +
-      '<div class="muted small">Keys: I inventory, J journal, K skills, M map, O settings, R run, Space stop, Enter talk. Click people to talk, a station (a fire, the furnace, the anvil) to make things from your bag; right-click for choices; drag a bag slot onto another to swap, or onto the world to throw it away.</div>' +
+      '<div class="muted small">I inventory · J journal · K skills · M map · O settings · R run · Space stop · Enter talk · Shift run</div>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-leave">Leave the world</button></div></div>';
     const run = body.querySelector<HTMLInputElement>('#on-set-run')!;
     run.addEventListener('change', () => {
@@ -1151,18 +1156,23 @@ function icon(def: ItemDef): string {
   return `<span class="icon" style="background:${ITEM_COLORS[def.group]}">${escapeHtml(initials(def.name))}</span>`;
 }
 
-/** An item's description with its numbers: what it adds when worn, what it heals, what it is a tool for. */
-function describe(def: ItemDef): string {
-  const parts = [def.description];
+/** An item's numbers as short chips: what it adds when worn and needs, what it heals, what tool it is. */
+function itemChips(def: ItemDef): string[] {
+  const chips: string[] = [];
   if (def.equip) {
-    const stats = Object.entries(def.equip.stats).filter(([, v]) => v).map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${STAT_NAMES[k] ?? k}`);
-    if (stats.length > 0) parts.push(`Worn: ${stats.join(', ')}.`);
-    const req = def.equip.requirements?.map((r) => `${r.skill.replace('_', ' ')} tier ${r.tier}`);
-    if (req && req.length > 0) parts.push(`Needs ${req.join(', ')}.`);
+    for (const [k, v] of Object.entries(def.equip.stats)) if (v) chips.push(`${v > 0 ? '+' : ''}${v} ${STAT_NAMES[k] ?? k}`);
+    for (const r of def.equip.requirements ?? []) chips.push(`needs ${r.skill.replace('_', ' ')} ${levelForTier(r.tier)}`);
   }
-  if (def.tool) parts.push(`A ${isToolSkill(def.tool.skill) ? TOOL_NAMES[def.tool.skill] : 'tool'} of tier ${def.tool.tier}; it hangs on the tool belt.`);
-  if (def.consume) for (const effect of def.consume.effects) if (effect.type === 'heal') parts.push(`Heals ${effect.amount}.`);
-  return parts.join(' ');
+  if (def.tool) chips.push(`${isToolSkill(def.tool.skill) ? TOOL_NAMES[def.tool.skill] : 'tool'} ${def.tool.tier}`);
+  const heal = healOf(def);
+  if (heal > 0) chips.push(`+${heal} HP`);
+  return chips;
+}
+
+/** An item's description with its numbers, for the chat. */
+function describe(def: ItemDef): string {
+  const chips = itemChips(def);
+  return chips.length > 0 ? `${def.description} ${chips.join(' · ')}.` : def.description;
 }
 
 const STAT_NAMES: Record<string, string> = { hp: 'hit points', mana: 'mana', armor: 'armor', attack: 'attack', spellPower: 'spell power' };

@@ -51,10 +51,10 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   three people and see the hills).
 - **The journal's other tabs.** The Bestiary tells only the creatures you
   have fought; the rest are ??? until you meet them. The Items tab gives
-  every item its brief, how to come by it (made at which station from what,
-  gathered from which node in which zone, sold where, handed out by whom, a
-  quest's reward, dropped by creatures you have met) and what it is good
-  for. The Log keeps what was said and done.
+  every item its type, tier and worth as chips, one line about it, then
+  HOW TO GET IT and USED IN as short bullets (which station from what,
+  which node in which zone, which shop, who hands it out, which quest, what
+  drops it, what it goes into). The Log keeps what was said and done.
 - **People talk in a balloon** above the menu bar when you click them, with
   their role under their name on the map; Rowan the lumberjack and Greta the
   stonemason hand out their tools there.

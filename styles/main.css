@@ -127,6 +127,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .jdetail h4 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .jdetail p { margin: 0 0 6px; }
 .jdetail .row { display: flex; gap: 8px; margin-top: 12px; }
+.jdetail .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+.jdetail .chip .coin { margin-right: 4px; }
+.jdetail ul { margin: 0; padding-left: 18px; }
+.jdetail li { margin: 2px 0; }
+.win[data-win="station"] .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .objective { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
 .objective.todo { color: var(--bad); }
 .objective.done { color: var(--ok); }
