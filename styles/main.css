@@ -34,10 +34,45 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .menu-btn { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; }
 .menu-btn:hover:not([disabled]) { border-color: var(--accent-2); }
 
-/* ---- the world ---- */
-.stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
-.world { position: absolute; inset: 0; overflow: hidden; }
+/* ---- the world and the side panel ---- */
+.stage { position: relative; display: flex; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.world { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 .world-canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.side { width: 216px; flex: none; display: flex; flex-direction: column; background: var(--bg-2); border-left: 1px solid var(--border); overflow: hidden; }
+.side[hidden] { display: none; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tab { flex: 1; font: inherit; font-size: 12px; padding: 7px 0; background: var(--bg-2); color: var(--muted); border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.tab-on { color: var(--text); border-bottom-color: var(--accent-2); }
+.bag { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; align-content: start; }
+.bag[hidden] { display: none; }
+.slot { position: relative; aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+.slot-full { cursor: pointer; }
+.slot-full:hover { border-color: var(--accent-2); }
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #1b1520; letter-spacing: 0.02em; }
+.qty { position: absolute; right: 3px; bottom: 2px; font-size: 10px; color: #f0c674; text-shadow: 0 0 2px #000; }
+.bag-foot { grid-column: 1 / -1; font-size: 11px; text-align: right; padding-top: 2px; }
+.skills { padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; scrollbar-width: thin; }
+.skills[hidden] { display: none; }
+.skill-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; }
+.skill-level { font-weight: 700; color: var(--accent); }
+.bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--bg-4); overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--ok); }
+
+/* ---- menus and windows ---- */
+.menu { position: absolute; z-index: 5; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.menu[hidden] { display: none; }
+.menu button { font: inherit; font-size: 12px; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; }
+.menu button:hover { background: var(--bg-3); color: var(--accent); }
+.window { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; width: min(380px, calc(100% - 24px)); max-height: 70%; display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+.window[hidden] { display: none; }
+.window-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 700; }
+.window-head span { flex: 1; }
+.window-body { padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; scrollbar-width: thin; }
+.stack { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+.stack-name { flex: 1; }
+.stack-qty { color: #f0c674; font-weight: 700; min-width: 30px; text-align: right; }
+.stack-buttons { display: flex; gap: 3px; }
+.stack-buttons .menu-btn { padding: 2px 7px; }
 
 /* ---- join card ---- */
 .join { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 12, 16, 0.72); z-index: 3; }

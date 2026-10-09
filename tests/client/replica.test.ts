@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUBBLE_MS, type InputMessage, Replica } from '@/client/replica';
+import { BUBBLE_MS, type InputMessage, Replica, XP_DROP_MS } from '@/client/replica';
 import type { EntitySnapshot, ServerMessage } from '@/net/protocol';
 import type { ZoneMapDef } from '@/types/content';
 import { parseMap } from '@/world/grid';
@@ -13,15 +13,15 @@ const map: ZoneMapDef = {
 const grid = parseMap(map);
 const PER_STEP = (WALK_SPEED * STEP_MS) / 1000;
 
-const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false };
-const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false };
+const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false, act: null };
+const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false, act: null };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, seq, resumed: false };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], seq, resumed: false, bag: [['bronze_hatchet', 1], null], skills: [['woodcutting', 0], ['mining', 83]] };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
-  return { t: 'tick', tick: tickNo, joined: [], left: [], moves: [], chat: [], ...part };
+  return { t: 'tick', tick: tickNo, joined: [], left: [], moves: [], acts: [], nodes: [], drops: [], taken: [], chat: [], ...part };
 }
 
 function replica(entities: EntitySnapshot[] = [ada]): { r: Replica; sent: InputMessage[] } {
@@ -124,7 +124,9 @@ describe('replica: another zone', () => {
     r.update(1000 + STEP_MS * 3); // inputs 1..3 in flight
     const arrived: EntitySnapshot = { ...ada, cx: 0, cy: 12, dir: 2 };
     const cyd: EntitySnapshot = { ...bob, id: 3, name: 'Cyd', cx: 2, cy: 12 };
-    r.apply({ t: 'zone', zone: 'copper_hills', tick: 400, entities: [arrived, cyd], seq: 1003 }, 1200);
+    r.apply({ t: 'zone', zone: 'copper_hills', tick: 400, entities: [arrived, cyd], items: [[9, 'copper_ore', 1, 2, 13]], nodes: [4], seq: 1003 }, 1200);
+    expect([...r.items.keys()]).toEqual([9]);
+    expect([...r.depleted]).toEqual([4]);
     expect(r.zone).toBe('copper_hills');
     expect(r.selfId).toBe(1);
     expect(r.tick).toBe(400);
@@ -172,6 +174,47 @@ describe('replica: others, interpolated', () => {
     expect(r.renderTick(1030)).toBeCloseTo(99, 6);
     r.apply(tick(102, { moves: [[2, 6, 4, -1, -1, 0, 2, 1, 2]] }), 1300); // 220 ms late
     expect(r.renderTick(1300)).toBeGreaterThan(104); // the clock did not jump back to hide the late packet
+  });
+});
+
+describe('replica: the zone around you', () => {
+  it('keeps the items and empty nodes the server tells of, and shows who is working on what', () => {
+    const { r, sent } = replica([ada, bob]);
+    r.apply(tick(101, { acts: [[2, 5, 4, 2]], nodes: [[7, 1]], drops: [[3, 'oak_log', 1, 4, 5]] }), 1050);
+    expect(r.entities.get(2)?.act).toEqual({ x: 5, y: 4 });
+    expect(r.positionAt(r.entities.get(2)!, 1200).dir).toBe(2); // turned to face it
+    expect(r.depleted.has(7)).toBe(true);
+    expect(r.items.get(3)).toEqual({ gid: 3, item: 'oak_log', qty: 1, x: 4, y: 5 });
+    r.apply(tick(102, { acts: [[2, -1, -1, 2]], nodes: [[7, 0]], taken: [3] }), 1100);
+    expect(r.entities.get(2)?.act).toBeNull();
+    expect(r.depleted.size).toBe(0);
+    expect(r.items.size).toBe(0);
+    // Using something is a click like any other to the prediction; the input says so.
+    r.use({ x: 2, y: 1 });
+    r.update(1000 + STEP_MS);
+    expect(sent[0]).toEqual({ t: 'input', seq: 1, to: [2, 1], use: true });
+  });
+
+  it('learns about itself from you messages: the bag, xp with a drop to show, the bank, drops of its own, notes', () => {
+    const { r } = replica();
+    const notes: string[] = [];
+    r.onNote = (text) => notes.push(text);
+    expect(r.bag).toEqual([['bronze_hatchet', 1], null]);
+    expect(r.skills.get('mining')).toBe(83);
+    const before = r.version;
+    r.apply({ t: 'you', bag: [['bronze_hatchet', 1], ['oak_log', 1]], xp: [['woodcutting', 10]], items: [[5, 'oak_log', 1, 1, 1]], notes: ['Your bag is full.'] }, 2000);
+    expect(r.bag[1]).toEqual(['oak_log', 1]);
+    expect(r.skills.get('woodcutting')).toBe(10);
+    expect(r.xpDrops).toEqual([{ skill: 'woodcutting', amount: 10, at: 2000 }]);
+    expect(r.items.get(5)?.item).toBe('oak_log');
+    expect(notes).toEqual(['Your bag is full.']);
+    expect(r.version).toBeGreaterThan(before);
+    r.apply({ t: 'you', bank: [['oak_log', 3]] }, 2100);
+    expect(r.bank).toEqual([['oak_log', 3]]);
+    r.apply({ t: 'you', bank: null }, 2200);
+    expect(r.bank).toBeNull();
+    r.update(2000 + XP_DROP_MS + 100);
+    expect(r.xpDrops).toEqual([]);
   });
 });
 

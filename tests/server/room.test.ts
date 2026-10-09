@@ -61,18 +61,21 @@ describe('room: entering and leaving', () => {
     const r = room();
     const player = enterOk(r, 'Ada');
     expect(player.cell).toEqual({ x: 1, y: 1 });
-    expect(r.snapshot()).toEqual([{ id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false }]);
+    expect(r.snapshot()).toEqual([{ id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false, act: null }]);
+    expect(player.bag[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 }); // the starting kit
+    expect(player.skills.woodcutting).toBe(0);
     expect(r.advance().joined.map((e) => e.name)).toEqual(['Ada']);
     expect(r.advance().joined).toEqual([]);
   });
 
   it('stands a character where its record says when one can stand there, else on the spawn, keeping its facing and pace', () => {
     const r = room();
-    const walked = r.enter(character('Ada', { dir: 2, running: true, state: { tutorial: 'done' } }), { x: 5, y: 5 });
+    const walked = r.enter(character('Ada', { dir: 2, running: true, state: { bag: [{ itemId: 'oak_log', qty: 1 }], skills: { woodcutting: 83 } } }), { x: 5, y: 5 });
     expect(walked.ok && walked.value.cell).toEqual({ x: 5, y: 5 });
     expect(walked.ok && walked.value.dir).toBe(2);
     expect(walked.ok && walked.value.running).toBe(true);
-    expect(walked.ok && walked.value.state).toEqual({ tutorial: 'done' });
+    expect(walked.ok && walked.value.bag[0]).toEqual({ itemId: 'oak_log', qty: 1 }); // what was saved, not the kit
+    expect(walked.ok && walked.value.skills.woodcutting).toBe(83);
     expect(enterOk(r, 'Bob', { x: 4, y: 3 }).cell).toEqual({ x: 1, y: 1 }); // the shop stands there
     expect(enterOk(r, 'Cyd', { x: 99, y: 99 }).cell).toEqual({ x: 1, y: 1 }); // off the map
   });

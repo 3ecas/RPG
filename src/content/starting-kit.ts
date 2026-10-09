@@ -1,11 +1,6 @@
-/** What a brand new character starts with. */
+/** What a brand new character starts with: enough to chop the first tree. The dagger and the food arrive with combat. */
 import type { ItemStack } from '@/types/content';
 
 export const STARTING_KIT = {
-  name: 'Adventurer',
-  gold: 10,
-  items: [
-    { itemId: 'rusty_dagger', qty: 1 },
-    { itemId: 'shrimp', qty: 5 },
-  ] as readonly Readonly<ItemStack>[],
+  items: [{ itemId: 'bronze_hatchet', qty: 1 }] as readonly Readonly<ItemStack>[],
 } as const;

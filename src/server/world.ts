@@ -7,11 +7,13 @@
  * socket and no store in here.
  */
 import type { Registry } from '@/core/registry';
-import type { TickDelta } from '@/net/protocol';
+import { randomSeed, Rng } from '@/core/rng';
+import type { TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { ZoneId } from '@/types/ids';
 import type { Result } from '@/types/result';
 import type { CharacterRecord } from './character';
-import { type PlayerInput, Room, type RoomPlayer } from './room';
+import { type BankCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
+import { stateOf } from './state';
 
 export interface WorldOptions {
   /** Where characters that have never stood anywhere, or whose zone no longer exists, start. */
@@ -19,6 +21,9 @@ export interface WorldOptions {
   graceTicks: number;
   /** Most characters per room at once. */
   capacity: number;
+  /** The seed of the dice; random when not given. */
+  seed?: number;
+  rules?: Partial<RoomRules>;
 }
 
 export interface Transfer {
@@ -46,7 +51,10 @@ export class World {
 
   constructor(content: Registry, readonly options: WorldOptions) {
     const ids = () => this.nextId++;
-    for (const zoneId of content.zoneIds) this.rooms.set(zoneId, new Room(zoneId, content.map(zoneId), { graceTicks: options.graceTicks, capacity: options.capacity, ids }));
+    const seed = options.seed ?? randomSeed();
+    content.zoneIds.forEach((zoneId, i) => {
+      this.rooms.set(zoneId, new Room(zoneId, content.map(zoneId), { graceTicks: options.graceTicks, capacity: options.capacity, ids, content, rng: new Rng(seed + i * 7919), rules: options.rules }));
+    });
     if (!this.rooms.has(options.startZone)) throw new Error(`Unknown start zone: ${options.startZone}`);
   }
 
@@ -109,7 +117,31 @@ export class World {
     if (!zone) return null;
     const next = player.path[0];
     const cell = next && player.t >= 0.5 ? next : player.cell;
-    return { name: player.name, secretHash: player.secretHash, createdAt: player.createdAt, dir: player.dir, running: player.running, state: player.state, zone, x: cell.x, y: cell.y, lastSeenAt: now };
+    return { name: player.name, secretHash: player.secretHash, createdAt: player.createdAt, dir: player.dir, running: player.running, state: stateOf(player), zone, x: cell.x, y: cell.y, lastSeenAt: now };
+  }
+
+  /** The zone a character stands in, as its client should first see it. */
+  snapshotFor(id: number): ZoneSnapshot | null {
+    return this.roomOf(id)?.snapshotFor(id) ?? null;
+  }
+
+  youOf(id: number): ReturnType<Room['youOf']> {
+    return this.roomOf(id)?.youOf(id) ?? null;
+  }
+
+  drop(id: number, slot: number): boolean {
+    return this.roomOf(id)?.drop(id, slot) ?? false;
+  }
+
+  bank(id: number, command: BankCommand): boolean {
+    return this.roomOf(id)?.bank(id, command) ?? false;
+  }
+
+  /** Everyone's private events since the last call, wherever they stand. */
+  takeYou(): Map<number, YouDelta> {
+    const out = new Map<number, YouDelta>();
+    for (const room of this.rooms.values()) for (const [id, delta] of room.takeYou()) out.set(id, delta);
+    return out;
   }
 
   disconnect(id: number): void {

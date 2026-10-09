@@ -41,7 +41,7 @@ export interface StatBlock {
 export type ItemCategory = 'material' | 'weapon' | 'armor' | 'food' | 'potion' | 'misc';
 
 /** Finer grouping for catalogue lists (shops, market, crafting). */
-export type ItemGroup = 'ore' | 'bar' | 'log' | 'fish' | 'crop' | 'herb' | 'hide' | 'food' | 'weapon' | 'armor' | 'shield' | 'trinket' | 'misc';
+export type ItemGroup = 'ore' | 'bar' | 'log' | 'fish' | 'crop' | 'herb' | 'hide' | 'food' | 'weapon' | 'armor' | 'shield' | 'trinket' | 'tool' | 'misc';
 
 export interface SkillRequirement {
   readonly skill: SkillId;
@@ -73,6 +73,10 @@ export interface ItemDef {
   readonly tier: Tier;
   /** Base gold value. Shops and the market derive prices from it. */
   readonly value: number;
+  /** Whether any number share one bag slot. False for almost everything: a log is a slot. */
+  readonly stackable?: boolean;
+  /** A gathering tool: having one in the bag lets you gather with that skill, and the tier sets the pace. */
+  readonly tool?: { readonly skill: SkillId; readonly tier: Tier };
   readonly equip?: EquipInfo;
   readonly consume?: { readonly effects: readonly Effect[] };
 }
@@ -102,8 +106,11 @@ export interface GatherNodeDef {
   readonly skill: SkillId;
   readonly tier: Tier;
   readonly itemId: ItemId;
+  /** Expected time per item for a character at the tier's level with a tier 1 tool; the success chance per action tick comes from it. */
   readonly durationMs: number;
   readonly xp: number;
+  /** Shared and depletable: after each success, this chance the node empties for everyone until it respawns. Absent means it never runs out. */
+  readonly deplete?: { readonly chance: number; readonly respawnMs: number };
 }
 
 export interface LootEntry {
@@ -308,7 +315,9 @@ export type MapObjectDef =
   | { readonly kind: 'monster'; readonly id: MonsterId }
   | { readonly kind: 'exit'; readonly zone: ZoneId }
   | { readonly kind: 'spawn' }
-  | { readonly kind: 'signpost' };
+  | { readonly kind: 'signpost' }
+  /** A bank chest: use it from the cell beside it. */
+  | { readonly kind: 'bank' };
 
 export type MapObjectKind = MapObjectDef['kind'];
 

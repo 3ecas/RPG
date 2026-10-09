@@ -14,7 +14,7 @@ import { Registry } from '@/core/registry';
 import { type ClientMessage, decodeClientMessage, LIMITS, PROTOCOL_VERSION, type ServerMessage } from '@/net/protocol';
 import type { ZoneId } from '@/types/ids';
 import { hashSecret, keyOf, newCharacter } from './character';
-import type { RoomPlayer } from './room';
+import type { RoomPlayer, RoomRules } from './room';
 import { type CharacterStore, MemoryStore } from './store';
 import { World } from './world';
 
@@ -33,6 +33,9 @@ export interface ServerOptions {
   capacity?: number;
   /** Where characters are kept between sessions; memory when not given. */
   store?: CharacterStore;
+  /** The seed of the world's dice and the timings of actions and ground items; for tests. */
+  seed?: number;
+  rules?: Partial<RoomRules>;
   log?: (line: string) => void;
 }
 
@@ -76,7 +79,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   const problems = content.validate();
   if (problems.length > 0) throw new Error(`Content validation failed:\n${problems.join('\n')}`);
   const graceTicks = Math.max(1, Math.ceil(options.graceMs / options.tickMs));
-  const world = new World(content, { startZone: options.startZone, graceTicks, capacity: options.capacity ?? 200 });
+  const world = new World(content, { startZone: options.startZone, graceTicks, capacity: options.capacity ?? 200, seed: options.seed, rules: options.rules });
 
   const http = createServer((req, res) => {
     if (req.url === '/health') {
@@ -185,8 +188,9 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   };
 
   const welcome = (conn: Connection, player: RoomPlayer, token: string, resumed: boolean): void => {
-    const room = world.roomOf(player.id)!;
-    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, zone: room.zoneId, tick: room.tick, entities: room.snapshot(), seq: player.seq });
+    const snapshot = world.snapshotFor(player.id)!;
+    const you = world.youOf(player.id)!;
+    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, bag: you.bag, skills: you.skills, ...snapshot });
   };
 
   /** Who this connection is: a character coming back on its token, a character of this browser's loaded from the store, or a new one. */
@@ -268,9 +272,11 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       return;
     }
     switch (msg.t) {
-      case 'input': world.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq }); break;
+      case 'input': world.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] }, use: msg.use === true } : { seq: msg.seq }); break;
       case 'run': world.setRunning(id, msg.on); break;
       case 'chat': world.chat(id, msg.text); break;
+      case 'drop': world.drop(id, msg.slot); break;
+      case 'bank': world.bank(id, msg); break;
     }
   };
 
@@ -317,8 +323,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
     for (const id of gone) forget(id);
     for (const { player, to } of moved) {
       const conn = byPlayer.get(player.id);
-      const room = world.room(to);
-      if (conn) send(conn.socket, { t: 'zone', zone: to, tick: room.tick, entities: room.snapshot(), seq: player.seq });
+      if (conn) send(conn.socket, { t: 'zone', ...world.snapshotFor(player.id)! });
       log(`${player.name} walked into ${to}`);
     }
     // Each room's delta goes to the connections standing in it, encoded once per room.
@@ -333,6 +338,11 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
         encoded.set(zone, text);
       }
       conn.socket.send(text);
+    }
+    // What only each player learns: their bag, xp, bank and drops.
+    for (const [id, you] of world.takeYou()) {
+      const conn = byPlayer.get(id);
+      if (conn) send(conn.socket, { t: 'you', ...you });
     }
     if (moved.length > 0) void persist(moved.map((m) => m.player));
     schedule();

@@ -32,6 +32,13 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'input', seq: 7 })).toEqual({ t: 'input', seq: 7 });
     expect(parseClientMessage({ t: 'input', seq: 8, to: [3, 4] })).toEqual({ t: 'input', seq: 8, to: [3, 4] });
     expect(parseClientMessage({ t: 'input', seq: 9, to: null })).toEqual({ t: 'input', seq: 9 });
+    expect(parseClientMessage({ t: 'input', seq: 10, to: [3, 4], use: true })).toEqual({ t: 'input', seq: 10, to: [3, 4], use: true });
+    expect(parseClientMessage({ t: 'input', seq: 11, to: [3, 4], use: false })).toEqual({ t: 'input', seq: 11, to: [3, 4] });
+    expect(parseClientMessage({ t: 'drop', slot: 27 })).toEqual({ t: 'drop', slot: 27 });
+    expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 1 })).toEqual({ t: 'bank', op: 'deposit', slot: 0, qty: 1 });
+    expect(parseClientMessage({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 })).toEqual({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 });
+    expect(parseClientMessage({ t: 'bank', op: 'all' })).toEqual({ t: 'bank', op: 'all' });
+    expect(parseClientMessage({ t: 'bank', op: 'close', extra: 1 })).toEqual({ t: 'bank', op: 'close' });
     expect(parseClientMessage({ t: 'run', on: true })).toEqual({ t: 'run', on: true });
     expect(parseClientMessage({ t: 'chat', text: ' hi  all ' })).toEqual({ t: 'chat', text: 'hi all' });
     expect(parseClientMessage({ t: 'ping', at: 12.5 })).toEqual({ t: 'ping', at: 12.5 });
@@ -53,6 +60,15 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'input', seq: 1, to: [1] })).toBeNull();
     expect(parseClientMessage({ t: 'input', seq: 1, to: '1,1' })).toBeNull();
     expect(parseClientMessage({ t: 'run', on: 'yes' })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, to: [1, 1], use: 'yes' })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, use: true })).toEqual({ t: 'input', seq: 1 }); // use without a cell means nothing
+    expect(parseClientMessage({ t: 'drop' })).toBeNull();
+    expect(parseClientMessage({ t: 'drop', slot: -1 })).toBeNull();
+    expect(parseClientMessage({ t: 'drop', slot: LIMITS.SLOT_MAX })).toBeNull();
+    expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'bank', op: 'withdraw', item: 'Oak Log', qty: 1 })).toBeNull();
+    expect(parseClientMessage({ t: 'bank', op: 'withdraw', item: 'oak_log' })).toBeNull();
+    expect(parseClientMessage({ t: 'bank', op: 'steal' })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: '' })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: 42 })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: 'x'.repeat(LIMITS.CHAT_MAX * 4 + 1) })).toBeNull();
@@ -87,6 +103,7 @@ describe('protocol: parsing what clients send', () => {
   it('recognizes server messages by type only', () => {
     expect(decodeServerMessage('{"t":"pong","at":1}')).toEqual({ t: 'pong', at: 1 });
     expect(decodeServerMessage('{"t":"zone","zone":"copper_hills","tick":5,"entities":[],"seq":1005}')).toMatchObject({ t: 'zone', zone: 'copper_hills' });
+    expect(decodeServerMessage('{"t":"you","bag":[]}')).toEqual({ t: 'you', bag: [] });
     expect(decodeServerMessage('{"t":"nope"}')).toBeNull();
     expect(decodeServerMessage('[]')).toBeNull();
     expect(decodeServerMessage('{')).toBeNull();

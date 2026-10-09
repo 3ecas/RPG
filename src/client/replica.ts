@@ -9,7 +9,7 @@
  * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { ClientMessage, EntitySnapshot, Placement, ServerMessage, TickDelta, ZoneSnapshot } from '@/net/protocol';
+import type { BagView, ClientMessage, EntitySnapshot, Placement, ServerMessage, StackView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 
@@ -32,8 +32,24 @@ export interface ReplicaEntity {
   dir: Dir;
   running: boolean;
   moving: boolean;
+  /** The cell of the thing it is working on, or null. */
+  act: Cell | null;
   /** What the server said and at which tick, oldest first; others are interpolated through it. */
   history: EntityState[];
+}
+
+export interface GroundItemEntry {
+  gid: number;
+  item: string;
+  qty: number;
+  x: number;
+  y: number;
+}
+
+export interface XpDrop {
+  skill: string;
+  amount: number;
+  at: number;
 }
 
 export interface ChatEntry {
@@ -52,6 +68,8 @@ export interface Position {
 
 /** How long a line stays over a head. */
 export const BUBBLE_MS = 4500;
+/** How long an xp gain floats over your head. */
+export const XP_DROP_MS = 1500;
 const CHAT_LOG_CAP = 100;
 const HISTORY_CAP = 64;
 const PENDING_CAP = 64;
@@ -81,12 +99,27 @@ export class Replica {
   zone = '';
   readonly entities = new Map<number, ReplicaEntity>();
   readonly chat: ChatEntry[] = [];
+  /** Items on the ground that you can see. */
+  readonly items = new Map<number, GroundItemEntry>();
+  /** Gather nodes that are empty right now, by their index among the map's objects. */
+  readonly depleted = new Set<number>();
+  bag: BagView = [];
+  /** Total xp per skill. */
+  readonly skills = new Map<string, number>();
+  /** The bank while it is open. */
+  bank: StackView[] | null = null;
+  readonly xpDrops: XpDrop[] = [];
+  /** Bumped whenever the bag, the skills or the bank change, so panels know to redraw. */
+  version = 0;
   /** Receives every input the prediction generates, to be sent to the server. */
   onInput: ((msg: InputMessage) => void) | null = null;
+  /** Receives lines from the game about you. */
+  onNote: ((text: string) => void) | null = null;
   /** Your own character as predicted. */
   readonly self: Mover & { moving: boolean } = { cell: { x: 0, y: 0 }, t: 0, dir: 0, running: false, path: [], moving: false };
   private grid: Grid | null = null;
   private click: Cell | null = null;
+  private clickUse = false;
   private seq = 0;
   private pending: Pending[] = [];
   private accumulator = 0;
@@ -106,6 +139,13 @@ export class Replica {
   /** A click: the next input plans a walk there. */
   walkTo(cell: Cell): void {
     this.click = cell;
+    this.clickUse = false;
+  }
+
+  /** A click on something to use: the walk is predicted as usual, and the server acts on the thing once you stand beside it. */
+  use(cell: Cell): void {
+    this.click = cell;
+    this.clickUse = true;
   }
 
   setRunning(on: boolean): void {
@@ -128,6 +168,7 @@ export class Replica {
     const decay = Math.pow(0.5, dt / SMOOTH_HALF_LIFE_MS);
     this.smooth.x *= decay;
     this.smooth.y *= decay;
+    while (this.xpDrops.length > 0 && now - this.xpDrops[0]!.at > XP_DROP_MS) this.xpDrops.shift();
     if (!this.grid || this.selfId < 0) {
       this.accumulator = 0;
       return;
@@ -143,7 +184,9 @@ export class Replica {
       const msg: InputMessage = { t: 'input', seq: ++this.seq };
       if (this.click) {
         msg.to = [this.click.x, this.click.y];
+        if (this.clickUse) msg.use = true;
         this.click = null;
+        this.clickUse = false;
       }
       this.applyInput(this.grid, msg);
       this.pending.push({ msg, after: this.snapshotSelf() });
@@ -157,11 +200,19 @@ export class Replica {
       this.tickMs = msg.tickMs;
       this.selfId = msg.id;
       this.chat.length = 0;
+      this.bag = msg.bag;
+      this.skills.clear();
+      for (const [skill, xp] of msg.skills) this.skills.set(skill, xp);
+      this.bank = null;
+      this.xpDrops.length = 0;
+      this.version++;
       this.enterZone(msg, now);
     } else if (msg.t === 'zone') {
       this.enterZone(msg, now);
     } else if (msg.t === 'tick') {
       this.applyTick(msg, now);
+    } else if (msg.t === 'you') {
+      this.applyYou(msg, now);
     }
   }
 
@@ -171,6 +222,14 @@ export class Replica {
     this.zone = msg.zone;
     this.seq = msg.seq;
     this.entities.clear();
+    this.items.clear();
+    for (const [gid, item, qty, x, y] of msg.items) this.items.set(gid, { gid, item, qty, x, y });
+    this.depleted.clear();
+    for (const index of msg.nodes) this.depleted.add(index);
+    if (this.bank !== null) {
+      this.bank = null;
+      this.version++;
+    }
     this.pending = [];
     this.click = null;
     this.accumulator = 0;
@@ -247,10 +306,41 @@ export class Replica {
       }
       if (id === this.selfId) this.reconcile(placement, dir, seq);
     }
+    for (const [id, x, y, dir] of delta.acts) {
+      const e = this.entities.get(id);
+      if (!e) continue;
+      e.act = x >= 0 ? { x, y } : null;
+      e.dir = dir;
+      // Facing something is a state like any other, so others see the turn.
+      e.history.push({ tick: delta.tick, x: e.x, y: e.y, dir, moving: false });
+      if (e.history.length > HISTORY_CAP) e.history.shift();
+      if (id === this.selfId) this.self.dir = dir;
+    }
+    for (const [index, depleted] of delta.nodes) {
+      if (depleted === 1) this.depleted.add(index);
+      else this.depleted.delete(index);
+    }
+    for (const [gid, item, qty, x, y] of delta.drops) this.items.set(gid, { gid, item, qty, x, y });
+    for (const gid of delta.taken) this.items.delete(gid);
     for (const line of delta.chat) {
       this.chat.push({ id: line.id, name: this.entities.get(line.id)?.name ?? '?', text: line.text, at: now });
       if (this.chat.length > CHAT_LOG_CAP) this.chat.shift();
     }
+  }
+
+  private applyYou(you: YouDelta, now: number): void {
+    if (you.bag) this.bag = you.bag;
+    if (you.xp) {
+      for (const [skill, xp] of you.xp) {
+        const before = this.skills.get(skill) ?? 0;
+        this.skills.set(skill, xp);
+        if (xp > before) this.xpDrops.push({ skill, amount: xp - before, at: now });
+      }
+    }
+    if (you.bank !== undefined) this.bank = you.bank;
+    if (you.items) for (const [gid, item, qty, x, y] of you.items) this.items.set(gid, { gid, item, qty, x, y });
+    if (you.bag || you.xp || you.bank !== undefined) this.version++;
+    if (you.notes) for (const note of you.notes) this.onNote?.(note);
   }
 
   /** The server's placement after applying input `seq`, against the prediction we made for the same input. */
@@ -313,7 +403,7 @@ export class Replica {
     const existing = this.entities.get(e.id);
     if (!existing) {
       const at = placed(e);
-      this.entities.set(e.id, { id: e.id, name: e.name, x: at.x, y: at.y, dir: e.dir, running: e.running, moving: e.moving, history: [{ tick, x: at.x, y: at.y, dir: e.dir, moving: e.moving }] });
+      this.entities.set(e.id, { id: e.id, name: e.name, x: at.x, y: at.y, dir: e.dir, running: e.running, moving: e.moving, act: e.act ? { x: e.act[0], y: e.act[1] } : null, history: [{ tick, x: at.x, y: at.y, dir: e.dir, moving: e.moving }] });
       return;
     }
     existing.name = e.name;

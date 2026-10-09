@@ -6,9 +6,23 @@ world is drawn with simple shapes for now; art comes once the mechanics are
 in. [DESIGN.md](DESIGN.md) is the design and the build order;
 [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is put together.
 
-## What works today (slices 1 and 1b: walk together, and characters that last)
+## What works today (slices 1, 1b and 2: walk together, characters that last, woodcutting end to end)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
+- **Chop trees.** Click an oak (or right-click it for Chop, Examine, Walk
+  here) and you walk up beside it and swing. Every action tick (600 ms) rolls
+  for a log, better with your level and your hatchet's tier. Logs go into a
+  bag of 28 slots, one each; xp floats up and the Skills tab shows the
+  level. A tree sometimes falls, for everyone, and grows back a few seconds
+  later. You start with a bronze hatchet; without one you cannot chop.
+- **Drop and take.** Click a bag slot for Drop or Examine. A dropped item
+  lies where you stood: yours alone to see for a minute, then anyone's to
+  take, gone after three. Click it (or Take from the right-click menu) to
+  pick it up.
+- **Bank.** The chest east of the village square: Use Bank from beside it,
+  deposit a slot or everything, withdraw one, five or all of a kind. The
+  bank stacks everything; the bag does not.
+- Skills, bag and bank are saved with the character.
 - Your character is saved under its name: leave and come back, on the same
   day or after the server restarted, and you stand where you left off, in
   the zone you were in. Every zone runs on the one server; walk onto an
@@ -79,11 +93,13 @@ port reports the tick, who is in which zone, and which store is in use.
 
 A character is one JSON document keyed by its lower-cased name: the zone,
 the cell, the facing, walking or running, when it was made and last seen,
-and a `state` object for what the next slices add (skills, bag, bank, flags
-such as "finished the tutorial"). It is written when you leave, when you
-change zone, every `SAVE_MS` while you play, and when the server shuts
-down. On Postgres it is the `characters` table, one `jsonb` row per name;
-on a machine without a database it is the file.
+and a `state` object holding the skills (total xp each), the bag (28 slots)
+and the bank, which the next slices extend (flags such as "finished the
+tutorial"). It is written when you leave, when you change zone, every
+`SAVE_MS` while you play, and when the server shuts down. On Postgres it is
+the `characters` table, one `jsonb` row per name; on a machine without a
+database it is the file. An item or skill the content no longer has is
+dropped when the record is read.
 
 The name is tied to the browser that made it: the page makes up a random
 secret once, keeps it in `localStorage`, and sends it with the name; the
@@ -106,18 +122,18 @@ npm start              # runs the built server
 | `src/types/`    | Shared types, typed content ids                             | content, type-only      |
 | `src/content/`  | The world's data: zones, tile maps, and the tables they list | types                  |
 | `src/core/`     | The content registry with its validation, the seeded RNG    | types                   |
-| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client | types |
+| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve, the bag rules | types |
 | `src/net/`      | The wire protocol: message types and the strict parser      | types, world            |
-| `src/server/`   | The game server: the room simulation, the world of rooms, the character record and store, the WebSocket adapter | everything but ui, client |
+| `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
 | `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net    |
 | `src/ui/`       | The page: the shapes renderer, the shell, the join card, chat | client, net, world, types |
 | `src/main.ts`   | The entry point                                             | everything              |
-| `tests/`        | Vitest: protocol, room, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, content |         |
+| `tests/`        | Vitest: protocol, room, gathering and the bank, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, skills, bag, content |         |
 
 ESLint fails the build if a layer imports something it should not.
 
 ## Next
 
-Slice 2 of the build order in DESIGN.md: woodcutting end to end. A tree you
-can chop, a bag of slots, logs on the ground with the owner-first visibility
-rule, a bank, all of it saved in the character's document.
+Slice 3 of the build order in DESIGN.md: mining, smelting, smithing,
+fishing, cooking and firemaking the same way woodcutting works, so every
+gathering and production skill runs on the server.

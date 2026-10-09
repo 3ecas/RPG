@@ -152,6 +152,11 @@ export class Registry {
         check((def.equip.attackIntervalMs ?? 0) > 0, `weapon ${id}: needs attackIntervalMs`);
         check(def.equip.weaponType !== undefined, `weapon ${id}: needs weaponType`);
       }
+      if (def.tool) {
+        check(def.tool.skill in t.skills, `tool ${id}: unknown skill '${def.tool.skill}'`);
+        check(validTier(def.tool.tier), `tool ${id}: bad tier ${def.tool.tier}`);
+        check(def.group === 'tool', `tool ${id}: must be in the 'tool' group`);
+      }
     }
     for (const [id, def] of Object.entries(t.recipes)) {
       check(def.id === id, `recipe ${id}: id field is '${def.id}'`);
@@ -171,6 +176,10 @@ export class Registry {
       check(def.itemId in t.items, `node ${id}: unknown item '${def.itemId}'`);
       check(validTier(def.tier), `node ${id}: bad tier ${def.tier}`);
       check(def.durationMs > 0, `node ${id}: durationMs must be > 0`);
+      if (def.deplete) {
+        check(def.deplete.chance > 0 && def.deplete.chance <= 1, `node ${id}: deplete chance must be in (0, 1]`);
+        check(def.deplete.respawnMs > 0, `node ${id}: respawnMs must be > 0`);
+      }
     }
     for (const [id, def] of Object.entries(t.monsters)) {
       check(def.id === id, `monster ${id}: id field is '${def.id}'`);
@@ -327,6 +336,7 @@ export class Registry {
             break;
           }
           case 'signpost': break;
+          case 'bank': break;
         }
       }
       check(spawns === 1, `${owner}: needs exactly one spawn, has ${spawns}`);

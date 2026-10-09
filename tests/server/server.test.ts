@@ -97,10 +97,12 @@ const isWelcome = (m: ServerMessage): m is Extract<ServerMessage, { t: 'welcome'
 const isZone = (m: ServerMessage): m is Extract<ServerMessage, { t: 'zone' }> => m.t === 'zone';
 const isTick = (m: ServerMessage): m is Extract<ServerMessage, { t: 'tick' }> => m.t === 'tick';
 const isReject = (m: ServerMessage): m is Extract<ServerMessage, { t: 'reject' }> => m.t === 'reject';
+type You = Extract<ServerMessage, { t: 'you' }>;
+const isYou = (m: ServerMessage): m is You => m.t === 'you';
 
-/** Walks a client one cell at a time: a click, then one step per message until `steps` are sent. */
-function walk(client: TestClient, seq: number, to: [number, number], steps: number): number {
-  client.send({ t: 'input', seq: ++seq, to });
+/** Walks a client: a click (to use what is there when `use`), then one step per message until `steps` are sent. */
+function walk(client: TestClient, seq: number, to: [number, number], steps: number, use = false): number {
+  client.send(use ? { t: 'input', seq: ++seq, to, use: true } : { t: 'input', seq: ++seq, to });
   for (let i = 1; i < steps; i++) client.send({ t: 'input', seq: ++seq });
   return seq;
 }
@@ -118,7 +120,7 @@ describe('game server', () => {
   const clients: TestClient[] = [];
 
   async function start(store = new MemoryStore()): Promise<GameServer> {
-    server = await startServer({ port: 0, host: '127.0.0.1', startZone: 'greenhollow', tickMs: TICK_MS, graceMs: GRACE_MS, saveMs: 0, store });
+    server = await startServer({ port: 0, host: '127.0.0.1', startZone: 'greenhollow', tickMs: TICK_MS, graceMs: GRACE_MS, saveMs: 0, store, seed: 1, rules: { actionSteps: 1, itemPublicSteps: 8, itemGoneSteps: 400 } });
     return server;
   }
 
@@ -329,6 +331,53 @@ describe('game server', () => {
     expect(w2.resumed).toBe(true);
     const me = w2.entities.find((e) => e.id === w2.id)!;
     expect([me.cx, me.cy, me.running]).toEqual([spawn.cx + 2, spawn.cy, true]);
+  });
+
+  it('chops a tree, drops the log for the other player to find once it shows, and keeps it all in the store', async () => {
+    const store = new MemoryStore();
+    const base = { secretHash: hashSecret(SECRET), createdAt: 1, dir: 0 as const, running: false, zone: 'greenhollow' as const, lastSeenAt: 1 };
+    await store.save({ ...base, name: 'Ada', state: {}, x: 3, y: 3 }); // beside the oak at (3, 2)
+    await store.save({ ...base, name: 'Bob', state: {}, x: 5, y: 3 });
+    const { port } = await start(store);
+    const ada = await connect(port);
+    ada.hello('Ada');
+    const wa = await ada.next(isWelcome);
+    expect(wa.bag[0]).toEqual(['bronze_hatchet', 1]);
+    expect(wa.skills).toContainEqual(['woodcutting', 0]);
+    expect(wa.items).toEqual([]);
+    const bob = await connect(port);
+    bob.hello('Bob');
+    const wb = await bob.next(isWelcome);
+
+    ada.send({ t: 'input', seq: 1, to: [3, 2], use: true });
+    const swing = await bob.next((m) => isTick(m) && m.acts.some((a) => a[0] === wa.id && a[1] === 3));
+    expect(isTick(swing) && swing.acts).toEqual([[wa.id, 3, 2, 3]]); // facing up, at the tree
+    const chopped = await ada.next((m): m is You => isYou(m) && !!m.bag?.some((s) => s?.[0] === 'oak_log'), 8000);
+    expect(chopped.xp?.[0]?.[0]).toBe('woodcutting');
+    expect(chopped.xp?.[0]?.[1]).toBeGreaterThanOrEqual(10);
+    const slot = chopped.bag!.findIndex((s) => s?.[0] === 'oak_log');
+
+    walk(ada, 1, [4, 3], 6); // one cell east: the chopping stops
+    await bob.next((m) => isTick(m) && m.acts.some((a) => a[0] === wa.id && a[1] === -1));
+    await bob.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === wa.id && mv[1] === 4 && mv[5] === 0));
+    ada.send({ t: 'drop', slot });
+    const dropped = await ada.next((m): m is You => isYou(m) && !!m.items);
+    const [gid, itemId, , x, y] = dropped.items![0]!;
+    expect(itemId).toBe('oak_log');
+    expect(bob.received.some((m) => isTick(m) && m.drops.some((d) => d[0] === gid))).toBe(false);
+    const shown = await bob.next((m) => isTick(m) && m.drops.some((d) => d[0] === gid), 2000);
+    expect(isTick(shown) && shown.drops[0]).toEqual([gid, 'oak_log', 1, x, y]);
+    walk(bob, 0, [x, y], 12, true); // two cells west, then the log is his
+    const taken = await ada.next((m) => isTick(m) && m.taken.includes(gid), 4000);
+    expect(isTick(taken) && taken.taken).toEqual([gid]);
+    const bobsBag = await bob.next((m): m is You => isYou(m) && !!m.bag?.some((s) => s?.[0] === 'oak_log'));
+    expect(bobsBag.bag?.filter((s) => s?.[0] === 'oak_log')).toHaveLength(1);
+    expect(wb.id).not.toBe(wa.id);
+
+    await server!.saveAll();
+    const saved = await store.load('bob');
+    expect((saved?.state.bag as unknown[]).filter((s) => (s as { itemId?: string } | null)?.itemId === 'oak_log')).toHaveLength(1);
+    expect(((await store.load('ada'))?.state.skills as Record<string, number>).woodcutting).toBeGreaterThanOrEqual(10);
   });
 
   it('answers the health check', async () => {

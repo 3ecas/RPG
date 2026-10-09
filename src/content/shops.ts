@@ -19,6 +19,7 @@ export const SHOPS = defineShops({
       { itemId: 'shrimp', qty: 20 },
       { itemId: 'trout', qty: 5 },
       { itemId: 'oak_log', qty: 'infinite' },
+      { itemId: 'bronze_hatchet', qty: 'infinite' },
       { itemId: 'rusty_dagger', qty: 'infinite' },
       { itemId: 'leather_gloves', qty: 3 },
       { itemId: 'wheat', qty: 20 },

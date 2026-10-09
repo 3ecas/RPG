@@ -59,8 +59,10 @@ Starting values. Expect to tune them after the first playable slice.
 | Setting | Default |
 |---|---|
 | Simulation step | 50 ms |
+| Action tick (one roll at a node) | 600 ms, twelve steps |
 | Walk / run | 4 / 7 cells per second |
 | Bag | 28 slots |
+| A tree falls after a log | one in eight; an oak is back after 8 s. Rocks and fields empty on every success |
 | Skill levels | 1 to 99 |
 | Tier bands start at level | 1, 15, 30, 50, 70, 85 |
 | Dropped item visible to others after | 60 s; gone after 180 s |
@@ -75,8 +77,9 @@ Starting values. Expect to tune them after the first playable slice.
   A tier is a **level band**, which is literally the RuneScape metal ladder.
   Content keeps its tier numbers; only the xp formula and the skills panel
   change.
-- **Tools replace perks.** Gather speed comes from the pickaxe or axe you hold,
-  by tier, so speed is crafted and can be lost.
+- **Tools replace perks.** Gather speed comes from the pickaxe or hatchet in
+  your bag, by tier, so speed is crafted and can be lost. Without one you
+  cannot gather at all; a new character starts with a bronze hatchet.
 - **The progression tree goes.** Zones open by walking, with danger and quests
   as the gates. Features it granted (dual wield, auto-eat, the market) become
   quest rewards or plain features.
@@ -183,7 +186,7 @@ Each step is playable or demonstrable on its own. Status in the last column.
 | 0 | This document | The design does not drift | done |
 | 1 | **Walk together**: one zone room on the tick, join with a name, click to walk, see each other move, chat over heads, reconnect; the idle game removed, the world drawn with simple shapes, the Pages client pointed at a hosted server | The tick feels right, one-tick-behind rendering is acceptable, the protocol shape, hosting | done |
 | 1b | **Characters that last**: saved by name (zone, cell, facing, pace, and a document that grows with the slices), every zone as a room on one server with the maps' exits walking you between them, a secret the browser makes once as the stand-in for accounts, Postgres through `DATABASE_URL` with a JSON file for a machine without one | Persistence, zone transitions, identity | done |
-| 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, all of it in the character's document | Durations as ticks, shared nodes, item replication | |
+| 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, all of it in the character's document | Durations as ticks, shared nodes, item replication | done |
 | 3 | Mining, smelting, smithing, fishing, cooking, firemaking the same way | Nothing new, breadth | |
 | 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
 | 5 | Accounts (replacing the browser secret), names, chat channels, mute and ban, rate limits | Safety | |
