@@ -8,7 +8,7 @@
  * beside them. One step is one fixed slice of time.
  */
 import { type Cell, type Dir, dirOf, type Grid, isWalkable } from './grid';
-import { findPath8, nearestReachable } from './path';
+import { findPath8, nearestReachable, type PathOptions } from './path';
 
 /** The simulation step, in milliseconds: the server ticks at this rate and the client predicts at it. */
 export const STEP_MS = 50;
@@ -54,14 +54,17 @@ export function nextCell(m: Pick<Mover, 'cell' | 't' | 'path'>): Cell {
 /**
  * Plan a walk to a clicked cell, or as near to it as the map allows: the
  * cell itself, or the reachable cell nearest to it (clicking a tree or a
- * person walks you to the cell beside it). A walk already under way finishes
- * its current cell first. False when nothing near the click can be reached.
+ * person walks you to the cell beside it). `options.blocked` names cells the
+ * map does not know are taken (a campfire someone built): the walk goes
+ * around them and stops beside one that was clicked. A walk already under
+ * way finishes its current cell first. False when nothing near the click can
+ * be reached.
  */
-export function planWalk(grid: Grid, m: Mover, target: Cell): boolean {
+export function planWalk(grid: Grid, m: Mover, target: Cell, options: PathOptions = {}): boolean {
   const from = nextCell(m);
-  const goal = nearestReachable(grid, from, target);
+  const goal = nearestReachable(grid, from, target, options);
   if (!goal) return false;
-  const path = findPath8(grid, from, goal);
+  const path = findPath8(grid, from, goal, options);
   if (!path) return false;
   const underway = m.path[0];
   m.path = underway && m.t > 0 ? [underway, ...path] : path;

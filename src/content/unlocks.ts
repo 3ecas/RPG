@@ -20,7 +20,7 @@ export const PER_LEVEL: Readonly<Record<SkillId, string>> = {
   harvesting: '+2% chance to gather each try',
   smithing: '+1% faster work at the furnace and anvil',
   crafting: '+1% faster work at the sawbench and tannery',
-  cooking: '+1% faster cooking',
+  cooking: '+1% less chance to burn what you cook',
   hand_weapons: '+1% damage with swords, axes and daggers',
   bows: '+1% damage with bows',
   vitality: '+1 max HP',

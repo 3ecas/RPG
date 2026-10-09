@@ -203,6 +203,9 @@ export class OnlineScene {
       if (obj.def.kind === 'exit' || obj.def.kind === 'spawn' || obj.def.kind === 'monster') continue;
       drawables.push({ y: (obj.y + obj.h) * TILE, draw: () => this.drawObject(obj) });
     }
+    for (const fire of this.replica.fires.values()) {
+      drawables.push({ y: (fire.y + 1) * TILE - 1, draw: () => drawStation(this.ctx, fire.x * TILE, fire.y * TILE, 'campfire', this.now) });
+    }
     for (const e of this.replica.entities.values()) {
       const at = this.replica.positionAt(e, this.now);
       const px = at.x * TILE - TILE / 2;
@@ -308,7 +311,7 @@ export class OnlineScene {
     ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
     const me = this.replica.selfEntity ? this.replica.positionAt(this.replica.selfEntity, this.now) : null;
-    const near = (obj: PlacedObject) => !!me && Math.abs(obj.x + obj.w / 2 - me.x) + Math.abs(obj.y + obj.h / 2 - me.y) <= LABEL_RANGE + obj.w;
+    const near = (obj: { x: number; y: number; w: number; h: number }) => !!me && Math.abs(obj.x + obj.w / 2 - me.x) + Math.abs(obj.y + obj.h / 2 - me.y) <= LABEL_RANGE + obj.w;
 
     for (const obj of grid.objects) {
       const cx = sx((obj.x + obj.w / 2) * TILE);
@@ -326,6 +329,9 @@ export class OnlineScene {
         const label = def.kind === 'node' ? this.content.node(def.id).name : def.kind === 'shop' ? this.content.shop(def.id).name : def.kind === 'market' ? 'Market' : def.kind === 'trader' ? this.content.trader(def.id).name : def.kind === 'station' ? this.content.station(def.id).name : def.kind === 'bank' ? 'Bank' : null;
         if (label) text(ctx, label, cx, sy((obj.y + obj.h) * TILE) + 11, '#c9ccd3', 10);
       }
+    }
+    for (const fire of this.replica.fires.values()) {
+      if (near({ x: fire.x, y: fire.y, w: 1, h: 1 })) text(ctx, 'Campfire', sx((fire.x + 0.5) * TILE), sy((fire.y + 1) * TILE) + 11, '#c9ccd3', 10);
     }
 
     // Xp gains float up from your head.

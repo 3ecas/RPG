@@ -105,7 +105,18 @@ Starting values. Expect to tune them after the first playable slice.
   A tier is a **level band**, which is literally the RuneScape metal ladder.
 - **Tools replace perks.** Gather speed comes from the pickaxe or hatchet in
   your bag or hand, by tier, so speed is crafted and can be lost. Without one
-  you cannot gather at all; a new character starts with a bronze hatchet.
+  you cannot gather at all. Tools run stone → iron → steel → mithril →
+  adamant → rune. A new character starts with nothing: Rowan the lumberjack
+  hands a stone hatchet to anyone who talks to him without one, Greta the
+  stonemason a stone pickaxe, and the village store sells both. Fishing and
+  harvesting need no tool.
+- **Cooking happens at campfires.** Every settlement has one that never
+  goes out. A player builds one anywhere from two stones (broken from the
+  loose rock by the village outcrop with a pickaxe) and a log; it burns a
+  minute per tier of the log, anyone can cook on it, and a log fed to it
+  keeps it going, up to ten minutes. Building and feeding give Crafting xp.
+  A cook takes a couple of seconds and two thirds come out right at the
+  level the food opens at, a percent more per level after, never all.
 - **The progression tree goes.** Zones open by walking, with danger and quests
   as the gates. Features it granted (dual wield, auto-eat, the market) become
   quest rewards or plain features.
@@ -116,6 +127,8 @@ Starting values. Expect to tune them after the first playable slice.
   an item flag that is false for almost everything.
 - The bag has 28 slots. The bank has many, with deposit-all and withdraw-x.
   Every town has a bank; the tutorial island has one.
+- Coins are a purse on the character, shown in the inventory, never a bag
+  item: quests and sales pay into it, shops and the market draw from it.
 - Ground items live in the zone state with an owner id and two timers.
 - Per-instance data (enchantments, charges) is not needed yet.
 
@@ -158,11 +171,15 @@ with the first handful of real ones.
 
 ## 10. UI and art
 
-- **Chrome:** a draggable menu bar that opens windows for the inventory, the
-  gear and numbers, the journal (quests, the adventure log, the bestiary, the
-  item database), the skills and the settings; every window drags, resizes
-  and closes with its X, and the layout is remembered per browser. A minimap
-  in the top right. A docked chatbox. Right-click menus. The bank, shops and
+- **Chrome:** a menu bar fixed along the bottom that opens windows for the
+  inventory (gear laid out as a body, the numbers, the purse and the bag in
+  one panel), the journal (horizontal tabs: quests, the adventure log, the
+  bestiary, the item database; each tab a list on the left and the page on
+  the right, the quest page with one button to accept), the skills and the
+  settings; every window drags, resizes and closes with its X, and the
+  layout is remembered per browser. Active quests sit top left with their
+  objectives red until done, then green. A minimap in the top right. A
+  docked chatbox. Right-click menus. The bank, the campfire, shops and
   crafting are windows too. Space stops you.
 - **Art:** simple shapes for now: flat tiles, discs for people, boxes and
   circles for what stands on the map. The renderer is one file, so pixel art
@@ -217,7 +234,8 @@ Each step is playable or demonstrable on its own. Status in the last column.
 | 1b | **Characters that last**: saved by name (zone, cell, facing, pace, and a document that grows with the slices), every zone as a room on one server with the maps' exits walking you between them, a secret the browser makes once as the stand-in for accounts, Postgres through `DATABASE_URL` with a JSON file for a machine without one | Persistence, zone transitions, identity | done |
 | 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, all of it in the character's document | Durations as ticks, shared nodes, item replication | done |
 | 2b | **Skills, numbers, gear and windows**: the thirteen skills to level 100 with an unlock on every level, hit points, mana, armor, attack and spell power from levels and gear, nine gear slots with wear and remove, Space to stop, and the UI as a draggable menu bar, draggable and resizable windows and a minimap | Stats and gear replicate, the chrome the rest of the game will live in | done |
-| 3 | Mining, smelting, smithing, fishing, cooking, firemaking the same way | Nothing new, breadth | |
+| 2c | **Quests, campfires, the village's tools**: quests taken from a journal of tabs with a list and a page, tracked top left, finished by events and paid in coins, xp and items; no starting kit, Rowan and Greta handing out stone tools; stones from loose rock; campfires that are built, burn down and are fed, and cooking on any fire; fishing spots in the water; one inventory panel with gear, numbers, purse and bag; the menu bar along the bottom | Objectives from events, timed objects shared by a zone, a session like the bank's | done |
+| 3 | The furnace, the anvil, the sawbench and the tannery the way the campfire works | Nothing new, breadth | |
 | 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
 | 5 | Accounts (replacing the browser secret), names, chat channels, mute and ban, rate limits | Safety | |
 | 6 | Tutorial island map and guides, the starting town, the first quest | Onboarding | |

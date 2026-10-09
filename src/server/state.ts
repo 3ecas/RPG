@@ -5,11 +5,12 @@
  * starts fresh, an item or skill the content no longer has is dropped, and
  * a brand new character gets the starting kit.
  */
-import type { EquipInfo, ItemStack } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type SkillId } from '@/types/ids';
+import type { EquipInfo, ItemStack, Objective } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type QuestId, type SkillId } from '@/types/ids';
 import { addToBag, addToStacks, type Bag, BAG_SLOTS, emptyBag } from '@/world/bag';
 import { MAX_XP } from '@/world/skills';
 import { slotsFor } from '@/world/stats';
+import type { QuestState } from './quests';
 
 /** What is worn, by slot. Gear is never stacked: a slot holds one. */
 export type Gear = Partial<Record<EquipSlot, ItemStack>>;
@@ -23,11 +24,19 @@ export interface PlayerState {
   /** Current hit points and mana; Infinity when unknown, which the room reads as full. */
   hp: number;
   mana: number;
+  quests: QuestState;
+  /** The purse: coins are a number on the character, not an item in the bag. */
+  coins: number;
 }
+
+/** Items that changed their name; a stored record naming the old one gets the new. */
+const RENAMED: Readonly<Record<string, string>> = { bronze_hatchet: 'stone_hatchet', bronze_pickaxe: 'stone_pickaxe' };
 
 export interface StateContent {
   hasItem(id: string): id is ItemId;
   item(id: ItemId): { readonly stackable?: boolean; readonly equip?: EquipInfo };
+  hasQuest(id: string): id is QuestId;
+  quest(id: QuestId): { readonly objectives: readonly Objective[] };
   readonly skillIds: SkillId[];
 }
 
@@ -36,9 +45,11 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function parseStack(raw: unknown, content: StateContent): ItemStack | null {
-  if (!isRecord(raw) || typeof raw.itemId !== 'string' || !content.hasItem(raw.itemId)) return null;
+  if (!isRecord(raw) || typeof raw.itemId !== 'string') return null;
+  const itemId = RENAMED[raw.itemId] ?? raw.itemId;
+  if (!content.hasItem(itemId)) return null;
   if (typeof raw.qty !== 'number' || !Number.isInteger(raw.qty) || raw.qty <= 0) return null;
-  return { itemId: raw.itemId, qty: raw.qty };
+  return { itemId, qty: raw.qty };
 }
 
 function parsePoints(raw: unknown): number {
@@ -77,7 +88,17 @@ export function parseState(raw: Record<string, unknown>, content: StateContent, 
       if (stack && equip && slotsFor(equip.kind).includes(slot)) gear[slot] = { itemId: stack.itemId, qty: 1 };
     }
   }
-  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana) };
+  const quests: QuestState = {};
+  if (isRecord(raw.quests)) {
+    for (const [id, entry] of Object.entries(raw.quests)) {
+      if (!content.hasQuest(id) || !isRecord(entry) || (entry.status !== 'active' && entry.status !== 'done')) continue;
+      const count = content.quest(id).objectives.length;
+      const progress = Array.isArray(entry.progress) ? entry.progress : [];
+      quests[id] = { status: entry.status, progress: Array.from({ length: count }, (_, i) => (typeof progress[i] === 'number' && Number.isInteger(progress[i]) && progress[i] > 0 ? progress[i] : 0)) };
+    }
+  }
+  const coins = typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins > 0 ? Math.floor(raw.coins) : 0;
+  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana), quests, coins };
 }
 
 /** The document to store, a copy. */
@@ -94,5 +115,7 @@ export function stateOf(state: PlayerState): Record<string, unknown> {
     gear,
     hp: state.hp,
     mana: state.mana,
+    quests: Object.fromEntries(Object.entries(state.quests).flatMap(([id, q]) => (q ? [[id, { status: q.status, progress: [...q.progress] }]] : []))),
+    coins: state.coins,
   };
 }

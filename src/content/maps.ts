@@ -5,7 +5,9 @@
  *   . grass   , path   " tall grass   * flowers   : dirt   = floor   + bridge
  *   ~ water   # rock   ^ dense trees  - fence     (space) void
  * Shops and the market fill a 2×2 block with their key. Exits sit on the map
- * edge and lead to the zone whose map has an exit back here.
+ * edge and lead to the zone whose map has an exit back here. Fishing spots
+ * stand in the water (`terrain: 'water'`), in the cell right beside the bank
+ * one fishes from; the registry checks that.
  */
 import type { ZoneMapDef } from '@/types/content';
 import type { ZoneId } from '@/types/ids';
@@ -21,29 +23,30 @@ export const MAPS = {
       '^..A.....A..........,........---.----..^',
       '^...............HH..,...........,......^',
       '^.A.....A.......HH..,...........,......^',
-      '^................L,,,,,,,,,,,,,,,......^',
+      '^....W...........L,,,,,,,,,,,,,,,......^',
       '^--------...........,....T.............^',
       '^-.CC...-...........,..................^',
       '^-......,...........,M......,,,,,,r....^',
       '^-.CC...-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1',
-      '^--------...........,..Q.,,,...#.....r.^',
-      '^...................S...K,.........#...^',
+      '^--------...........,..Q.,,,..R#R....r.^',
+      '^...................S...K,.......GR#R..^',
       '^...................,....,.....~~~~~~..^',
       '^...................,...F,....~~~~~~~~.^',
-      '^...................,....,...B~~~~~~~~.^',
+      '^...................,....,....B~~~~~~~.^',
       '^.....D.............,P......O~~~~~~~~~.^',
       '^....D..............,,,,,,,,..~~~~~~~..^',
       '^...D...............,..........~~~~~~..^',
-      '^...................,...........~~~B...^',
+      '^...................,...........~~B....^',
       '^...................,..................^',
       '^...................,..................^',
       '^^^^^^^^^^^^^^^^^^^^3^^^^^^^^^^^^^^^^^^^',
     ],
     legend: {
       A: { kind: 'node', id: 'oak_tree' },
-      B: { kind: 'node', id: 'shrimp_spot' },
+      B: { kind: 'node', id: 'shrimp_spot', terrain: 'water' },
       C: { kind: 'node', id: 'wheat_field' },
       D: { kind: 'node', id: 'nettle_patch' },
+      R: { kind: 'node', id: 'rubble' },
       H: { kind: 'shop', id: 'hollow_goods' },
       T: { kind: 'station', id: 'tannery' },
       F: { kind: 'station', id: 'campfire' },
@@ -51,6 +54,8 @@ export const MAPS = {
       K: { kind: 'npc', id: 'captain_bram' },
       O: { kind: 'npc', id: 'angler_tobb' },
       L: { kind: 'npc', id: 'keeper_pell' },
+      W: { kind: 'npc', id: 'lumberjack_rowan' },
+      G: { kind: 'npc', id: 'mason_greta' },
       r: { kind: 'monster', id: 'rat' },
       c: { kind: 'monster', id: 'cow' },
       P: { kind: 'signpost' },
@@ -77,7 +82,7 @@ export const MAPS = {
       '#.............,,,,,,,,,,,,,............#',
       '#........F....,.....,.................B#',
       '1,,,,,,,,,,,,,,,,,,,S,,,,,,,,,,,,,,,,,,2',
-      '#.........N...,.....,......P...........#',
+      '#.........N...,.....,..R.R.P...........#',
       '#.............,.....,..................#',
       '#......C......,.....,,,,,,,,,,,........#',
       '#.............V...........g...,........#',
@@ -92,6 +97,7 @@ export const MAPS = {
     legend: {
       A: { kind: 'node', id: 'copper_rock' },
       B: { kind: 'node', id: 'tin_rock' },
+      R: { kind: 'node', id: 'rubble' },
       g: { kind: 'monster', id: 'goblin' },
       U: { kind: 'npc', id: 'prospector_dun' },
       O: { kind: 'npc', id: 'smith_orla' },
@@ -180,7 +186,7 @@ export const MAPS = {
     ],
     legend: {
       A: { kind: 'node', id: 'willow_tree' },
-      B: { kind: 'node', id: 'trout_spot' },
+      B: { kind: 'node', id: 'trout_spot', terrain: 'water' },
       C: { kind: 'node', id: 'potato_field' },
       D: { kind: 'node', id: 'sage_patch' },
       w: { kind: 'monster', id: 'wolf' },
@@ -267,7 +273,7 @@ export const MAPS = {
     ],
     legend: {
       A: { kind: 'node', id: 'maple_tree' },
-      B: { kind: 'node', id: 'salmon_spot' },
+      B: { kind: 'node', id: 'salmon_spot', terrain: 'water' },
       C: { kind: 'node', id: 'carrot_field' },
       D: { kind: 'node', id: 'lavender_patch' },
       e: { kind: 'monster', id: 'bear' },
@@ -286,10 +292,10 @@ export const MAPS = {
       '####.......#####.........######........#',
       '###..A......###...........###....B.....#',
       '##...........#.............#........B..#',
-      '##......##.........C~~~~............h..#',
+      '##......##..........C~~~............h..#',
       '#......###........~~~~~~~..............#',
       '#.....##..........~~~~~~~.......###....#',
-      '#....##............~~~~C........####...#',
+      '#....##............~~~C.........####...#',
       '#...##..............~~~..........###...#',
       '#..##.......DDD.......................B#',
       '#..#..........................t........#',
@@ -310,7 +316,7 @@ export const MAPS = {
     legend: {
       A: { kind: 'node', id: 'mithril_rock' },
       B: { kind: 'node', id: 'yew_tree' },
-      C: { kind: 'node', id: 'tuna_spot' },
+      C: { kind: 'node', id: 'tuna_spot', terrain: 'water' },
       D: { kind: 'node', id: 'cabbage_field' },
       E: { kind: 'node', id: 'bloodroot_patch' },
       t: { kind: 'monster', id: 'troll' },
@@ -336,8 +342,8 @@ export const MAPS = {
       '#::::::DDD::::::,::::::::::::::::::::::#',
       '#:::::::::::::::,::::::::::::~~~~~:::::#',
       '#::::::::::::::,,:::::::::::~~~~~~~::::#',
-      '#:::::::F::::::,::::::::::::C~~~~~~::::#',
-      '#:::::::N:::::::,::::::::::::~~~~C:::::#',
+      '#:::::::F::::::,:::::::::::::C~~~~~::::#',
+      '#:::::::N:::::::,::::::::::::~~~C::::::#',
       '1,,,,,,,,,,,,,,,,,,,S,,,,,,,,,,~~~:::::#',
       '#::::::::::::::::::::::::::::::::::::::#',
       '#::::G:::::::::::::::::::::u:::::::::::#',
@@ -354,7 +360,7 @@ export const MAPS = {
     legend: {
       A: { kind: 'node', id: 'adamant_rock' },
       B: { kind: 'node', id: 'ash_tree' },
-      C: { kind: 'node', id: 'lobster_spot' },
+      C: { kind: 'node', id: 'lobster_spot', terrain: 'water' },
       D: { kind: 'node', id: 'pumpkin_field' },
       E: { kind: 'node', id: 'moonflower_patch' },
       y: { kind: 'monster', id: 'wyvern' },
@@ -378,8 +384,8 @@ export const MAPS = {
       '#...A..................................#',
       '#..............~~~~~~~~................#',
       '#.............~~~~~~~~~~~..........d...#',
-      '#.............C~~~~~~~~~~..............#',
-      '#..............~~~~~~~~~C..............#',
+      '#..............C~~~~~~~~~..............#',
+      '#..............~~~~~~~~C...............#',
       '#.......DDD.....~~~~~~~................#',
       '#...................................A..#',
       '#.....EE............S..................#',
@@ -399,7 +405,7 @@ export const MAPS = {
     legend: {
       A: { kind: 'node', id: 'rune_rock' },
       B: { kind: 'node', id: 'elder_tree' },
-      C: { kind: 'node', id: 'swordfish_spot' },
+      C: { kind: 'node', id: 'swordfish_spot', terrain: 'water' },
       D: { kind: 'node', id: 'sunfruit_field' },
       E: { kind: 'node', id: 'dragonleaf_patch' },
       d: { kind: 'monster', id: 'drake' },

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { gatherChance, levelForTier, levelOf, MAX_LEVEL, MAX_XP, progressOf, xpForLevel } from '@/world/skills';
+import { cookChance, gatherChance, levelForTier, levelOf, MAX_LEVEL, MAX_XP, progressOf, xpForLevel } from '@/world/skills';
 import { deriveStats, regenInterval, slotsFor, weaponSkillFor } from '@/world/stats';
 import type { SkillId } from '@/types/ids';
+
+describe('skills: cooking', () => {
+  it('burns a third at the level the food opens at, less with every level, and never nothing', () => {
+    expect(cookChance(1, 1)).toBeCloseTo(0.66);
+    expect(cookChance(15, 15)).toBeCloseTo(0.66);
+    expect(cookChance(21, 1)).toBeCloseTo(0.86);
+    expect(cookChance(60, 1)).toBe(0.98);
+    expect(cookChance(1, 15)).toBeCloseTo(0.66);
+  });
+});
 
 describe('skills: the curve', () => {
   it('is the classic one', () => {

@@ -47,6 +47,15 @@ export function progressOf(xp: number): { level: number; into: number; span: num
 }
 
 /**
+ * The chance that something cooked comes out right rather than burnt: two in
+ * three at the level the food opens at, a percent better per level after it,
+ * and never quite certain.
+ */
+export function cookChance(level: number, need: number): number {
+  return Math.min(0.98, 0.66 + 0.01 * Math.max(0, level - need));
+}
+
+/**
  * The chance that one try at a gather node succeeds: the node's expected
  * time per item for a level 1 character with a tier 1 tool, two percent
  * better for every level after the first and a fifth per tool tier, never

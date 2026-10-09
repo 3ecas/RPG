@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemStack } from '@/types/content';
-import { addToBag, addToStacks, BAG_SLOTS, countInBag, countInStacks, emptyBag, freeSlots, roomFor, takeFromSlot, takeFromStacks } from '@/world/bag';
+import { addToBag, addToStacks, BAG_SLOTS, countInBag, countInStacks, emptyBag, freeSlots, roomFor, takeFromBag, takeFromSlot, takeFromStacks } from '@/world/bag';
 
 describe('bag', () => {
   it('has 28 empty slots to begin with', () => {
@@ -8,6 +8,19 @@ describe('bag', () => {
     expect(bag).toHaveLength(BAG_SLOTS);
     expect(freeSlots(bag)).toBe(28);
     expect(countInBag(bag, 'oak_log')).toBe(0);
+  });
+
+  it('takes an item out of whichever slots hold it', () => {
+    const bag = emptyBag();
+    addToBag(bag, 'oak_log', 3, false);
+    addToBag(bag, 'stone', 2, false);
+    expect(takeFromBag(bag, 'oak_log', 2)).toBe(2);
+    expect(countInBag(bag, 'oak_log')).toBe(1);
+    expect(bag[2]).toEqual({ itemId: 'oak_log', qty: 1 });
+    expect(takeFromBag(bag, 'oak_log', 5)).toBe(1);
+    expect(takeFromBag(bag, 'oak_log', 1)).toBe(0);
+    expect(countInBag(bag, 'stone')).toBe(2);
+    expect(freeSlots(bag)).toBe(26);
   });
 
   it('gives a slot to each of a plain item and one slot to any number of a stackable one', () => {

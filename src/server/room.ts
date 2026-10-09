@@ -9,8 +9,10 @@
  * exactly when nothing is lost. A click can also carry an intent: once the
  * walk ends beside the thing clicked, the room acts on it: a gather node is
  * worked on every action tick with a roll by level and tool, an item is
- * picked up, the bank opens. Nodes are shared and can empty for everyone;
- * dropped items belong to their owner for a while, then to anyone, then go.
+ * picked up, the bank opens, a campfire is cooked at. Nodes are shared and
+ * can empty for everyone; dropped items belong to their owner for a while,
+ * then to anyone, then go. Campfires a player builds burn down and go out
+ * unless fed logs; the village fires never do.
  * Players never block one another; the static map decides where one can
  * stand. A step onto an exit cell takes the player out of the room; the
  * world (world.ts) carries it into the next one.
@@ -19,16 +21,19 @@ import { CONTENT } from '@/content';
 import { STARTING_KIT } from '@/content/starting-kit';
 import { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
-import type { ActState, BagView, ChatLine, ClientMessage, EntitySnapshot, GearView, GroundItemView, MoveState, Placement, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
-import type { EquipInfo, GatherNodeDef, ItemDef, ItemStack, ZoneMapDef } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type NodeId, type SkillId, type ZoneId } from '@/types/ids';
+import type { ActState, BagView, ChatLine, ClientMessage, EntitySnapshot, FireSession, FireView, GearView, GroundItemView, MoveState, Placement, QuestView, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { EquipInfo, GatherNodeDef, ItemDef, ItemStack, NpcDef, QuestDef, RecipeDef, ZoneMapDef } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type GearKind, type ItemId, type NodeId, type NpcId, type QuestId, type RecipeId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
 import { fail, ok, type Result } from '@/types/result';
-import { addToBag, addToStacks, type Bag, countInStacks, freeSlots, roomFor, takeFromSlot, takeFromStacks } from '@/world/bag';
+import { addToBag, addToStacks, type Bag, countInBag, countInStacks, freeSlots, roomFor, takeFromBag, takeFromSlot, takeFromStacks } from '@/world/bag';
+import { feedXp, FIRE_BUILD_XP, FIRE_LOGS, FIRE_MAX_MS, FIRE_STONES, fuelMs } from '@/world/fire';
 import { type Cell, dirOf, type Grid, isWalkable, objectAt, parseMap, type PlacedObject } from '@/world/grid';
 import { type Mover, planWalk, step, STEP_MS } from '@/world/motion';
-import { gatherChance, levelForTier, levelOf, MAX_XP } from '@/world/skills';
+import type { PathOptions } from '@/world/path';
+import { cookChance, gatherChance, levelForTier, levelOf, MAX_XP } from '@/world/skills';
 import { type CharacterStats, deriveStats, regenInterval, slotsFor } from '@/world/stats';
 import { type Character, keyOf } from './character';
+import { eventKey, isComplete, liveProgress, type QuestEventType, questView, targetOf } from './quests';
 import { type Gear, parseState, type PlayerState } from './state';
 
 /** What the room needs to know about content. The registry satisfies it. */
@@ -37,6 +42,12 @@ export interface RoomContent {
   item(id: ItemId): ItemDef;
   hasItem(id: string): id is ItemId;
   skill(id: SkillId): { name: string };
+  npc(id: NpcId): Pick<NpcDef, 'name' | 'greeting' | 'handout'>;
+  quest(id: QuestId): QuestDef;
+  hasQuest(id: string): id is QuestId;
+  recipe(id: RecipeId): RecipeDef;
+  hasRecipe(id: string): id is RecipeId;
+  station(id: StationId): { name: string };
   readonly skillIds: SkillId[];
 }
 
@@ -82,12 +93,37 @@ export interface GatherAction {
   cell: Cell;
 }
 
+/** Cooking at the fire being stood by: so many more of a recipe, one per cook tick. */
+export interface CookAction {
+  kind: 'cook';
+  recipe: RecipeId;
+  left: number;
+  cell: Cell;
+}
+
+/** The fire a player stands by and uses: a built one by id, or a village fire (null). */
+export interface FireRef {
+  fid: number | null;
+  cell: Cell;
+}
+
+/** A campfire a player built: burning on a cell until `outAt`. */
+export interface Campfire {
+  fid: number;
+  x: number;
+  y: number;
+  outAt: number;
+}
+
 /** Private events for a player's client, flushed with the next tick. */
 interface YouPending {
   bag: boolean;
   bank: boolean;
   gear: boolean;
   stats: boolean;
+  quests: boolean;
+  coins: boolean;
+  fire: boolean;
   xp: [SkillId, number][];
   items: GroundItemView[];
   notes: string[];
@@ -108,12 +144,16 @@ export interface RoomPlayer extends Mover, PlayerState {
   disconnectedAt: number;
   /** The clicked cell to use something at once the walk ends, or null. */
   intent: Cell | null;
-  action: GatherAction | null;
+  action: GatherAction | CookAction | null;
   nextActionAt: number;
   /** When the next point of hit points and of mana comes back. */
   nextHpAt: number;
   nextManaAt: number;
   bankOpen: boolean;
+  /** The fire being used, while standing by it. */
+  fire: FireRef | null;
+  /** The room moved the character itself (off a fire it just built); the next tick says so. */
+  nudged: boolean;
   you: YouPending;
 }
 
@@ -137,6 +177,7 @@ export interface GroundItem {
 }
 
 export type BankCommand = Extract<ClientMessage, { t: 'bank' }>;
+export type FireCommand = Extract<ClientMessage, { t: 'fire' }>;
 
 /** Inputs waiting per player; more than this and the client is running ahead of the server. */
 const MAX_QUEUED = 8;
@@ -146,6 +187,8 @@ const MAX_PER_TICK = 3;
 const TOOL_FOR: Partial<Record<SkillId, string>> = { lumberjack: 'hatchet', mining: 'pickaxe' };
 const BAG_FULL = 'Your bag is full.';
 const CANT_REACH = "You can't reach that from here.";
+const NO_FIRE = 'Stand by a fire first.';
+const FIRE_NEEDS = `A campfire takes ${FIRE_STONES} stones and ${FIRE_LOGS === 1 ? 'a log' : `${FIRE_LOGS} logs`}.`;
 
 let defaultContent: Registry | null = null;
 
@@ -174,6 +217,12 @@ export class Room {
   /** Emptied nodes by object index, and the tick each comes back. */
   private readonly depleted = new Map<number, number>();
   private readonly items = new Map<number, GroundItem>();
+  /** Campfires players built, by id; the village fires are stations on the map. Walks are planned around them and stop beside one that is clicked. */
+  private readonly fires = new Map<number, Campfire>();
+  private readonly walkOptions: PathOptions = { blocked: (x, y) => this.fireAt({ x, y }) !== null };
+  private nextFid = 1;
+  private lit: FireView[] = [];
+  private doused: number[] = [];
 
   constructor(readonly zoneId: ZoneId, map: ZoneMapDef, readonly options: RoomOptions) {
     this.grid = parseMap(map);
@@ -201,18 +250,18 @@ export class Room {
     return this.players().map(snapshotOf);
   }
 
-  /** The zone as this player first sees it: everyone, the items it may see, the empty nodes. */
+  /** The zone as this player first sees it: everyone, the items it may see, the empty nodes, the fires burning. */
   snapshotFor(id: number): ZoneSnapshot | null {
     const p = this.byId.get(id);
     if (!p) return null;
-    return { zone: this.zoneId, tick: this.tick, entities: this.snapshot(), items: this.itemsFor(p), nodes: [...this.depleted.keys()], seq: p.seq };
+    return { zone: this.zoneId, tick: this.tick, entities: this.snapshot(), items: this.itemsFor(p), nodes: [...this.depleted.keys()], fires: [...this.fires.values()].map(fireView), seq: p.seq };
   }
 
-  /** What only this player gets on joining: its bag, skills, gear and numbers. */
-  youOf(id: number): { bag: BagView; skills: [SkillId, number][]; gear: GearView; stats: StatsView } | null {
+  /** What only this player gets on joining: its bag, skills, gear, numbers, quests and coins. */
+  youOf(id: number): { bag: BagView; skills: [SkillId, number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number } | null {
     const p = this.byId.get(id);
     if (!p) return null;
-    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]), gear: gearView(p.gear), stats: this.statsView(p) };
+    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]), gear: gearView(p.gear), stats: this.statsView(p), quests: questView(p.quests), coins: p.coins };
   }
 
   /** A character's numbers from its levels and gear. */
@@ -266,13 +315,14 @@ export class Room {
     const state = parseState(character.state, this.content, this.kit);
     const player: RoomPlayer = {
       name: character.name, secretHash: character.secretHash, createdAt: character.createdAt, dir: character.dir, running: character.running,
-      skills: state.skills, bag: state.bag, bank: state.bank, gear: state.gear, hp: state.hp, mana: state.mana,
+      skills: state.skills, bag: state.bag, bank: state.bank, gear: state.gear, hp: state.hp, mana: state.mana, quests: state.quests, coins: state.coins,
       id: this.ids(), cell, t: 0, path: [], moving: false, seq: 0, inputs: [], connected: true, disconnectedAt: 0,
-      intent: null, action: null, nextActionAt: 0, nextHpAt: this.tick, nextManaAt: this.tick, bankOpen: false, you: pending(),
+      intent: null, action: null, nextActionAt: 0, nextHpAt: this.tick, nextManaAt: this.tick, bankOpen: false, fire: null, nudged: false, you: pending(),
     };
     this.clampPoints(player);
     this.byId.set(player.id, player);
     this.joined.push(snapshotOf(player));
+    this.questEvent(player, 'visit', this.zoneId);
     return ok(player);
   }
 
@@ -286,8 +336,11 @@ export class Room {
     player.intent = null;
     player.action = null;
     player.bankOpen = false;
+    player.fire = null;
+    player.nudged = false;
     this.byId.set(player.id, player);
     this.joined.push(snapshotOf(player));
+    this.questEvent(player, 'visit', this.zoneId);
   }
 
   /** The cell to arrive on when coming from `from`: the exit that leads back there, else the spawn. */
@@ -313,12 +366,17 @@ export class Room {
     const out = new Map<number, YouDelta>();
     for (const p of this.byId.values()) {
       const y = p.you;
-      if (!y.bag && !y.bank && !y.gear && !y.stats && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
+      // Objectives read off the character (have an item, reach a tier, wear a kind) follow whatever changed.
+      if (y.bag || y.gear || y.xp.length > 0) this.refreshQuests(p);
+      if (!y.bag && !y.bank && !y.gear && !y.stats && !y.quests && !y.coins && !y.fire && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
       const delta: YouDelta = {};
       if (y.bag) delta.bag = bagView(p.bag);
       if (y.gear) delta.gear = gearView(p.gear);
       if (y.stats) delta.stats = this.statsView(p);
+      if (y.quests) delta.quests = questView(p.quests);
+      if (y.coins) delta.coins = p.coins;
       if (y.bank) delta.bank = p.bankOpen ? stacksView(p.bank) : null;
+      if (y.fire) delta.fire = this.fireSession(p);
       if (y.xp.length > 0) delta.xp = y.xp;
       if (y.items.length > 0) delta.items = y.items;
       if (y.notes.length > 0) delta.notes = y.notes;
@@ -343,6 +401,7 @@ export class Room {
     p.intent = null;
     this.stopAction(p);
     this.closeBank(p);
+    this.closeFire(p);
   }
 
   /** A known player is back on a new connection. */
@@ -455,6 +514,66 @@ export class Room {
     return true;
   }
 
+  /** Takes a quest from the journal: it must exist, not be taken or done, and its prerequisites must hold. */
+  acceptQuest(id: number, questId: string): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected || !this.content.hasQuest(questId)) return false;
+    const def = this.content.quest(questId);
+    const have = p.quests[questId];
+    if (have) {
+      this.note(p, have.status === 'done' ? `You have already finished ${def.name}.` : `You are already on ${def.name}.`);
+      return false;
+    }
+    for (const req of def.prerequisites) {
+      switch (req.type) {
+        case 'quest':
+          if (p.quests[req.questId]?.status !== 'done') {
+            this.note(p, `You need to finish ${this.content.quest(req.questId).name} first.`);
+            return false;
+          }
+          break;
+        case 'tier':
+          if (levelOf(p.skills[req.skill]) < levelForTier(req.tier)) {
+            this.note(p, `You need ${this.content.skill(req.skill).name} level ${levelForTier(req.tier)} for that quest.`);
+            return false;
+          }
+          break;
+        case 'any_tier':
+          if (!this.content.skillIds.some((s) => levelOf(p.skills[s]) >= levelForTier(req.tier))) {
+            this.note(p, `You need a skill at level ${levelForTier(req.tier)} for that quest.`);
+            return false;
+          }
+          break;
+        case 'item':
+          if (countInBag(p.bag, req.itemId) < req.qty) {
+            this.note(p, `You need ${req.qty} ${this.content.item(req.itemId).name} for that quest.`);
+            return false;
+          }
+          break;
+        case 'unlock':
+          break;
+      }
+    }
+    p.quests[questId] = { status: 'active', progress: def.objectives.map(() => 0) };
+    p.you.quests = true;
+    this.note(p, `Quest accepted: ${def.name}.`);
+    this.questEvent(p, 'visit', this.zoneId);
+    this.refreshQuests(p);
+    return true;
+  }
+
+  /** Gives up an active quest; what was done for it is forgotten. */
+  abandonQuest(id: number, questId: string): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected || !this.content.hasQuest(questId)) return false;
+    const have = p.quests[questId];
+    if (!have || have.status !== 'active') return false;
+    delete p.quests[questId];
+    p.you.quests = true;
+    this.note(p, `Quest abandoned: ${this.content.quest(questId).name}.`);
+    return true;
+  }
+
   /** A bank operation, while the bank is open. */
   bank(id: number, command: BankCommand): boolean {
     const p = this.byId.get(id);
@@ -522,6 +641,16 @@ export class Room {
         this.drops.push(itemView(item));
       }
     }
+    for (const fire of [...this.fires.values()]) {
+      if (this.tick < fire.outAt) continue;
+      this.fires.delete(fire.fid);
+      this.doused.push(fire.fid);
+      for (const q of this.byId.values()) {
+        if (q.fire?.fid !== fire.fid) continue;
+        this.note(q, 'The fire has gone out.');
+        this.closeFire(q);
+      }
+    }
     const moves: MoveState[] = [];
     for (const p of this.players()) {
       if (!p.connected && this.tick - p.disconnectedAt >= this.options.graceTicks) {
@@ -539,13 +668,15 @@ export class Room {
           // Halt: finish the cell under way, forget the rest and whatever was planned.
           this.stopAction(p);
           this.closeBank(p);
+          this.closeFire(p);
           p.intent = null;
           p.path = p.t > 0 ? p.path.slice(0, 1) : [];
         } else if (input.to) {
           // A new click: whatever was being done stops, and the walk is planned.
           this.stopAction(p);
           this.closeBank(p);
-          if (planWalk(this.grid, p, input.to)) p.intent = input.use ? { x: input.to.x, y: input.to.y } : null;
+          this.closeFire(p);
+          if (planWalk(this.grid, p, input.to, this.walkOptions)) p.intent = input.use ? { x: input.to.x, y: input.to.y } : null;
           else {
             p.intent = null;
             if (input.use) this.note(p, CANT_REACH);
@@ -564,17 +695,21 @@ export class Room {
           continue;
         }
       }
-      if (applied > 0 || wasMoving) {
+      if (applied > 0 || wasMoving || p.nudged) {
+        p.nudged = false;
         const at = placementOf(p);
         moves.push([p.id, at.cx, at.cy, at.nx, at.ny, at.t, p.dir, moved ? 1 : 0, p.seq]);
       }
       if (p.path.length === 0 && p.t === 0) {
         if (p.intent) this.arrive(p);
-        if (p.action && this.tick >= p.nextActionAt) this.work(p);
+        if (p.action && this.tick >= p.nextActionAt) {
+          if (p.action.kind === 'cook') this.cookOnce(p);
+          else this.work(p);
+        }
       }
       this.regenerate(p);
     }
-    const delta: TickDelta = { tick: this.tick, joined: this.joined, left: this.left, moves, acts: this.acts, nodes: this.nodeEvents, drops: this.drops, taken: this.taken, chat: this.said };
+    const delta: TickDelta = { tick: this.tick, joined: this.joined, left: this.left, moves, acts: this.acts, nodes: this.nodeEvents, drops: this.drops, taken: this.taken, fires: this.lit, doused: this.doused, chat: this.said };
     this.joined = [];
     this.left = [];
     this.said = [];
@@ -582,6 +717,8 @@ export class Room {
     this.nodeEvents = [];
     this.drops = [];
     this.taken = [];
+    this.lit = [];
+    this.doused = [];
     this.spoke.clear();
     return delta;
   }
@@ -609,7 +746,7 @@ export class Room {
 
   // ---- using things --------------------------------------------------------------
 
-  /** The walk is over: use what was clicked, if it is beside us (or under us, for an item). */
+  /** The walk is over: use what was clicked, if it is beside us (or under us, for an item or a fire). */
   private arrive(p: RoomPlayer): void {
     const cell = p.intent!;
     p.intent = null;
@@ -618,12 +755,39 @@ export class Room {
       if (!beside(p.cell, obj)) return this.note(p, CANT_REACH);
       if (obj.def.kind === 'node') this.startGather(p, obj, obj.def.id);
       else if (obj.def.kind === 'bank') this.openBank(p);
+      else if (obj.def.kind === 'npc') this.talk(p, obj, obj.def.id);
+      else if (obj.def.kind === 'station') {
+        if (obj.def.id === 'campfire') this.openFire(p, { fid: null, cell: { x: obj.x, y: obj.y } });
+        else this.note(p, `The ${this.content.station(obj.def.id).name.toLowerCase()} is not working yet.`);
+      }
       return;
+    }
+    const fire = this.fireAt(cell);
+    if (fire) {
+      if (Math.max(Math.abs(fire.x - p.cell.x), Math.abs(fire.y - p.cell.y)) > 1) return this.note(p, CANT_REACH);
+      return this.openFire(p, { fid: fire.fid, cell: { x: fire.x, y: fire.y } });
     }
     const item = this.itemAt(cell, p);
     if (!item) return;
     if (Math.max(Math.abs(item.x - p.cell.x), Math.abs(item.y - p.cell.y)) > 1) return this.note(p, CANT_REACH);
     this.take(p, item);
+  }
+
+  /** A word with someone: they say their piece, hand over their tool to anyone without one, and a quest that wanted the visit hears of it. */
+  private talk(p: RoomPlayer, obj: PlacedObject, npcId: NpcId): void {
+    const npc = this.content.npc(npcId);
+    p.dir = dirOf(Math.sign(obj.x - p.cell.x), Math.sign(obj.y - p.cell.y));
+    this.acts.push([p.id, -1, -1, p.dir]);
+    this.note(p, `${npc.name}: ${npc.greeting}`);
+    const gift = npc.handout;
+    if (gift && this.bestTool(p, gift.skill) === 0) {
+      if (freeSlots(p.bag) === 0) this.note(p, `${npc.name} has a ${this.content.item(gift.itemId).name.toLowerCase()} for you, but your bag is full.`);
+      else {
+        this.giveItem(p, gift.itemId, 1);
+        this.note(p, gift.line);
+      }
+    }
+    this.questEvent(p, 'talk', npcId);
   }
 
   private startGather(p: RoomPlayer, obj: PlacedObject, nodeId: NodeId): void {
@@ -643,7 +807,8 @@ export class Room {
 
   /** One try at the node being worked on. */
   private work(p: RoomPlayer): void {
-    const action = p.action!;
+    const action = p.action;
+    if (!action || action.kind !== 'gather') return;
     const obj = this.grid.objects[action.object];
     if (!obj || obj.def.kind !== 'node' || this.depleted.has(action.object)) return this.stopAction(p);
     const def = this.content.node(obj.def.id);
@@ -662,13 +827,8 @@ export class Room {
     if (!this.rng.chance(gatherChance(def, levelOf(xp), tool, this.rules.actionSteps * STEP_MS))) return;
     addToBag(p.bag, def.itemId, 1, this.content.item(def.itemId).stackable === true);
     p.you.bag = true;
-    const after = Math.min(MAX_XP, xp + def.xp);
-    p.skills[def.skill] = after;
-    p.you.xp.push([def.skill, after]);
-    if (levelOf(after) > levelOf(xp)) {
-      this.note(p, `Congratulations, your ${this.content.skill(def.skill).name} level is now ${levelOf(after)}.`);
-      p.you.stats = true;
-    }
+    this.grantXp(p, def.skill, def.xp);
+    this.questEvent(p, 'gather', def.itemId);
     if (def.deplete && this.rng.chance(def.deplete.chance)) this.deplete(action.object, def);
     else if (freeSlots(p.bag) === 0) {
       this.note(p, BAG_FULL);
@@ -676,11 +836,108 @@ export class Room {
     }
   }
 
+  /** Xp into a skill, with a word and new numbers when a level is reached. */
+  private grantXp(p: RoomPlayer, skill: SkillId, amount: number): void {
+    const before = p.skills[skill];
+    const after = Math.min(MAX_XP, before + amount);
+    if (after === before) return;
+    p.skills[skill] = after;
+    p.you.xp.push([skill, after]);
+    if (levelOf(after) > levelOf(before)) {
+      this.note(p, `Congratulations, your ${this.content.skill(skill).name} level is now ${levelOf(after)}.`);
+      p.you.stats = true;
+    }
+  }
+
+  /** Something given to the player: into the bag, or at its feet when the bag is full. */
+  private giveItem(p: RoomPlayer, itemId: ItemId, qty: number): void {
+    const stackable = this.content.item(itemId).stackable === true;
+    const left = addToBag(p.bag, itemId, qty, stackable);
+    p.you.bag = true;
+    if (left === 0) return;
+    const item: GroundItem = { gid: this.nextGid++, itemId, qty: left, x: p.cell.x, y: p.cell.y, owner: keyOf(p.name), publicAt: this.tick + this.rules.itemPublicSteps, goneAt: this.tick + this.rules.itemGoneSteps };
+    this.items.set(item.gid, item);
+    p.you.items.push(itemView(item));
+    this.note(p, 'Your bag is full; the rest lies at your feet.');
+  }
+
+  // ---- quests ----------------------------------------------------------------------
+
+  /** Something happened that a counted objective may be waiting for. */
+  private questEvent(p: RoomPlayer, type: QuestEventType, key: string): void {
+    let changed = false;
+    for (const [questId, entry] of Object.entries(p.quests)) {
+      if (!entry || entry.status !== 'active' || !this.content.hasQuest(questId)) continue;
+      this.content.quest(questId).objectives.forEach((o, i) => {
+        const wanted = eventKey(o);
+        if (!wanted || wanted.type !== type || wanted.key !== key) return;
+        const target = targetOf(o);
+        if ((entry.progress[i] ?? 0) >= target) return;
+        entry.progress[i] = (entry.progress[i] ?? 0) + 1;
+        changed = true;
+      });
+    }
+    if (!changed) return;
+    p.you.quests = true;
+    this.checkQuests(p);
+  }
+
+  /** Live objectives are read off the character as it is now. */
+  private refreshQuests(p: RoomPlayer): void {
+    const worn: GearKind[] = [];
+    for (const slot of EQUIP_SLOTS) {
+      const item = p.gear[slot];
+      const equip = item ? this.content.item(item.itemId).equip : undefined;
+      if (equip) worn.push(equip.kind);
+    }
+    const live = { bag: p.bag, skills: p.skills, worn };
+    let changed = false;
+    for (const [questId, entry] of Object.entries(p.quests)) {
+      if (!entry || entry.status !== 'active' || !this.content.hasQuest(questId)) continue;
+      this.content.quest(questId).objectives.forEach((o, i) => {
+        const now = liveProgress(o, live);
+        if (now === null || now === (entry.progress[i] ?? 0)) return;
+        entry.progress[i] = now;
+        changed = true;
+      });
+    }
+    if (!changed) return;
+    p.you.quests = true;
+    this.checkQuests(p);
+  }
+
+  /** A quest whose every objective is met is done, with its rewards. */
+  private checkQuests(p: RoomPlayer): void {
+    for (const [questId, entry] of Object.entries(p.quests)) {
+      if (!entry || entry.status !== 'active' || !this.content.hasQuest(questId)) continue;
+      const def = this.content.quest(questId);
+      if (!isComplete(def, entry.progress)) continue;
+      entry.status = 'done';
+      p.you.quests = true;
+      this.note(p, `Quest complete: ${def.name}. ${def.completionText}`);
+      const got: string[] = [];
+      for (const reward of def.rewards) {
+        if (reward.type === 'xp') {
+          this.grantXp(p, reward.skill, reward.amount);
+          got.push(`${reward.amount} ${this.content.skill(reward.skill).name} xp`);
+        } else if (reward.type === 'gold') {
+          p.coins += reward.amount;
+          p.you.coins = true;
+          got.push(`${reward.amount} coins`);
+        } else if (reward.type === 'item') {
+          this.giveItem(p, reward.itemId, reward.qty);
+          got.push(`${reward.qty > 1 ? `${reward.qty} ` : ''}${this.content.item(reward.itemId).name}`);
+        }
+      }
+      if (got.length > 0) this.note(p, `You receive ${got.join(', ')}.`);
+    }
+  }
+
   /** The node empties for everyone until it respawns; whoever was working on it stops. */
   private deplete(index: number, def: GatherNodeDef): void {
     this.depleted.set(index, this.tick + Math.max(1, Math.ceil((def.deplete?.respawnMs ?? 0) / STEP_MS)));
     this.nodeEvents.push([index, 1]);
-    for (const q of this.byId.values()) if (q.action?.object === index) this.stopAction(q);
+    for (const q of this.byId.values()) if (q.action?.kind === 'gather' && q.action.object === index) this.stopAction(q);
   }
 
   private stopAction(p: RoomPlayer): void {
@@ -698,6 +955,193 @@ export class Room {
       if (tool && tool.skill === skill && tool.tier > best) best = tool.tier;
     }
     return best;
+  }
+
+  // ---- campfires and cooking ---------------------------------------------------------
+
+  /**
+   * Build a campfire where you stand from two stones and a log (it burns for the
+   * log's time, then you step off it), feed the one you stand by a log, or step
+   * away from the one you were using.
+   */
+  fire(id: number, command: FireCommand): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected) return false;
+    switch (command.op) {
+      case 'close':
+        this.closeFire(p);
+        return true;
+      case 'build': {
+        if (p.path.length > 0 || p.t > 0) {
+          this.note(p, 'Stand still to build a campfire.');
+          return false;
+        }
+        if (this.fireAt(p.cell) || objectAt(this.grid, p.cell.x, p.cell.y)) {
+          this.note(p, 'There is no room for a fire here.');
+          return false;
+        }
+        const log = this.lowestLog(p.bag);
+        if (countInBag(p.bag, 'stone') < FIRE_STONES || !log || countInBag(p.bag, log.itemId) < FIRE_LOGS) {
+          this.note(p, FIRE_NEEDS);
+          return false;
+        }
+        this.stopAction(p);
+        this.closeBank(p);
+        this.closeFire(p);
+        takeFromBag(p.bag, 'stone', FIRE_STONES);
+        takeFromBag(p.bag, log.itemId, FIRE_LOGS);
+        p.you.bag = true;
+        const fire: Campfire = { fid: this.nextFid++, x: p.cell.x, y: p.cell.y, outAt: this.tick + Math.ceil(fuelMs(log.tier) / STEP_MS) };
+        this.fires.set(fire.fid, fire);
+        this.lit.push(fireView(fire));
+        this.grantXp(p, 'crafting', FIRE_BUILD_XP);
+        this.note(p, 'You build a campfire.');
+        // Step off it, the way one does, so the fire is used from beside it.
+        const off = this.stepOff(p.cell);
+        if (off) {
+          p.cell = off;
+          p.dir = dirOf(Math.sign(fire.x - off.x), Math.sign(fire.y - off.y));
+          p.nudged = true;
+        }
+        return true;
+      }
+      case 'feed': {
+        const fire = p.fire?.fid !== null && p.fire ? this.fires.get(p.fire.fid) : null;
+        if (!p.fire) {
+          this.note(p, NO_FIRE);
+          return false;
+        }
+        if (!fire) {
+          this.note(p, 'This fire needs no feeding.');
+          return false;
+        }
+        const log = this.lowestLog(p.bag);
+        if (!log) {
+          this.note(p, 'You have no log to add.');
+          return false;
+        }
+        const leftMs = (fire.outAt - this.tick) * STEP_MS;
+        if (leftMs >= FIRE_MAX_MS) {
+          this.note(p, 'The fire is burning as high as it can.');
+          return false;
+        }
+        takeFromBag(p.bag, log.itemId, 1);
+        p.you.bag = true;
+        fire.outAt = this.tick + Math.ceil(Math.min(FIRE_MAX_MS, leftMs + fuelMs(log.tier)) / STEP_MS);
+        this.grantXp(p, 'crafting', feedXp(log.tier));
+        const logName = this.content.item(log.itemId).name.toLowerCase();
+        this.note(p, `You add ${/^[aeiou]/.test(logName) ? 'an' : 'a'} ${logName} to the fire.`);
+        for (const q of this.byId.values()) if (q.fire?.fid === fire.fid) q.you.fire = true;
+        return true;
+      }
+    }
+  }
+
+  /** Cook so many of a recipe at the fire being stood by: the level must be there and the raw food in the bag. */
+  cook(id: number, recipeId: string, qty: number): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected || !this.content.hasRecipe(recipeId)) return false;
+    const recipe = this.content.recipe(recipeId);
+    if (recipe.station !== 'campfire') return false;
+    if (!p.fire) {
+      this.note(p, NO_FIRE);
+      return false;
+    }
+    const name = this.content.item(recipe.outputs[0]!.itemId).name.toLowerCase();
+    const need = levelForTier(recipe.tier);
+    if (levelOf(p.skills[recipe.skill]) < need) {
+      this.note(p, `You need ${this.content.skill(recipe.skill).name} level ${need} to cook ${name}.`);
+      return false;
+    }
+    const can = this.canMake(p, recipe);
+    if (can === 0) {
+      this.note(p, `You have nothing to make ${name} from.`);
+      return false;
+    }
+    this.stopAction(p);
+    p.action = { kind: 'cook', recipe: recipeId, left: Math.min(qty, can), cell: p.fire.cell };
+    p.nextActionAt = this.tick + this.cookSteps(recipe);
+    p.dir = dirOf(Math.sign(p.fire.cell.x - p.cell.x), Math.sign(p.fire.cell.y - p.cell.y));
+    this.acts.push([p.id, p.fire.cell.x, p.fire.cell.y, p.dir]);
+    return true;
+  }
+
+  /** One thing cooked: the raw food is used up either way, and comes out right by the cook's level or burnt. */
+  private cookOnce(p: RoomPlayer): void {
+    const action = p.action;
+    if (!action || action.kind !== 'cook' || !p.fire) return this.stopAction(p);
+    const recipe = this.content.recipe(action.recipe);
+    if (this.canMake(p, recipe) === 0) return this.stopAction(p);
+    for (const input of recipe.inputs) takeFromBag(p.bag, input.itemId, input.qty);
+    p.you.bag = true;
+    p.nextActionAt = this.tick + this.cookSteps(recipe);
+    const need = levelForTier(recipe.tier);
+    if (this.rng.chance(cookChance(levelOf(p.skills[recipe.skill]), need))) {
+      for (const output of recipe.outputs) this.giveItem(p, output.itemId, output.qty);
+      this.grantXp(p, recipe.skill, recipe.xp);
+      this.questEvent(p, 'craft', recipe.id);
+    } else {
+      this.note(p, `You accidentally burn the ${this.content.item(recipe.outputs[0]!.itemId).name.toLowerCase()}.`);
+    }
+    action.left -= 1;
+    if (action.left <= 0 || this.canMake(p, recipe) === 0) this.stopAction(p);
+  }
+
+  private openFire(p: RoomPlayer, ref: FireRef): void {
+    p.fire = ref;
+    p.you.fire = true;
+    p.dir = dirOf(Math.sign(ref.cell.x - p.cell.x), Math.sign(ref.cell.y - p.cell.y));
+    this.acts.push([p.id, -1, -1, p.dir]);
+  }
+
+  private closeFire(p: RoomPlayer): void {
+    if (!p.fire) return;
+    p.fire = null;
+    p.you.fire = true;
+    if (p.action?.kind === 'cook') this.stopAction(p);
+  }
+
+  /** The fire a player is using as its client should see it: for ever for a village fire, else how long it burns yet. */
+  private fireSession(p: RoomPlayer): FireSession | null {
+    if (!p.fire) return null;
+    if (p.fire.fid === null) return { fid: null, fuelMs: null };
+    const fire = this.fires.get(p.fire.fid);
+    return fire ? { fid: fire.fid, fuelMs: Math.max(0, (fire.outAt - this.tick) * STEP_MS) } : null;
+  }
+
+  private fireAt(cell: Cell): Campfire | null {
+    for (const fire of this.fires.values()) if (fire.x === cell.x && fire.y === cell.y) return fire;
+    return null;
+  }
+
+  /** The log of the lowest tier in the bag: the one to burn first. */
+  private lowestLog(bag: Bag): { itemId: ItemId; tier: number } | null {
+    let best: { itemId: ItemId; tier: number } | null = null;
+    for (const slot of bag) {
+      if (!slot) continue;
+      const def = this.content.item(slot.itemId);
+      if (def.group === 'log' && (!best || def.tier < best.tier)) best = { itemId: slot.itemId, tier: def.tier };
+    }
+    return best;
+  }
+
+  /** How many times a recipe's inputs are in the bag. */
+  private canMake(p: RoomPlayer, recipe: RecipeDef): number {
+    return Math.min(...recipe.inputs.map((input) => Math.floor(countInBag(p.bag, input.itemId) / input.qty)));
+  }
+
+  /** Steps between two things cooked: the recipe's time in action ticks, at least one. */
+  private cookSteps(recipe: RecipeDef): number {
+    return Math.max(1, Math.round(recipe.durationMs / (this.rules.actionSteps * STEP_MS))) * this.rules.actionSteps;
+  }
+
+  /** A free cell beside `cell` to step onto, west first; null when hemmed in. */
+  private stepOff(cell: Cell): Cell | null {
+    for (const d of [{ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }]) {
+      const c = { x: cell.x + d.x, y: cell.y + d.y };
+      if (isWalkable(this.grid, c.x, c.y) && !this.fireAt(c) && !this.exits.has(c.y * this.grid.width + c.x)) return c;
+    }
+    return null;
   }
 
   // ---- items on the ground ---------------------------------------------------------
@@ -745,7 +1189,11 @@ export class Room {
 }
 
 function pending(): YouPending {
-  return { bag: false, bank: false, gear: false, stats: false, xp: [], items: [], notes: [] };
+  return { bag: false, bank: false, gear: false, stats: false, quests: false, coins: false, fire: false, xp: [], items: [], notes: [] };
+}
+
+function fireView(fire: Campfire): FireView {
+  return [fire.fid, fire.x, fire.y];
 }
 
 /** Whether `cell` touches the footprint of `obj` (eight neighbours count) without being inside it. */

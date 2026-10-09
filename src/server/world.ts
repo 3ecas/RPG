@@ -12,7 +12,7 @@ import type { TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { EquipSlot, ZoneId } from '@/types/ids';
 import type { Result } from '@/types/result';
 import type { CharacterRecord } from './character';
-import { type BankCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
+import { type BankCommand, type FireCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
 import { stateOf } from './state';
 
 export interface WorldOptions {
@@ -143,6 +143,22 @@ export class World {
 
   unequip(id: number, slot: EquipSlot): boolean {
     return this.roomOf(id)?.unequip(id, slot) ?? false;
+  }
+
+  acceptQuest(id: number, questId: string): boolean {
+    return this.roomOf(id)?.acceptQuest(id, questId) ?? false;
+  }
+
+  abandonQuest(id: number, questId: string): boolean {
+    return this.roomOf(id)?.abandonQuest(id, questId) ?? false;
+  }
+
+  fire(id: number, command: FireCommand): boolean {
+    return this.roomOf(id)?.fire(id, command) ?? false;
+  }
+
+  cook(id: number, recipe: string, qty: number): boolean {
+    return this.roomOf(id)?.cook(id, recipe, qty) ?? false;
   }
 
   /** Everyone's private events since the last call, wherever they stand. */

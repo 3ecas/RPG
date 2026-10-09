@@ -190,7 +190,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   const welcome = (conn: Connection, player: RoomPlayer, token: string, resumed: boolean): void => {
     const snapshot = world.snapshotFor(player.id)!;
     const you = world.youOf(player.id)!;
-    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, bag: you.bag, skills: you.skills, gear: you.gear, stats: you.stats, ...snapshot });
+    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, bag: you.bag, skills: you.skills, gear: you.gear, stats: you.stats, quests: you.quests, coins: you.coins, ...snapshot });
   };
 
   /** Who this connection is: a character coming back on its token, a character of this browser's loaded from the store, or a new one. */
@@ -287,6 +287,9 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       case 'drop': world.drop(id, msg.slot); break;
       case 'equip': world.equip(id, msg.slot); break;
       case 'unequip': world.unequip(id, msg.slot); break;
+      case 'quest': if (msg.op === 'accept') world.acceptQuest(id, msg.id); else world.abandonQuest(id, msg.id); break;
+      case 'fire': world.fire(id, msg); break;
+      case 'cook': world.cook(id, msg.recipe, msg.qty); break;
       case 'bank': world.bank(id, msg); break;
     }
   };

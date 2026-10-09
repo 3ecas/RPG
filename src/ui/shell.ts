@@ -1,20 +1,22 @@
 /**
  * The page: a top bar with the zone, the connection and who is here; the
- * world canvas; a draggable menu bar; windows you can drag, resize and close
- * for the inventory, your gear and numbers, the journal, the skills, the
- * settings, the map and the bank; a docked chat; menus for slots and for
- * what you click on; and the join card that asks for a name and knows where
- * the server is. Keeps the browser's secret, which is what ties a character
+ * world canvas; a menu bar along the bottom; windows you can drag, resize
+ * and close for the inventory (gear, numbers, coins and the bag in one), the
+ * journal, the skills, the settings, the map, the bank and the campfire; the
+ * quest tracker top left; a docked chat; menus for slots and for what you
+ * click on; and the join card that asks for a name and knows where the
+ * server is. Keeps the browser's secret, which is what ties a character
  * to this browser until there are accounts. Wires the socket to the replica
  * and the replica to the scene; decides what a click means and nothing else.
  */
 import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
-import type { GatherNodeDef, ItemDef, MonsterDef, QuestDef, SkillUnlock, ZoneMapDef } from '@/types/content';
-import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type QuestId, type SkillId, type ZoneId } from '@/types/ids';
+import type { GatherNodeDef, ItemDef, MonsterDef, Objective, QuestDef, RecipeDef, SkillUnlock, ZoneDef, ZoneMapDef } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type SkillId, type StationId, type ZoneId } from '@/types/ids';
+import { FIRE_LOGS, FIRE_STONES } from '@/world/fire';
 import { type Cell, type Grid, objectAt, parseMap } from '@/world/grid';
-import { progressOf } from '@/world/skills';
+import { levelForTier, progressOf } from '@/world/skills';
 import { SLOT_NAMES } from '@/world/stats';
 import { escapeHtml } from './html';
 import { Minimap } from './minimap';
@@ -30,10 +32,15 @@ export interface OnlineContent extends SceneContent {
   unlocks(id: SkillId): readonly SkillUnlock[];
   quest(id: QuestId): QuestDef;
   monster(id: MonsterId): MonsterDef;
+  npc(id: NpcId): { name: string; title: string; greeting: string };
+  zone(id: ZoneId): ZoneDef;
+  recipe(id: string): { name?: string; outputs: readonly { itemId: ItemId }[] } | undefined;
+  recipesByStation(station: StationId): readonly RecipeDef[];
   readonly skillIds: SkillId[];
   readonly itemIds: ItemId[];
   readonly questIds: QuestId[];
   readonly monsterIds: MonsterId[];
+  readonly zoneIds: ZoneId[];
 }
 
 export interface OnlineConfig {
@@ -51,17 +58,19 @@ const PING_MS = 5000;
 const NO_SERVER_HINT = 'This page was built without a server address. Run a server (the README says how) and paste its address here, or set the SERVER_URL repository variable so the page knows it.';
 /** What you do to a gather node, by skill. */
 const VERBS: Partial<Record<SkillId, string>> = { lumberjack: 'Chop', mining: 'Mine', fishing: 'Fish', harvesting: 'Harvest' };
+/** The menu bar's height, which windows stay above. */
+const MENUBAR_H = 40;
 /** The windows on the menu bar, with their hotkeys. */
 const PANELS: { id: string; title: string; key: string }[] = [
   { id: 'inventory', title: 'Inventory', key: 'i' },
-  { id: 'gear', title: 'Gear', key: 'g' },
   { id: 'journal', title: 'Journal', key: 'j' },
   { id: 'skills', title: 'Skills', key: 'k' },
   { id: 'map', title: 'Map', key: 'm' },
   { id: 'settings', title: 'Settings', key: 'o' },
 ];
-/** The gear window's layout: three columns, the body down the middle. */
-const GEAR_LAYOUT: (EquipSlot | null)[] = [null, 'head', null, 'trinket_1', 'body', 'trinket_2', 'main_hand', 'legs', 'off_hand', 'hands', 'feet', null];
+/** The gear grid: the head between the trinkets, the hands either side of the torso, then the rest. */
+const GEAR_LAYOUT: EquipSlot[] = ['trinket_1', 'head', 'trinket_2', 'main_hand', 'body', 'off_hand', 'hands', 'legs', 'feet'];
+const TIER_LEVEL = (tier: number) => levelForTier(tier as 1 | 2 | 3 | 4 | 5 | 6);
 const JOURNAL_TABS = ['Quests', 'Log', 'Bestiary', 'Items'] as const;
 type JournalTab = (typeof JOURNAL_TABS)[number];
 
@@ -97,10 +106,13 @@ export class OnlineApp {
   private skillShown: SkillId | null = null;
   private journalTab: JournalTab = 'Quests';
   private itemFilter = '';
+  private picked: { quest: QuestId | null; monster: MonsterId | null; item: ItemId | null } = { quest: null, monster: null, item: null };
   private readonly log: { when: string; text: string }[] = [];
+  /** The second the campfire window last showed, so its countdown ticks. */
+  private fireShownSecond = -1;
   private els!: {
     zone: HTMLElement; status: HTMLElement; count: HTMLElement; tick: HTMLElement; run: HTMLButtonElement;
-    stage: HTMLElement; world: HTMLElement; menubar: HTMLElement; chat: HTMLElement; chatLog: HTMLElement; input: HTMLInputElement; menu: HTMLElement;
+    stage: HTMLElement; world: HTMLElement; menubar: HTMLElement; tracker: HTMLElement; chat: HTMLElement; chatLog: HTMLElement; input: HTMLInputElement; menu: HTMLElement;
     join: HTMLElement; name: HTMLInputElement; server: HTMLInputElement; hint: HTMLElement; error: HTMLElement; joinButton: HTMLButtonElement;
   };
   private bodies!: Record<string, HTMLElement>;
@@ -116,10 +128,11 @@ export class OnlineApp {
       '<span class="chips"><span class="chip" id="on-zone">No zone yet</span><span class="chip" id="on-status">Not connected</span><span class="chip" id="on-count"></span></span>' +
       '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R); Shift runs while held">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage stage-closed" id="on-stage"><div class="world" id="on-world"></div>' +
-      '<nav class="menubar" id="on-menubar"><span class="grip" title="Drag the menu bar">&#8942;&#8942;</span>' + PANELS.map((p) => `<button type="button" data-win="${p.id}" title="${p.title} (${p.key.toUpperCase()})">${p.title}</button>`).join('') + '</nav>' +
+      '<div class="tracker" id="on-tracker" hidden></div>' +
+      '<nav class="menubar" id="on-menubar">' + PANELS.map((p) => `<button type="button" data-win="${p.id}" title="${p.title} (${p.key.toUpperCase()})">${p.title}</button>`).join('') + '</nav>' +
       '<div class="menu" id="on-menu" hidden></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here, chop trees, fill your bag, bank the logs, wear what you find, and talk. Click where you want to go or on what you want to use; right-click for choices; Space stops you; Shift runs; Enter talks. The menu bar opens your inventory, gear, journal, skills, map and settings; drag any window where you like. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here, take quests from the journal, chop trees, fish, cook at a campfire or build your own, bank what you gather, wear what you find, and talk. Click where you want to go or on what you want to use; right-click for choices; Space stops you; Shift runs; Enter talks. The bar along the bottom opens your inventory, journal, skills, map and settings; drag any window where you like. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -127,7 +140,7 @@ export class OnlineApp {
     const q = <T extends Element>(id: string) => this.root.querySelector<T>(`#${id}`)!;
     this.els = {
       zone: q('on-zone'), status: q('on-status'), count: q('on-count'), tick: q('on-tick'), run: q('on-run'),
-      stage: q('on-stage'), world: q('on-world'), menubar: q('on-menubar'), chat: q('on-chat'), chatLog: q('on-log'), input: q('on-chat-input'), menu: q('on-menu'),
+      stage: q('on-stage'), world: q('on-world'), menubar: q('on-menubar'), tracker: q('on-tracker'), chat: q('on-chat'), chatLog: q('on-log'), input: q('on-chat-input'), menu: q('on-menu'),
       join: q('on-join'), name: q('on-name'), server: q('on-server'), hint: q('on-hint'), error: q('on-error'), joinButton: q('on-join-button'),
     };
     this.scene.mount(this.els.world);
@@ -167,6 +180,7 @@ export class OnlineApp {
       if (this.windows.isOpen('map')) this.minimap.frame(now);
       this.refreshBar();
       if (this.replica.version !== this.shownVersion) this.renderPanels();
+      else if (this.replica.fire?.fuelMs != null && this.windows.isOpen('fire') && Math.floor(now / 1000) !== this.fireShownSecond) this.renderFire();
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -176,21 +190,21 @@ export class OnlineApp {
   private mountWindows(): void {
     const stage = this.els.stage;
     const W = Math.max(stage.clientWidth, 800);
-    const H = Math.max(stage.clientHeight, 500);
-    this.windows = new Windows(stage, LAYOUT_KEY);
+    const H = Math.max(stage.clientHeight - MENUBAR_H, 460);
+    this.windows = new Windows(stage, LAYOUT_KEY, { bottom: MENUBAR_H });
     this.bodies = {
       map: this.windows.add({ id: 'map', title: 'Map', x: W - 236, y: 8, w: 228, h: 160, open: true }),
-      inventory: this.windows.add({ id: 'inventory', title: 'Inventory', x: W - 236, y: 176, w: 228, h: 330, open: true }),
-      gear: this.windows.add({ id: 'gear', title: 'Gear', x: W - 486, y: 176, w: 242, h: 380, open: false }),
-      skills: this.windows.add({ id: 'skills', title: 'Skills', x: 12, y: 12, w: 270, h: 440, open: false }),
-      journal: this.windows.add({ id: 'journal', title: 'Journal', x: 296, y: 12, w: 380, h: 440, open: false }),
+      inventory: this.windows.add({ id: 'inventory', title: 'Inventory', x: W - 372, y: 176, w: 364, h: Math.min(420, H - 186), open: true }),
+      skills: this.windows.add({ id: 'skills', title: 'Skills', x: 12, y: 150, w: 270, h: Math.min(440, H - 160), open: false }),
+      journal: this.windows.add({ id: 'journal', title: 'Journal', x: 290, y: 40, w: 560, h: Math.min(460, H - 60), open: false }),
       settings: this.windows.add({ id: 'settings', title: 'Settings', x: Math.round(W / 2 - 150), y: Math.round(H / 2 - 150), w: 300, h: 300, open: false }),
       bank: this.windows.add({ id: 'bank', title: 'Bank', x: Math.round(W / 2 - 190), y: Math.round(H / 2 - 170), w: 380, h: 340, open: false }),
+      fire: this.windows.add({ id: 'fire', title: 'Campfire', x: Math.round(W / 2 - 170), y: Math.max(8, H - 300), w: 340, h: 260, open: false }),
     };
-    this.windows.addBar('menubar', this.els.menubar, this.els.menubar.querySelector('.grip')!, W - 470, H - 44);
     this.windows.onToggle = (id, open) => {
       this.els.menubar.querySelector(`[data-win="${id}"]`)?.classList.toggle('on', open);
       if (id === 'bank' && !open && this.replica.bank !== null) this.closeBank();
+      if (id === 'fire' && !open && this.replica.fire !== null) this.closeFire();
       if (open && id === 'journal') this.renderJournal();
       if (open && id === 'skills') this.renderSkills();
     };
@@ -200,20 +214,25 @@ export class OnlineApp {
       if (button) this.windows.toggle(button.dataset.win!);
     });
     this.minimap = new Minimap(this.bodies.map!, this.replica, () => this.scene.viewCells());
-    // Inventory and gear: a click on a slot offers what can be done with it.
+    // The inventory: a click on a bag slot or a gear slot offers what can be done with it.
     this.bodies.inventory!.addEventListener('click', (event) => {
-      const slotEl = (event.target as HTMLElement).closest<HTMLElement>('[data-slot]');
-      if (!slotEl) return;
-      const rect = slotEl.getBoundingClientRect();
-      this.openSlotMenu(Number(slotEl.dataset.slot), { x: rect.left, y: rect.bottom });
+      const target = event.target as HTMLElement;
+      const slotEl = target.closest<HTMLElement>('[data-slot]');
+      const gearEl = target.closest<HTMLElement>('[data-gslot]');
+      const el = slotEl ?? gearEl;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (slotEl) this.openSlotMenu(Number(slotEl.dataset.slot), { x: rect.left, y: rect.bottom });
+      else this.openGearMenu(gearEl!.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
     });
-    this.bodies.gear!.addEventListener('click', (event) => {
-      const slotEl = (event.target as HTMLElement).closest<HTMLElement>('[data-gslot]');
-      if (!slotEl) return;
-      const rect = slotEl.getBoundingClientRect();
-      this.openGearMenu(slotEl.dataset.gslot as EquipSlot, { x: rect.left, y: rect.bottom });
+    this.bodies.inventory!.addEventListener('contextmenu', (event) => event.preventDefault());
+    // The campfire: cook what is in the bag, feed the fire a log.
+    this.bodies.fire!.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-cook], [data-feed]');
+      if (!button) return;
+      if (button.dataset.cook) this.socket?.send({ t: 'cook', recipe: button.dataset.cook, qty: Number(button.dataset.qty) });
+      else this.socket?.send({ t: 'fire', op: 'feed' });
     });
-    for (const body of [this.bodies.inventory!, this.bodies.gear!]) body.addEventListener('contextmenu', (event) => event.preventDefault());
     // The bank: a toolbar and the stacks.
     this.bodies.bank!.innerHTML = '<div class="toolbar"><button class="menu-btn" id="on-bank-all" type="button">Deposit all</button><span class="muted">Click a bag slot to deposit it.</span></div><div id="on-bank-list" class="stacks"></div>';
     this.bodies.bank!.querySelector('#on-bank-all')!.addEventListener('click', () => this.socket?.send({ t: 'bank', op: 'all' }));
@@ -233,19 +252,31 @@ export class OnlineApp {
       }
       this.renderSkills();
     });
-    // Journal: tabs and the item filter.
+    // Journal: tabs across the top, a pick on the left, the page on the right, a button or two on the page.
     this.bodies.journal!.addEventListener('click', (event) => {
-      const tab = (event.target as HTMLElement).closest<HTMLElement>('[data-jtab]');
-      if (!tab) return;
-      this.journalTab = tab.dataset.jtab as JournalTab;
-      this.renderJournal();
+      const target = event.target as HTMLElement;
+      const tab = target.closest<HTMLElement>('[data-jtab]');
+      if (tab) {
+        this.journalTab = tab.dataset.jtab as JournalTab;
+        this.renderJournal();
+        return;
+      }
+      const pick = target.closest<HTMLElement>('[data-pick]');
+      if (pick) {
+        const [kind, id] = pick.dataset.pick!.split(':') as ['quest' | 'monster' | 'item', string];
+        this.picked[kind] = id as never;
+        this.renderJournal();
+        return;
+      }
+      const act = target.closest<HTMLElement>('[data-quest-op]');
+      if (act) this.socket?.send({ t: 'quest', op: act.dataset.questOp as 'accept' | 'abandon', id: act.dataset.quest! });
     });
     this.bodies.journal!.addEventListener('input', (event) => {
       const input = event.target as HTMLInputElement;
       if (input.id !== 'on-item-filter') return;
       this.itemFilter = input.value.trim().toLowerCase();
       const list = this.bodies.journal!.querySelector<HTMLElement>('#on-item-list');
-      if (list) list.innerHTML = this.itemsHtml();
+      if (list) list.innerHTML = this.itemListHtml();
     });
     this.renderSettings();
   }
@@ -257,6 +288,7 @@ export class OnlineApp {
     if (event.key === 'Escape') {
       if (!this.els.menu.hidden) this.closeMenu();
       else if (this.replica.bank !== null) this.closeBank();
+      else if (this.replica.fire !== null) this.closeFire();
       else if (typing) (document.activeElement as HTMLElement).blur();
       return;
     }
@@ -270,7 +302,8 @@ export class OnlineApp {
     } else if (event.key === 'r' || event.key === 'R') {
       this.toggleRun();
     } else {
-      const panel = PANELS.find((p) => p.key === event.key.toLowerCase());
+      const key = event.key.toLowerCase();
+      const panel = PANELS.find((p) => p.key === key) ?? (key === 'g' ? PANELS[0] : undefined);
       if (panel && !event.ctrlKey && !event.metaKey && !event.altKey) this.windows.toggle(panel.id);
     }
   }
@@ -330,7 +363,7 @@ export class OnlineApp {
       this.runToggled = false;
       this.applyRunning(true);
       if (!this.pingTimer) this.pingTimer = setInterval(() => this.socket?.send({ t: 'ping', at: performance.now() }), PING_MS);
-      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}. There is a hatchet in your bag and oaks to the west.`);
+      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}. Rowan, by the oaks to the west, has a hatchet for you; Greta, by the rocks to the east, a pickaxe. Press J for the journal and its quests.`);
     } else if (msg.t === 'zone') {
       this.closeMenu();
       this.appendSystem(`You enter ${this.showZone(msg.zone)}.`);
@@ -403,8 +436,19 @@ export class OnlineApp {
       } else if (def.kind === 'bank') {
         options.push({ label: 'Use Bank', run: use, primary: true });
       } else if (def.kind === 'npc') {
-        options.push({ label: `Examine ${this.content.npc(def.id).name}`, run: () => this.appendSystem(`${this.content.npc(def.id).name} has nothing to say to you yet.`) });
+        const npc = this.content.npc(def.id);
+        options.push({ label: `Talk to ${npc.name}`, run: use, primary: true });
+        options.push({ label: `Examine ${npc.name}`, run: () => this.appendSystem(`${npc.name}, ${npc.title.toLowerCase()}.`) });
+      } else if (def.kind === 'station') {
+        const station = this.content.station(def.id);
+        if (def.id === 'campfire') options.push({ label: 'Cook at Campfire', run: use, primary: true });
+        options.push({ label: `Examine ${station.name}`, run: () => this.appendSystem(def.id === 'campfire' ? 'The village fire. It never goes out, and anything raw cooks on it.' : `${station.name}. Not working yet.`) });
       }
+    }
+    for (const fire of this.replica.fires.values()) {
+      if (fire.x !== cell.x || fire.y !== cell.y) continue;
+      options.push({ label: 'Use Campfire', run: use, primary: true });
+      options.push({ label: 'Examine Campfire', run: () => this.appendSystem('A campfire someone built. Cook on it while it burns; a log keeps it going.') });
     }
     for (const item of this.replica.items.values()) {
       if (item.x !== cell.x || item.y !== cell.y || !this.content.hasItem(item.item)) continue;
@@ -427,6 +471,8 @@ export class OnlineApp {
     const def = this.content.item(entry[0]);
     const options: Option[] = [];
     if (def.equip) options.push({ label: `${def.equip.kind === 'weapon' || def.equip.kind === 'book' ? 'Wield' : 'Wear'} ${def.name}`, run: () => this.socket?.send({ t: 'equip', slot }) });
+    if ((def.id === 'stone' || def.group === 'log') && this.countInBag('stone') >= FIRE_STONES && this.logsInBag() >= FIRE_LOGS) options.push({ label: 'Build a campfire here', run: () => this.socket?.send({ t: 'fire', op: 'build' }) });
+    if (def.group === 'log' && this.replica.fire?.fid != null) options.push({ label: 'Add to the fire', run: () => this.socket?.send({ t: 'fire', op: 'feed' }) });
     if (this.replica.bank !== null) options.push({ label: `Deposit ${def.name}`, run: () => this.socket?.send({ t: 'bank', op: 'deposit', slot, qty: entry[1] }) });
     options.push({ label: `Drop ${def.name}`, run: () => this.socket?.send({ t: 'drop', slot }) });
     options.push({ label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) });
@@ -472,54 +518,162 @@ export class OnlineApp {
     this.replica.version++;
   }
 
+  private closeFire(): void {
+    this.socket?.send({ t: 'fire', op: 'close' });
+    this.replica.fire = null;
+    this.replica.version++;
+  }
+
+  private countInBag(itemId: string): number {
+    let n = 0;
+    for (const slot of this.replica.bag) if (slot && slot[0] === itemId) n += slot[1];
+    return n;
+  }
+
+  private logsInBag(): number {
+    let n = 0;
+    for (const slot of this.replica.bag) if (slot && this.content.hasItem(slot[0]) && this.content.item(slot[0]).group === 'log') n += slot[1];
+    return n;
+  }
+
   // ---- panels ---------------------------------------------------------------------
 
   private renderPanels(): void {
     this.shownVersion = this.replica.version;
-    this.renderBag();
-    this.renderGear();
+    this.renderInventory();
     if (this.windows.isOpen('skills')) this.renderSkills();
+    if (this.windows.isOpen('journal') && this.journalTab === 'Quests') this.renderJournal();
+    this.renderTracker();
     this.renderBank();
+    this.renderFire();
   }
 
-  private renderBag(): void {
-    const slots = this.replica.bag;
-    let html = '<div class="bag">';
-    for (let i = 0; i < Math.max(28, slots.length); i++) {
-      const entry = slots[i];
-      if (!entry || !this.content.hasItem(entry[0])) {
-        html += `<div class="slot" data-slot="${i}"></div>`;
-        continue;
-      }
-      const def = this.content.item(entry[0]);
-      html += `<div class="slot slot-full" data-slot="${i}" title="${escapeHtml(def.name)}">${icon(def)}${entry[1] > 1 ? `<span class="qty">${entry[1]}</span>` : ''}</div>`;
+  // ---- quests --------------------------------------------------------------------
+
+  private questStatus(id: QuestId): 'available' | 'locked' | 'active' | 'done' {
+    const mine = this.replica.quests.find((q) => q[0] === id);
+    if (mine) return mine[1];
+    for (const req of this.content.quest(id).prerequisites) {
+      if (req.type === 'quest' && this.replica.quests.find((q) => q[0] === req.questId)?.[1] !== 'done') return 'locked';
+      if (req.type === 'tier' && progressOf(this.replica.skills.get(req.skill) ?? 0).level < [1, 15, 30, 50, 70, 85][req.tier - 1]!) return 'locked';
     }
-    const used = slots.filter((s) => s !== null).length;
-    this.bodies.inventory!.innerHTML = html + `</div><div class="bag-foot muted">${used} / ${slots.length || 28} slots</div>`;
+    return 'available';
   }
 
-  private renderGear(): void {
-    const worn = new Map(this.replica.gear.map((g) => [g[0], g[1]]));
-    let html = '<div class="gear-grid">';
-    for (const slot of GEAR_LAYOUT) {
-      if (!slot) {
-        html += '<div></div>';
-        continue;
+  /** One objective as a line: what to do, and how far along when the quest is taken. */
+  private objectiveHtml(o: Objective, progress: number | null): string {
+    const target = o.type === 'kill' || o.type === 'collect' || o.type === 'gather' || o.type === 'craft' || o.type === 'trade' ? o.count : 1;
+    const count = progress === null ? null : Math.min(target, progress);
+    const state = count === null ? '' : count >= target ? 'done' : 'todo';
+    const counter = count === null ? '' : target > 1 ? `${count} / ${target}` : count >= target ? 'done' : 'to do';
+    return `<div class="objective ${state}"><span>${escapeHtml(this.describeObjective(o))}</span><span>${counter}</span></div>`;
+  }
+
+  private describeObjective(o: Objective): string {
+    switch (o.type) {
+      case 'kill': return `Kill ${o.count} ${this.content.monster(o.monsterId).name}${o.count > 1 ? 's' : ''}`;
+      case 'collect': return `Have ${o.count} ${this.content.item(o.itemId).name}${o.count > 1 ? 's' : ''} in your bag`;
+      case 'gather': return `Gather ${o.count} ${this.content.item(o.itemId).name}${o.count > 1 ? 's' : ''}`;
+      case 'craft': {
+        const recipe = this.content.recipe(o.recipeId);
+        const name = recipe?.name ?? (recipe ? this.content.item(recipe.outputs[0]!.itemId).name : o.recipeId);
+        return `Make ${o.count} ${name}${o.count > 1 ? 's' : ''}`;
       }
+      case 'talk': return `Talk to ${this.content.npc(o.npcId).name}`;
+      case 'visit': return `Go to ${this.content.zone(o.zoneId).name}`;
+      case 'equip': return `Wear or wield something for the ${o.kind === 'weapon' ? 'main hand' : o.kind}`;
+      case 'reach_tier': return `Reach ${this.content.skill(o.skill).name} level ${[1, 15, 30, 50, 70, 85][o.tier - 1]}`;
+      case 'any_tier': return `Reach level ${[1, 15, 30, 50, 70, 85][o.tier - 1]} in any skill`;
+      case 'trade': return `Trade ${o.count} times`;
+      case 'unlock': return 'Not possible yet';
+    }
+  }
+
+  private describeReward(r: QuestDef['rewards'][number]): string | null {
+    switch (r.type) {
+      case 'gold': return `${r.amount} coins`;
+      case 'xp': return `${r.amount} ${this.content.skill(r.skill).name} xp`;
+      case 'item': return `${r.qty > 1 ? `${r.qty} ` : ''}${this.content.item(r.itemId).name}`;
+      default: return null;
+    }
+  }
+
+  /** The active quests and their objectives, top left, red until done and green after. */
+  private renderTracker(): void {
+    const active = this.replica.quests.filter((q) => q[1] === 'active' && this.content.questIds.includes(q[0] as QuestId));
+    this.els.tracker.hidden = active.length === 0;
+    if (active.length === 0) return;
+    this.els.tracker.innerHTML = active.map(([id, , progress]) => {
+      const def = this.content.quest(id as QuestId);
+      return `<div class="track"><b>${escapeHtml(def.name)}</b>${def.objectives.map((o, i) => this.objectiveHtml(o, progress[i] ?? 0)).join('')}</div>`;
+    }).join('');
+  }
+
+  /** One panel: what is worn and the numbers on the left, the purse and the bag on the right. */
+  private renderInventory(): void {
+    const worn = new Map(this.replica.gear.map((g) => [g[0], g[1]]));
+    let gear = '<div class="gear-grid">';
+    for (const slot of GEAR_LAYOUT) {
       const item = worn.get(slot);
       const def = item && this.content.hasItem(item) ? this.content.item(item) : null;
-      html += def
+      gear += def
         ? `<div class="gslot gslot-full" data-gslot="${slot}" title="${escapeHtml(def.name)}">${icon(def)}</div>`
         : `<div class="gslot" data-gslot="${slot}" title="${SLOT_NAMES[slot]}"><span class="gslot-name">${SLOT_NAMES[slot]}</span></div>`;
     }
-    html += '</div>';
+    gear += '</div>';
     const s = this.replica.stats;
-    if (s) {
-      html += '<div class="stats">' +
+    const stats = s
+      ? '<div class="stats">' +
         `<div><span>Hit points</span><b>${s.hp} / ${s.maxHp}</b></div><div><span>Mana</span><b>${s.mana} / ${s.maxMana}</b></div>` +
-        `<div><span>Armor</span><b>${s.armor}</b></div><div><span>Attack</span><b>${s.attack}</b></div><div><span>Spell power</span><b>${s.spellPower}</b></div></div>`;
+        `<div><span>Armor</span><b>${s.armor}</b></div><div><span>Attack</span><b>${s.attack}</b></div><div><span>Spell power</span><b>${s.spellPower}</b></div></div>`
+      : '';
+    const slots = this.replica.bag;
+    let bag = '<div class="bag">';
+    for (let i = 0; i < Math.max(28, slots.length); i++) {
+      const entry = slots[i];
+      if (!entry || !this.content.hasItem(entry[0])) {
+        bag += `<div class="slot" data-slot="${i}"></div>`;
+        continue;
+      }
+      const def = this.content.item(entry[0]);
+      bag += `<div class="slot slot-full" data-slot="${i}" title="${escapeHtml(def.name)}">${icon(def)}${entry[1] > 1 ? `<span class="qty">${entry[1]}</span>` : ''}</div>`;
     }
-    this.bodies.gear!.innerHTML = html;
+    bag += '</div>';
+    const used = slots.filter((s) => s !== null).length;
+    const purse = `<div class="purse" title="Coins"><span class="coin"></span><b id="on-coins">${this.replica.coins.toLocaleString()}</b><span class="muted">coins</span><span class="bag-foot muted">${used} / ${slots.length || 28} slots</span></div>`;
+    this.bodies.inventory!.innerHTML = `<div class="inv"><div class="inv-gear">${gear}${stats}</div><div class="inv-bag">${purse}${bag}</div></div>`;
+  }
+
+  /** The campfire window while you stand by a fire: how long it burns, a log for it, and what in your bag can be cooked. */
+  private renderFire(): void {
+    const fire = this.replica.fire;
+    if (fire === null) {
+      if (this.windows.isOpen('fire')) this.windows.close('fire');
+      return;
+    }
+    if (!this.windows.isOpen('fire')) this.windows.open('fire');
+    const now = performance.now();
+    this.fireShownSecond = Math.floor(now / 1000);
+    let head: string;
+    if (fire.fuelMs === null) head = '<div class="fire-head"><span>The village fire. It never goes out.</span></div>';
+    else {
+      const left = Math.max(0, fire.fuelMs - (now - this.replica.fireSeenAt));
+      const m = Math.floor(left / 60_000);
+      const sec = Math.floor((left % 60_000) / 1000);
+      head = `<div class="fire-head"><span>Burns for <b>${m}:${sec.toString().padStart(2, '0')}</b> more.</span><button class="menu-btn" type="button" data-feed ${this.logsInBag() > 0 ? '' : 'disabled'} title="A log keeps it going a minute per tier">Add a log</button></div>`;
+    }
+    const level = progressOf(this.replica.skills.get('cooking') ?? 0).level;
+    let rows = '';
+    for (const recipe of this.content.recipesByStation('campfire')) {
+      const can = Math.min(...recipe.inputs.map((input) => Math.floor(this.countInBag(input.itemId) / input.qty)));
+      if (can === 0) continue;
+      const out = this.content.item(recipe.outputs[0]!.itemId);
+      const need = TIER_LEVEL(recipe.tier);
+      const locked = level < need;
+      rows += `<div class="cook-row">${icon(out)}<span class="cook-name">${escapeHtml(out.name)}${locked ? `<span class="muted small"> needs Cooking ${need}</span>` : ''}</span><span class="stack-qty">${can}</span>` +
+        `<span class="stack-buttons"><button class="menu-btn" type="button" data-cook="${recipe.id}" data-qty="1" ${locked ? 'disabled' : ''}>Cook 1</button><button class="menu-btn" type="button" data-cook="${recipe.id}" data-qty="${can}" ${locked ? 'disabled' : ''}>Cook all</button></span></div>`;
+    }
+    this.bodies.fire!.innerHTML = head + (rows ? `<div class="stacks">${rows}</div>` : '<p class="muted">Nothing in your bag can be cooked. Raw fish and crops can.</p>') + '<p class="muted small">Some of what you cook burns; less so with every Cooking level.</p>';
   }
 
   private renderSkills(): void {
@@ -575,33 +729,75 @@ export class OnlineApp {
 
   private renderJournal(): void {
     const tabs = JOURNAL_TABS.map((t) => `<button type="button" class="jtab${t === this.journalTab ? ' on' : ''}" data-jtab="${t}">${t}</button>`).join('');
-    let html = '';
+    let body = '';
     switch (this.journalTab) {
-      case 'Quests':
-        html = this.content.questIds.map((id) => {
-          const quest = this.content.quest(id);
-          return `<div class="entry"><b>${escapeHtml(quest.name)}</b><span class="tag">Not started</span><div class="muted">Given by ${escapeHtml(this.content.npc(quest.giverId).name)}</div><div>${escapeHtml(quest.description)}</div></div>`;
-        }).join('') + '<p class="muted small">Quests arrive with the tutorial island; this is what is written so far.</p>';
-        break;
-      case 'Log':
-        html = this.log.length === 0 ? '<p class="muted">Nothing yet.</p>' : this.log.map((l) => `<div class="entry"><span class="muted">${l.when}</span> ${escapeHtml(l.text)}</div>`).join('');
-        break;
-      case 'Bestiary':
-        html = [...this.content.monsterIds].map((id) => this.content.monster(id)).sort((a, b) => a.tier - b.tier || a.hp - b.hp).map((m) =>
-          `<div class="entry"><b>${escapeHtml(m.name)}</b><span class="tag">tier ${m.tier}</span><div class="muted">HP ${m.hp} · attack ${m.attack} · armor ${m.armor}</div><div>${escapeHtml(m.description)}</div></div>`).join('');
-        break;
-      case 'Items':
-        html = `<input id="on-item-filter" class="filter" type="text" placeholder="Filter items" value="${escapeHtml(this.itemFilter)}"><div id="on-item-list">${this.itemsHtml()}</div>`;
-        break;
+      case 'Quests': body = this.questsPane(); break;
+      case 'Log': body = `<div class="jlog">${this.log.length === 0 ? '<p class="muted">Nothing yet.</p>' : this.log.map((l) => `<div class="entry"><span class="muted">${l.when}</span> ${escapeHtml(l.text)}</div>`).join('')}</div>`; break;
+      case 'Bestiary': body = this.bestiaryPane(); break;
+      case 'Items': body = this.itemsPane(); break;
     }
-    this.bodies.journal!.innerHTML = `<div class="jtabs">${tabs}</div><div class="jbody">${html}</div>`;
-    if (this.journalTab === 'Items') this.bodies.journal!.querySelector<HTMLInputElement>('#on-item-filter')?.focus();
+    this.bodies.journal!.innerHTML = `<div class="jtabs">${tabs}</div>${body}`;
   }
 
-  private itemsHtml(): string {
+  private questsPane(): string {
+    const ids = this.content.questIds;
+    if (!this.picked.quest || !ids.includes(this.picked.quest)) this.picked.quest = ids[0] ?? null;
+    const list = ids.map((id) => {
+      const status = this.questStatus(id);
+      return `<button type="button" class="jitem q-${status}${id === this.picked.quest ? ' on' : ''}" data-pick="quest:${id}"><span class="jname">${escapeHtml(this.content.quest(id).name)}</span><span class="tag">${status === 'done' ? 'completed' : status === 'active' ? 'active' : status === 'locked' ? 'locked' : 'new'}</span></button>`;
+    }).join('');
+    let detail = '<p class="muted">No quests written yet.</p>';
+    const id = this.picked.quest;
+    if (id) {
+      const def = this.content.quest(id);
+      const giver = this.content.npc(def.giverId);
+      const status = this.questStatus(id);
+      const mine = this.replica.quests.find((q) => q[0] === id);
+      const rewards = def.rewards.map((r) => this.describeReward(r)).filter((r): r is string => r !== null);
+      const prereqs = def.prerequisites.flatMap((r) => (r.type === 'quest' ? [this.content.quest(r.questId).name] : r.type === 'tier' ? [`${this.content.skill(r.skill).name} level ${[1, 15, 30, 50, 70, 85][r.tier - 1]}`] : []));
+      const button = status === 'available' ? `<button class="menu-btn join-button" type="button" data-quest-op="accept" data-quest="${id}">Accept quest</button>`
+        : status === 'active' ? `<span class="tag">Active</span><button class="menu-btn" type="button" data-quest-op="abandon" data-quest="${id}">Abandon</button>`
+        : status === 'done' ? '<span class="tag">Completed</span>'
+        : `<span class="tag">Needs ${escapeHtml(prereqs.join(', '))}</span>`;
+      detail = `<h3>${escapeHtml(def.name)}</h3><div class="muted">${escapeHtml(giver.name)}, ${escapeHtml(giver.title.toLowerCase())}</div>` +
+        `<h4>The task</h4><p>${escapeHtml(def.description)}</p>` +
+        `<h4>Objectives</h4>${def.objectives.map((o, i) => this.objectiveHtml(o, mine ? mine[2][i] ?? 0 : null)).join('')}` +
+        (rewards.length > 0 ? `<h4>Rewards</h4><p>${escapeHtml(rewards.join(', '))}</p>` : '') +
+        (status === 'done' ? `<h4>Afterwards</h4><p>${escapeHtml(def.completionText)}</p>` : '') +
+        `<div class="row">${button}</div>`;
+    }
+    return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
+  }
+
+  private bestiaryPane(): string {
+    const monsters = this.content.monsterIds.map((id) => this.content.monster(id)).sort((a, b) => a.tier - b.tier || a.hp - b.hp);
+    if (!this.picked.monster || !this.content.monsterIds.includes(this.picked.monster)) this.picked.monster = (monsters[0]?.id as MonsterId | undefined) ?? null;
+    const list = monsters.map((m) => `<button type="button" class="jitem${m.id === this.picked.monster ? ' on' : ''}" data-pick="monster:${m.id}"><span class="jname">${escapeHtml(m.name)}</span><span class="tag">tier ${m.tier}</span></button>`).join('');
+    let detail = '';
+    if (this.picked.monster) {
+      const m = this.content.monster(this.picked.monster);
+      const where = this.content.zoneIds.filter((z) => (this.content.zone(z).monsters as readonly string[]).includes(m.id)).map((z) => this.content.zone(z).name);
+      detail = `<h3>${escapeHtml(m.name)}</h3><div class="muted">Tier ${m.tier} · HP ${m.hp} · attack ${m.attack} · armor ${m.armor}</div><p>${escapeHtml(m.description)}</p>` +
+        `<h4>Found in</h4><p>${escapeHtml(where.join(', ') || 'Nowhere yet')}</p>` +
+        `<h4>Drops</h4>${m.loot.map((l) => `<div class="objective"><span>${escapeHtml(this.content.item(l.itemId).name)}${l.max > 1 ? ` (${l.min} to ${l.max})` : ''}</span><span>${Math.round(l.chance * 100)}%</span></div>`).join('') || '<p class="muted">Nothing.</p>'}` +
+        '<p class="muted small">Monsters walk the world with a later slice.</p>';
+    }
+    return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
+  }
+
+  private itemsPane(): string {
+    let detail = '<p class="muted">Pick an item.</p>';
+    if (this.picked.item && this.content.hasItem(this.picked.item)) {
+      const i = this.content.item(this.picked.item);
+      detail = `<h3>${escapeHtml(i.name)}</h3><div class="muted">${escapeHtml(i.group)} · tier ${i.tier} · worth ${i.value}</div><p>${escapeHtml(describe(i))}</p>`;
+    }
+    return `<div class="jpane"><div class="jlist"><input id="on-item-filter" class="filter" type="text" placeholder="Filter items" value="${escapeHtml(this.itemFilter)}"><div id="on-item-list">${this.itemListHtml()}</div></div><div class="jdetail">${detail}</div></div>`;
+  }
+
+  private itemListHtml(): string {
     const items = this.content.itemIds.map((id) => this.content.item(id)).filter((i) => !this.itemFilter || i.name.toLowerCase().includes(this.itemFilter) || i.group.includes(this.itemFilter));
     items.sort((a, b) => a.group.localeCompare(b.group) || a.tier - b.tier || a.name.localeCompare(b.name));
-    return items.slice(0, 200).map((i) => `<div class="entry">${icon(i)}<b>${escapeHtml(i.name)}</b><span class="tag">tier ${i.tier}</span><div>${escapeHtml(describe(i))}</div></div>`).join('') + (items.length > 200 ? '<p class="muted small">Filter to see more.</p>' : '');
+    return items.slice(0, 300).map((i) => `<button type="button" class="jitem${i.id === this.picked.item ? ' on' : ''}" data-pick="item:${i.id}">${icon(i)}<span class="jname">${escapeHtml(i.name)}</span><span class="tag">${i.tier}</span></button>`).join('') + (items.length > 300 ? '<p class="muted small">Filter to see more.</p>' : '');
   }
 
   private renderSettings(): void {
@@ -612,7 +808,7 @@ export class OnlineApp {
       '<label><input type="checkbox" id="on-set-chat" checked> Show the chat</label>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-layout">Reset window layout</button></div>' +
       `<div class="muted small">Server: ${escapeHtml(this.config.serverUrl || 'set on the join card')}</div>` +
-      '<div class="muted small">Keys: I inventory, G gear, J journal, K skills, M map, O settings, R run, Space stop, Enter talk.</div>' +
+      '<div class="muted small">Keys: I inventory, J journal, K skills, M map, O settings, R run, Space stop, Enter talk. Right-click people to talk to them, fires to cook, stones or logs in your bag to build a fire.</div>' +
       '<div class="row"><button class="menu-btn" type="button" id="on-set-leave">Leave the world</button></div></div>';
     const run = body.querySelector<HTMLInputElement>('#on-set-run')!;
     run.addEventListener('change', () => {
@@ -674,7 +870,11 @@ export class OnlineApp {
     this.trimLog();
     this.log.push({ when: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text });
     if (this.log.length > 200) this.log.shift();
-    if (this.windows.isOpen('journal') && this.journalTab === 'Log') this.renderJournal();
+    if (this.windows.isOpen('journal') && this.journalTab === 'Log') {
+      this.renderJournal();
+      const log = this.bodies.journal!.querySelector('.jlog');
+      if (log) log.scrollTop = log.scrollHeight;
+    }
   }
 
   private trimLog(): void {

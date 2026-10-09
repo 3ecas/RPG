@@ -17,6 +17,8 @@ export const TIER_NAMES: Readonly<Record<Tier, string>> = {
 };
 
 export const METALS = ['bronze', 'iron', 'steel', 'mithril', 'adamant', 'rune'] as const;
+/** Tools start at stone, which the village hands out for free, then follow the metals. */
+export const TOOL_MATERIALS = ['stone', 'iron', 'steel', 'mithril', 'adamant', 'rune'] as const;
 export const WOODS = ['oak', 'willow', 'maple', 'yew', 'ash', 'elder'] as const;
 export const FISH = ['shrimp', 'trout', 'salmon', 'tuna', 'lobster', 'swordfish'] as const;
 export const CROPS = ['wheat', 'potato', 'carrot', 'cabbage', 'pumpkin', 'sunfruit'] as const;

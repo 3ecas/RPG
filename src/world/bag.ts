@@ -58,6 +58,20 @@ export function addToBag(bag: Bag, itemId: ItemId, qty: number, stackable: boole
   return left;
 }
 
+/** Takes up to `qty` of an item out of the bag, from whichever slots hold it. Returns how many came out. */
+export function takeFromBag(bag: Bag, itemId: ItemId, qty: number): number {
+  let left = qty;
+  for (let i = 0; i < bag.length && left > 0; i++) {
+    const stack = bag[i];
+    if (!stack || stack.itemId !== itemId) continue;
+    const n = Math.min(left, stack.qty);
+    if (n === stack.qty) bag[i] = null;
+    else stack.qty -= n;
+    left -= n;
+  }
+  return qty - left;
+}
+
 /** Takes up to `qty` from a slot. Returns what came out, or null for an empty slot. */
 export function takeFromSlot(bag: Bag, slot: number, qty: number): ItemStack | null {
   const stack = bag[slot];

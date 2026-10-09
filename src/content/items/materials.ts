@@ -44,6 +44,7 @@ export const MISC = defineItems({
   bone: { name: 'Bone', description: 'Somebody used to need this.', category: 'misc', group: 'misc', tier: 1, value: 2 },
   rat_tail: { name: 'Rat Tail', description: 'Proof of a dead rat.', category: 'misc', group: 'misc', tier: 1, value: 1 },
   goblin_ear: { name: 'Goblin Ear', description: 'The guard captain pays for these.', category: 'misc', group: 'misc', tier: 1, value: 2 },
+  stone: { name: 'Stone', description: 'A fist-sized stone, broken from loose rock. Two of them and a log make a campfire.', category: 'material', group: 'misc', tier: 1, value: 1 },
 });
 
 export const MATERIALS = { ...ORES, ...BARS, ...LOGS, ...RAW_FISH, ...CROP_ITEMS, ...HERB_ITEMS, ...HIDE_ITEMS, ...MISC };

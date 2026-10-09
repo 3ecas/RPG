@@ -20,6 +20,17 @@ describe('content', () => {
     expect(errors).toContain("recipe bad: unknown item 'unobtainium'");
   });
 
+  it('validation keeps fishing spots in the water with a bank to fish from, and handouts tools', () => {
+    const village = CONTENT.maps.greenhollow;
+    const onLand: ContentTables = { ...CONTENT, maps: { ...CONTENT.maps, greenhollow: { ...village, legend: { ...village.legend, B: { kind: 'node', id: 'shrimp_spot' } } } } };
+    expect(new Registry(onLand).validate()).toContain("map greenhollow: fishing spot 'B' must stand in the water (terrain: 'water')");
+    const rows = village.rows.map((row, y) => (y === 15 ? row.replace('~~B~', '~~~~').replace('~~~~~~~', '~~~B~~~') : row));
+    const farOut: ContentTables = { ...CONTENT, maps: { ...CONTENT.maps, greenhollow: { ...village, rows } } };
+    expect(new Registry(farOut).validate()).toContain("map greenhollow: every fishing spot 'B' must have a walkable cell beside it");
+    const wrongTool: ContentTables = { ...CONTENT, npcs: { ...CONTENT.npcs, lumberjack_rowan: { ...CONTENT.npcs.lumberjack_rowan, handout: { itemId: 'oak_log', skill: 'lumberjack', line: 'Here.' } } } };
+    expect(new Registry(wrongTool).validate()).toContain("npc lumberjack_rowan: handout 'oak_log' is not a lumberjack tool");
+  });
+
   it('validation catches a quest prerequisite cycle', () => {
     const broken: ContentTables = {
       ...CONTENT,

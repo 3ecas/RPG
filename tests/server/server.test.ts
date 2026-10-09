@@ -336,16 +336,19 @@ describe('game server', () => {
   it('chops a tree, drops the log for the other player to find once it shows, and keeps it all in the store', async () => {
     const store = new MemoryStore();
     const base = { secretHash: hashSecret(SECRET), createdAt: 1, dir: 0 as const, running: false, zone: 'greenhollow' as const, lastSeenAt: 1 };
-    await store.save({ ...base, name: 'Ada', state: {}, x: 3, y: 3 }); // beside the oak at (3, 2)
+    await store.save({ ...base, name: 'Ada', state: { bag: [{ itemId: 'stone_hatchet', qty: 1 }], coins: 3 }, x: 3, y: 3 }); // beside the oak at (3, 2)
     await store.save({ ...base, name: 'Bob', state: {}, x: 5, y: 3 });
     const { port } = await start(store);
     const ada = await connect(port);
     ada.hello('Ada');
     const wa = await ada.next(isWelcome);
-    expect(wa.bag[0]).toEqual(['bronze_hatchet', 1]);
+    expect(wa.bag[0]).toEqual(['stone_hatchet', 1]);
     expect(wa.skills).toContainEqual(['lumberjack', 0]);
     expect(wa.gear).toEqual([]);
     expect(wa.stats).toEqual({ hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 });
+    expect(wa.quests).toEqual([]);
+    expect(wa.coins).toBe(3);
+    expect(wa.fires).toEqual([]);
     expect(wa.items).toEqual([]);
     const bob = await connect(port);
     bob.hello('Bob');

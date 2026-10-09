@@ -36,8 +36,8 @@ const MIN_H = 90;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** Drags `el` around `stage` by `handle`, keeping it inside. Buttons and inputs on the handle still work. */
-export function makeDraggable(handle: HTMLElement, el: HTMLElement, stage: HTMLElement, onEnd?: () => void): void {
+/** Drags `el` around `stage` by `handle`, keeping it inside and above the stage's bottom inset. Buttons and inputs on the handle still work. */
+export function makeDraggable(handle: HTMLElement, el: HTMLElement, stage: HTMLElement, onEnd?: () => void, bottomInset = 0): void {
   handle.addEventListener('pointerdown', (event) => {
     if ((event.target as HTMLElement).closest('button, input, select, a')) return;
     event.preventDefault();
@@ -48,7 +48,7 @@ export function makeDraggable(handle: HTMLElement, el: HTMLElement, stage: HTMLE
     handle.setPointerCapture(event.pointerId);
     const move = (ev: PointerEvent) => {
       el.style.left = `${clamp(left + ev.clientX - startX, 0, Math.max(0, stage.clientWidth - el.offsetWidth))}px`;
-      el.style.top = `${clamp(top + ev.clientY - startY, 0, Math.max(0, stage.clientHeight - el.offsetHeight))}px`;
+      el.style.top = `${clamp(top + ev.clientY - startY, 0, Math.max(0, stage.clientHeight - bottomInset - el.offsetHeight))}px`;
     };
     const up = () => {
       handle.removeEventListener('pointermove', move);
@@ -71,7 +71,8 @@ export class Windows {
   private z = 20;
   private saveQueued = false;
 
-  constructor(private readonly stage: HTMLElement, private readonly storageKey: string) {
+  /** `bottom` is the height of what sits along the stage's bottom edge (the menu bar), which windows stay above. */
+  constructor(private readonly stage: HTMLElement, private readonly storageKey: string, private readonly inset: { bottom: number } = { bottom: 0 }) {
     try {
       const raw = localStorage.getItem(storageKey);
       const parsed: unknown = raw ? JSON.parse(raw) : null;
@@ -96,7 +97,7 @@ export class Windows {
     const managed: Managed = { spec, el, body };
     this.wins.set(spec.id, managed);
     this.place(managed, this.saved[spec.id]);
-    makeDraggable(head, el, this.stage, () => this.remember(spec.id));
+    makeDraggable(head, el, this.stage, () => this.remember(spec.id), this.inset.bottom);
     head.querySelector('.win-x')!.addEventListener('click', () => this.close(spec.id));
     el.addEventListener('pointerdown', () => this.front(el));
     new ResizeObserver(() => this.remember(spec.id)).observe(el);
@@ -184,8 +185,8 @@ export class Windows {
 
   private keepInside(): void {
     const sw = this.stage.clientWidth;
-    const sh = this.stage.clientHeight;
-    if (sw === 0 || sh === 0) return;
+    const sh = this.stage.clientHeight - this.inset.bottom;
+    if (sw === 0 || sh <= 0) return;
     const all = [...[...this.wins.values()].map((w) => w.el), ...this.bars.values()];
     for (const el of all) {
       // Not rendered (closed, or the stage is shut): its offsets read as zero and mean nothing.

@@ -196,6 +196,8 @@ export interface NpcDef {
   readonly name: string;
   readonly title: string;
   readonly greeting: string;
+  /** Hands over a tool for a skill when the player talks to them with none of that kind in their bag or hands, saying `line`. */
+  readonly handout?: { readonly itemId: ItemId; readonly skill: SkillId; readonly line: string };
 }
 
 /**
@@ -311,6 +313,9 @@ export interface ZoneDef {
 /** Ground of one map cell. */
 export type Terrain = 'grass' | 'path' | 'tallgrass' | 'flowers' | 'dirt' | 'floor' | 'bridge' | 'water' | 'rock' | 'trees' | 'fence' | 'void';
 
+/** Ground one can stand on. The rest (water, rock, dense trees, fences, the void) is not walked through. */
+export const WALKABLE_TERRAIN: readonly Terrain[] = ['grass', 'path', 'tallgrass', 'flowers', 'dirt', 'floor', 'bridge'];
+
 /** Characters a map row may use for terrain. Letters and digits are legend keys instead. */
 export const TERRAIN_CHARS: Readonly<Record<string, Terrain>> = {
   '.': 'grass', ',': 'path', '"': 'tallgrass', '*': 'flowers', ':': 'dirt', '=': 'floor', '+': 'bridge',
@@ -322,7 +327,8 @@ export type Biome = 'meadow' | 'hills' | 'city' | 'forest' | 'cave' | 'marsh' | 
 
 /** Something placed on a zone map. Ids must belong to the zone the map is for. */
 export type MapObjectDef =
-  | { readonly kind: 'node'; readonly id: NodeId }
+  /** A gather node. It stands on the biome's ground unless `terrain` says otherwise: fishing spots stand in the water, beside the bank one fishes from. */
+  | { readonly kind: 'node'; readonly id: NodeId; readonly terrain?: Terrain }
   | { readonly kind: 'station'; readonly id: StationId }
   | { readonly kind: 'shop'; readonly id: ShopId }
   | { readonly kind: 'market' }

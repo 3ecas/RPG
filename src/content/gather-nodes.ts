@@ -13,6 +13,7 @@ const treeDeplete = (tier: number) => ({ chance: 1 / 8, respawnMs: 8000 + 2000 *
 const cropDeplete = (tier: number) => ({ chance: 1, respawnMs: 10_000 + 2000 * (tier - 1) });
 
 export const ROCKS = defineNodes({
+  rubble: { name: 'Loose Stones', description: 'Stones lying about the outcrop. A pickaxe breaks them loose; two of them ring a campfire.', skill: 'mining', tier: 1, itemId: 'stone', durationMs: 1500, xp: 4, deplete: { chance: 1, respawnMs: 3000 } },
   copper_rock: { name: 'Copper Rock', description: 'Veins of orange in grey stone.', skill: 'mining', tier: 1, itemId: 'copper_ore', durationMs: duration(1), xp: xp(1), deplete: rockDeplete(1) },
   tin_rock: { name: 'Tin Rock', description: 'Pale streaks, easy to chip.', skill: 'mining', tier: 1, itemId: 'tin_ore', durationMs: duration(1), xp: xp(1), deplete: rockDeplete(1) },
   iron_rock: { name: 'Iron Rock', description: 'Rust-red and stubborn.', skill: 'mining', tier: 2, itemId: 'iron_ore', durationMs: duration(2), xp: xp(2), deplete: rockDeplete(2) },

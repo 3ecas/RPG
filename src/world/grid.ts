@@ -3,7 +3,7 @@
  * their footprints, and the queries movement needs. Pure data and functions;
  * the renderer and input live in ui/ and the server paths over it.
  */
-import { BIG_KINDS, TERRAIN_CHARS, type MapObjectDef, type MapObjectKind, type Terrain, type ZoneMapDef } from '@/types/content';
+import { BIG_KINDS, TERRAIN_CHARS, WALKABLE_TERRAIN, type MapObjectDef, type MapObjectKind, type Terrain, type ZoneMapDef } from '@/types/content';
 
 export interface Cell {
   x: number;
@@ -33,7 +33,7 @@ export interface Grid {
   spawn: Cell;
 }
 
-export const WALKABLE: ReadonlySet<Terrain> = new Set<Terrain>(['grass', 'path', 'tallgrass', 'flowers', 'dirt', 'floor', 'bridge']);
+export const WALKABLE: ReadonlySet<Terrain> = new Set<Terrain>(WALKABLE_TERRAIN);
 
 /** Kinds you cannot walk through. Monsters are spawn spots (the creature itself moves), exits and spawns are ground. */
 export function blocks(kind: MapObjectKind): boolean {
@@ -55,8 +55,8 @@ export function parseMap(def: ZoneMapDef): Grid {
       if (ground) { terrain[y * width + x] = ground; continue; }
       const obj = def.legend[ch];
       if (!obj) continue;
-      // Objects stand on the biome's ground; exits and spawns are part of the road.
-      terrain[y * width + x] = obj.kind === 'exit' || obj.kind === 'spawn' ? 'path' : 'grass';
+      // Objects stand on the biome's ground; exits and spawns are part of the road; a node may say what it stands in (fishing spots: water).
+      terrain[y * width + x] = obj.kind === 'exit' || obj.kind === 'spawn' ? 'path' : obj.kind === 'node' && obj.terrain ? obj.terrain : 'grass';
       if (obj.kind === 'spawn') spawn = { x, y };
       if (seen.has(y * width + x)) continue;
       const big = BIG_KINDS.includes(obj.kind);

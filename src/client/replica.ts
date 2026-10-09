@@ -9,9 +9,10 @@
  * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { BagView, ClientMessage, EntitySnapshot, GearView, Placement, ServerMessage, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { BagView, ClientMessage, EntitySnapshot, FireSession, GearView, Placement, QuestView, ServerMessage, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
+import type { PathOptions } from '@/world/path';
 
 export type InputMessage = Extract<ClientMessage, { t: 'input' }>;
 
@@ -42,6 +43,13 @@ export interface GroundItemEntry {
   gid: number;
   item: string;
   qty: number;
+  x: number;
+  y: number;
+}
+
+/** A campfire someone built, burning on a cell. */
+export interface FireEntry {
+  fid: number;
   x: number;
   y: number;
 }
@@ -103,15 +111,29 @@ export class Replica {
   readonly items = new Map<number, GroundItemEntry>();
   /** Gather nodes that are empty right now, by their index among the map's objects. */
   readonly depleted = new Set<number>();
+  /** Campfires players built, burning in the zone; walks go around them, as on the server. */
+  readonly fires = new Map<number, FireEntry>();
+  private readonly walkOptions: PathOptions = {
+    blocked: (x, y) => {
+      for (const fire of this.fires.values()) if (fire.x === x && fire.y === y) return true;
+      return false;
+    },
+  };
   bag: BagView = [];
   gear: GearView = [];
   stats: StatsView | null = null;
+  /** The quests taken or finished, with the progress of each objective. */
+  quests: QuestView[] = [];
+  coins = 0;
   /** Total xp per skill. */
   readonly skills = new Map<string, number>();
   /** The bank while it is open. */
   bank: StackView[] | null = null;
+  /** The fire you stand by while you use it, and when the server said how much fuel it had. */
+  fire: FireSession | null = null;
+  fireSeenAt = 0;
   readonly xpDrops: XpDrop[] = [];
-  /** Bumped whenever the bag, the skills or the bank change, so panels know to redraw. */
+  /** Bumped whenever the bag, the skills, the gear, the quests, the coins, the bank or the fire change, so panels know to redraw. */
   version = 0;
   /** Receives every input the prediction generates, to be sent to the server. */
   onInput: ((msg: InputMessage) => void) | null = null;
@@ -216,6 +238,8 @@ export class Replica {
       this.bag = msg.bag;
       this.gear = msg.gear;
       this.stats = msg.stats;
+      this.quests = msg.quests;
+      this.coins = msg.coins;
       this.skills.clear();
       for (const [skill, xp] of msg.skills) this.skills.set(skill, xp);
       this.bank = null;
@@ -241,8 +265,11 @@ export class Replica {
     for (const [gid, item, qty, x, y] of msg.items) this.items.set(gid, { gid, item, qty, x, y });
     this.depleted.clear();
     for (const index of msg.nodes) this.depleted.add(index);
-    if (this.bank !== null) {
+    this.fires.clear();
+    for (const [fid, x, y] of msg.fires) this.fires.set(fid, { fid, x, y });
+    if (this.bank !== null || this.fire !== null) {
       this.bank = null;
+      this.fire = null;
       this.version++;
     }
     this.pending = [];
@@ -337,6 +364,8 @@ export class Replica {
     }
     for (const [gid, item, qty, x, y] of delta.drops) this.items.set(gid, { gid, item, qty, x, y });
     for (const gid of delta.taken) this.items.delete(gid);
+    for (const [fid, x, y] of delta.fires) this.fires.set(fid, { fid, x, y });
+    for (const fid of delta.doused) this.fires.delete(fid);
     for (const line of delta.chat) {
       this.chat.push({ id: line.id, name: this.entities.get(line.id)?.name ?? '?', text: line.text, at: now });
       if (this.chat.length > CHAT_LOG_CAP) this.chat.shift();
@@ -354,9 +383,15 @@ export class Replica {
     }
     if (you.gear) this.gear = you.gear;
     if (you.stats) this.stats = you.stats;
+    if (you.quests) this.quests = you.quests;
+    if (you.coins !== undefined) this.coins = you.coins;
     if (you.bank !== undefined) this.bank = you.bank;
+    if (you.fire !== undefined) {
+      this.fire = you.fire;
+      this.fireSeenAt = now;
+    }
     if (you.items) for (const [gid, item, qty, x, y] of you.items) this.items.set(gid, { gid, item, qty, x, y });
-    if (you.bag || you.xp || you.gear || you.stats || you.bank !== undefined) this.version++;
+    if (you.bag || you.xp || you.gear || you.stats || you.quests || you.coins !== undefined || you.bank !== undefined || you.fire !== undefined) this.version++;
     if (you.notes) for (const note of you.notes) this.onNote?.(note);
   }
 
@@ -409,7 +444,7 @@ export class Replica {
 
   private applyInput(grid: Grid, msg: InputMessage): void {
     if (msg.stop) this.self.path = this.self.t > 0 ? this.self.path.slice(0, 1) : [];
-    else if (msg.to) planWalk(grid, this.self, { x: msg.to[0], y: msg.to[1] });
+    else if (msg.to) planWalk(grid, this.self, { x: msg.to[0], y: msg.to[1] }, this.walkOptions);
     this.self.moving = step(grid, this.self);
   }
 

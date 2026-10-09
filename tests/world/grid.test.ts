@@ -13,12 +13,13 @@ const tiny: ZoneMapDef = {
     '^S..A..^',
     '^..HH..^',
     '^..HH..1',
-    '^.....~^',
+    '^.....B^',
     '^^^^^^^^',
   ],
   legend: {
     S: { kind: 'spawn' },
     A: { kind: 'node', id: 'oak_tree' },
+    B: { kind: 'node', id: 'shrimp_spot', terrain: 'water' },
     H: { kind: 'shop', id: 'hollow_goods' },
     1: { kind: 'exit', zone: 'copper_hills' },
   },
@@ -31,7 +32,10 @@ describe('grid', () => {
     expect(grid.height).toBe(6);
     expect(grid.spawn).toEqual({ x: 1, y: 1 });
     expect(terrainAt(grid, 0, 0)).toBe('trees');
-    expect(terrainAt(grid, 6, 4)).toBe('water');
+    expect(terrainAt(grid, 6, 4)).toBe('water'); // the fishing spot stands in the water it says
+    expect(terrainAt(grid, 4, 1)).toBe('grass'); // a tree stands on the ground
+    expect(isWalkable(grid, 6, 4)).toBe(false);
+    expect(objectAt(grid, 6, 4)?.def).toEqual({ kind: 'node', id: 'shrimp_spot', terrain: 'water' });
     expect(terrainAt(grid, 7, 3)).toBe('path'); // the exit is road
     const shop = grid.objects.find((o) => o.def.kind === 'shop')!;
     expect([shop.x, shop.y, shop.w, shop.h]).toEqual([3, 2, 2, 2]);

@@ -62,7 +62,7 @@ describe('room: entering and leaving', () => {
     const player = enterOk(r, 'Ada');
     expect(player.cell).toEqual({ x: 1, y: 1 });
     expect(r.snapshot()).toEqual([{ id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, t: 0, dir: 0, running: false, moving: false, act: null }]);
-    expect(player.bag[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 }); // the starting kit
+    expect(player.bag[0]).toBeNull(); // no starting kit: Rowan in the village hands out hatchets
     expect(player.skills.lumberjack).toBe(0);
     expect(r.advance().joined.map((e) => e.name)).toEqual(['Ada']);
     expect(r.advance().joined).toEqual([]);

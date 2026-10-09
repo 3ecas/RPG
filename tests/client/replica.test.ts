@@ -17,11 +17,11 @@ const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, 
 const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false, act: null };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], seq, resumed: false, bag: [['bronze_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 } };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], fires: [[3, 5, 5]], seq, resumed: false, bag: [['stone_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 }, quests: [['village_tour', 'active', [0, 0, 0, 0]]], coins: 7 };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
-  return { t: 'tick', tick: tickNo, joined: [], left: [], moves: [], acts: [], nodes: [], drops: [], taken: [], chat: [], ...part };
+  return { t: 'tick', tick: tickNo, joined: [], left: [], moves: [], acts: [], nodes: [], drops: [], taken: [], fires: [], doused: [], chat: [], ...part };
 }
 
 function replica(entities: EntitySnapshot[] = [ada]): { r: Replica; sent: InputMessage[] } {
@@ -139,7 +139,7 @@ describe('replica: another zone', () => {
     r.update(1000 + STEP_MS * 3); // inputs 1..3 in flight
     const arrived: EntitySnapshot = { ...ada, cx: 0, cy: 12, dir: 2 };
     const cyd: EntitySnapshot = { ...bob, id: 3, name: 'Cyd', cx: 2, cy: 12 };
-    r.apply({ t: 'zone', zone: 'copper_hills', tick: 400, entities: [arrived, cyd], items: [[9, 'copper_ore', 1, 2, 13]], nodes: [4], seq: 1003 }, 1200);
+    r.apply({ t: 'zone', zone: 'copper_hills', tick: 400, entities: [arrived, cyd], items: [[9, 'copper_ore', 1, 2, 13]], nodes: [4], fires: [[8, 1, 1]], seq: 1003 }, 1200);
     expect([...r.items.keys()]).toEqual([9]);
     expect([...r.depleted]).toEqual([4]);
     expect(r.zone).toBe('copper_hills');
@@ -214,10 +214,10 @@ describe('replica: the zone around you', () => {
     const { r } = replica();
     const notes: string[] = [];
     r.onNote = (text) => notes.push(text);
-    expect(r.bag).toEqual([['bronze_hatchet', 1], null]);
+    expect(r.bag).toEqual([['stone_hatchet', 1], null]);
     expect(r.skills.get('mining')).toBe(83);
     const before = r.version;
-    r.apply({ t: 'you', bag: [['bronze_hatchet', 1], ['oak_log', 1]], xp: [['lumberjack', 10]], items: [[5, 'oak_log', 1, 1, 1]], notes: ['Your bag is full.'] }, 2000);
+    r.apply({ t: 'you', bag: [['stone_hatchet', 1], ['oak_log', 1]], xp: [['lumberjack', 10]], items: [[5, 'oak_log', 1, 1, 1]], notes: ['Your bag is full.'] }, 2000);
     expect(r.bag[1]).toEqual(['oak_log', 1]);
     expect(r.skills.get('lumberjack')).toBe(10);
     expect(r.xpDrops).toEqual([{ skill: 'lumberjack', amount: 10, at: 2000 }]);
@@ -231,6 +231,22 @@ describe('replica: the zone around you', () => {
     r.apply({ t: 'you', gear: [['main_hand', 'bronze_sword', 1]], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 6, spellPower: 0 } }, 2150);
     expect(r.gear).toEqual([['main_hand', 'bronze_sword', 1]]);
     expect(r.stats?.attack).toBe(6);
+    expect(r.quests).toEqual([['village_tour', 'active', [0, 0, 0, 0]]]);
+    r.apply({ t: 'you', quests: [['village_tour', 'done', [1, 1, 1, 1]]] }, 2200);
+    expect(r.quests[0]?.[1]).toBe('done');
+    // Coins, the fires in the zone, and the fire you stand by.
+    expect(r.coins).toBe(7);
+    expect([...r.fires.values()]).toEqual([{ fid: 3, x: 5, y: 5 }]);
+    const v = r.version;
+    r.apply(tick(102, { fires: [[4, 6, 6]], doused: [3] }), 2300);
+    expect([...r.fires.keys()]).toEqual([4]);
+    r.apply({ t: 'you', coins: 32, fire: { fid: 4, fuelMs: 59_000 } }, 2400);
+    expect(r.coins).toBe(32);
+    expect(r.fire).toEqual({ fid: 4, fuelMs: 59_000 });
+    expect(r.fireSeenAt).toBe(2400);
+    expect(r.version).toBeGreaterThan(v);
+    r.apply({ t: 'you', fire: null }, 2500);
+    expect(r.fire).toBeNull();
     r.apply({ t: 'you', bank: null }, 2200);
     expect(r.bank).toBeNull();
     r.update(2000 + XP_DROP_MS + 100);

@@ -6,15 +6,37 @@ world is drawn with simple shapes for now; art comes once the mechanics are
 in. [DESIGN.md](DESIGN.md) is the design and the build order;
 [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is put together.
 
-## What works today (slices 1 to 2b: walk together, characters that last, woodcutting end to end, skills and gear and windows)
+## What works today (slices 1 to 2c: walk together, characters that last, gathering end to end, skills, gear and windows, quests, campfires and cooking)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
-- **Chop trees.** Click an oak (or right-click it for Chop, Examine, Walk
-  here) and you walk up beside it and swing. Every action tick (600 ms) rolls
-  for a log, better with your level and your hatchet's tier. Logs go into a
-  bag of 28 slots, one each; xp floats up and the Skills tab shows the
-  level. A tree sometimes falls, for everyone, and grows back a few seconds
-  later. You start with a bronze hatchet; without one you cannot chop.
+- **Tools from people.** You start with nothing in your bag. Rowan the
+  lumberjack, by the oak grove west of the village, hands a stone hatchet to
+  anyone who talks to him without one; Greta the stonemason, by the rocks to
+  the east, does the same with a stone pickaxe. Hollow Goods sells both too.
+- **Chop trees, break stones, fish.** Click an oak (or right-click it for
+  Chop, Examine, Walk here) and you walk up beside it and swing. Every
+  action tick (600 ms) rolls for a log, better with your level and your
+  hatchet's tier. The loose stones by the outcrop give stones to a pickaxe;
+  the shrimp waters, in the pond right off the bank, give raw shrimp to
+  anyone. Everything goes into a bag of 28 slots, one each; xp floats up and
+  the Skills window shows the level. A tree sometimes falls, for everyone,
+  and grows back a few seconds later.
+- **Cook at a campfire, or build your own.** The village fire never goes
+  out: stand by it, and the Campfire window lists what in your bag can be
+  cooked, one or all. Every cook takes a couple of seconds; some burn, fewer
+  with every Cooking level. Two stones and a log in your bag build a fire
+  where you stand (right-click a stone or a log); it burns a minute per tier
+  of the log, anyone can cook on it, and a log fed to it keeps it going, up
+  to ten minutes. Building and feeding train Crafting.
+- **Quests.** The Journal's Quests tab lists every quest down the left and
+  tells the picked one on the right: who gives it, the task, the objectives,
+  the rewards, and one button to accept it. An accepted quest shows top
+  left with its objectives in red until each is done, then green; finishing
+  one pays coins, xp and items. Two can be finished today: Timber for Pell
+  (talk to Pell, chop five oak logs) and A Walk Around the Village (meet
+  three people and see the hills).
+- **Coins** are a purse on the character, shown in the inventory, not an
+  item in the bag.
 - **Drop and take.** Click a bag slot for Drop or Examine. A dropped item
   lies where you stood: yours alone to see for a minute, then anyone's to
   take, gone after three. Click it (or Take from the right-click menu) to
@@ -33,13 +55,16 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   legs, hands, feet, main hand, off hand, two trinkets. Wear and wield from
   the inventory, remove from the Gear window; too high a tier and the game
   says which level you need. Hatchets and pickaxes can be wielded.
-- **Windows.** A draggable menu bar opens the Inventory, Gear, Journal
-  (quests, your adventure log, a bestiary, the item database), Skills, Map
-  and Settings. Every window drags by its title, resizes by its corner, and
-  closes with its X; the layout is remembered per browser. The map sits top
-  right. Keys: I, G, J, K, M, O for the windows, R to run, Space to stop,
-  Enter to talk.
-- Skills, bag, bank, gear, hit points and mana are saved with the character.
+- **Windows.** The menu bar sits along the bottom and opens the Inventory
+  (what you wear in nine slots laid out as a body, your numbers, your coins
+  and the bag in one panel), the Journal (quests, your adventure log, a
+  bestiary, the item database, each as a tab with a list on the left and
+  the page on the right), Skills, Map and Settings. Every window drags by
+  its title, resizes by its corner, and closes with its X; the layout is
+  remembered per browser. The map sits top right. Keys: I, J, K, M, O for
+  the windows, R to run, Space to stop, Enter to talk.
+- Skills, bag, bank, gear, hit points, mana, coins and quests are saved with
+  the character.
 - Your character is saved under its name: leave and come back, on the same
   day or after the server restarted, and you stand where you left off, in
   the zone you were in. Every zone runs on the one server; walk onto an
@@ -111,8 +136,9 @@ port reports the tick, who is in which zone, and which store is in use.
 A character is one JSON document keyed by its lower-cased name: the zone,
 the cell, the facing, walking or running, when it was made and last seen,
 and a `state` object holding the skills (total xp each), the bag (28 slots),
-the bank, the gear by slot, and the current hit points and mana, which the
-next slices extend (flags such as "finished the tutorial"). It is written when you leave, when you change zone, every
+the bank, the gear by slot, the current hit points and mana, the coins and
+the quests taken or done with their progress, which the next slices extend.
+It is written when you leave, when you change zone, every
 `SAVE_MS` while you play, and when the server shuts down. On Postgres it is
 the `characters` table, one `jsonb` row per name; on a machine without a
 database it is the file. An item or skill the content no longer has is
@@ -139,18 +165,18 @@ npm start              # runs the built server
 | `src/types/`    | Shared types, typed content ids                             | content, type-only      |
 | `src/content/`  | The world's data: zones, tile maps, and the tables they list | types                  |
 | `src/core/`     | The content registry with its validation, the seeded RNG    | types                   |
-| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve, the bag rules, the character's numbers | types |
+| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve and the cook roll, the bag rules, the character's numbers, the campfire rules | types |
 | `src/net/`      | The wire protocol: message types and the strict parser      | types, world            |
-| `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
+| `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank, quests, campfires and cooking), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
 | `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net    |
-| `src/ui/`       | The page: the shapes renderer, the minimap, the window manager, the shell with its windows and menus, the join card, chat | client, net, world, types |
+| `src/ui/`       | The page: the shapes renderer, the minimap, the window manager, the shell with its windows, the quest tracker and the menus, the join card, chat | client, net, world, types |
 | `src/main.ts`   | The entry point                                             | everything              |
-| `tests/`        | Vitest: protocol, room, gathering, gear and the bank, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, skills and stats, bag, content |         |
+| `tests/`        | Vitest: protocol, room, gathering, gear and the bank, quests, campfires and cooking, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, skills and stats, bag, content |         |
 
 ESLint fails the build if a layer imports something it should not.
 
 ## Next
 
-Slice 3 of the build order in DESIGN.md: mining, smelting, smithing,
-fishing, cooking and firemaking the same way woodcutting works, so every
-gathering and production skill runs on the server.
+Slice 3 of the build order in DESIGN.md: the furnace, the anvil, the
+sawbench and the tannery the way the campfire works, so every production
+skill runs on the server; the other gather nodes already do.

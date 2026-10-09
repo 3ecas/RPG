@@ -40,6 +40,12 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'input', seq: 14, to: [1, 1], stop: true })).toEqual({ t: 'input', seq: 14, to: [1, 1], stop: true });
     expect(parseClientMessage({ t: 'equip', slot: 3 })).toEqual({ t: 'equip', slot: 3 });
     expect(parseClientMessage({ t: 'unequip', slot: 'head' })).toEqual({ t: 'unequip', slot: 'head' });
+    expect(parseClientMessage({ t: 'quest', op: 'accept', id: 'timber_for_pell' })).toEqual({ t: 'quest', op: 'accept', id: 'timber_for_pell' });
+    expect(parseClientMessage({ t: 'quest', op: 'abandon', id: 'village_tour' })).toEqual({ t: 'quest', op: 'abandon', id: 'village_tour' });
+    expect(parseClientMessage({ t: 'fire', op: 'build' })).toEqual({ t: 'fire', op: 'build' });
+    expect(parseClientMessage({ t: 'fire', op: 'feed' })).toEqual({ t: 'fire', op: 'feed' });
+    expect(parseClientMessage({ t: 'fire', op: 'close' })).toEqual({ t: 'fire', op: 'close' });
+    expect(parseClientMessage({ t: 'cook', recipe: 'cook_shrimp', qty: 3 })).toEqual({ t: 'cook', recipe: 'cook_shrimp', qty: 3 });
     expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 1 })).toEqual({ t: 'bank', op: 'deposit', slot: 0, qty: 1 });
     expect(parseClientMessage({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 })).toEqual({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 });
     expect(parseClientMessage({ t: 'bank', op: 'all' })).toEqual({ t: 'bank', op: 'all' });
@@ -72,6 +78,11 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'equip', slot: 'head' })).toBeNull();
     expect(parseClientMessage({ t: 'unequip', slot: 'hat' })).toBeNull();
     expect(parseClientMessage({ t: 'unequip', slot: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'quest', op: 'finish', id: 'timber_for_pell' })).toBeNull();
+    expect(parseClientMessage({ t: 'quest', op: 'accept', id: 'Timber For Pell' })).toBeNull();
+    expect(parseClientMessage({ t: 'fire', op: 'light' })).toBeNull();
+    expect(parseClientMessage({ t: 'cook', recipe: 'cook_shrimp', qty: 0 })).toBeNull();
+    expect(parseClientMessage({ t: 'cook', recipe: 'Cook Shrimp', qty: 1 })).toBeNull();
     expect(parseClientMessage({ t: 'drop', slot: -1 })).toBeNull();
     expect(parseClientMessage({ t: 'drop', slot: LIMITS.SLOT_MAX })).toBeNull();
     expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 0 })).toBeNull();

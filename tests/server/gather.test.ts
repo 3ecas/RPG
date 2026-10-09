@@ -42,8 +42,9 @@ class ScriptedRng extends Rng {
   }
 }
 
+/** Everyone here starts with a hatchet, as if Rowan had already handed one over. */
 function room(options: Partial<RoomOptions> = {}, def: ZoneMapDef = map): Room {
-  return new Room('greenhollow', def, { graceTicks: 3, capacity: 4, content, rng: new ScriptedRng(), rules: { actionSteps: 2, itemPublicSteps: 10, itemGoneSteps: 20 }, ...options });
+  return new Room('greenhollow', def, { graceTicks: 3, capacity: 4, content, rng: new ScriptedRng(), rules: { actionSteps: 2, itemPublicSteps: 10, itemGoneSteps: 20 }, kit: [{ itemId: 'stone_hatchet', qty: 1 }], ...options });
 }
 
 function character(name: string, state: Record<string, unknown> = {}): Character {
@@ -131,7 +132,7 @@ describe('gathering: chopping a tree', () => {
     useAndArrive(r, low, WILLOW, seq2);
     expect(you(r, low)?.notes).toEqual(['You need Lumberjack level 15 for the willow tree.']);
 
-    const full = enterOk(r, 'Full', { x: 2, y: 1 }, { bag: new Array(28).fill({ itemId: 'bronze_hatchet', qty: 1 }) });
+    const full = enterOk(r, 'Full', { x: 2, y: 1 }, { bag: new Array(28).fill({ itemId: 'stone_hatchet', qty: 1 }) });
     const seq3 = { n: 0 };
     useAndArrive(r, full, OAK, seq3);
     expect(you(r, full)?.notes).toEqual(['Your bag is full.']);
@@ -145,7 +146,7 @@ describe('gathering: chopping a tree', () => {
 
   it('fills the bag, says so, and stops', () => {
     const r = room({ rng: new ScriptedRng(new Array(60).fill(null).flatMap(() => [true, false])) });
-    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: new Array(26).fill({ itemId: 'bronze_hatchet', qty: 1 }) });
+    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: new Array(26).fill({ itemId: 'stone_hatchet', qty: 1 }) });
     const seq = { n: 0 };
     useAndArrive(r, p, OAK, seq);
     expect(freeSlots(p.bag)).toBe(2);
@@ -212,9 +213,9 @@ describe('items on the ground', () => {
     expect(ada.bag[0]).toBeNull();
     const ya = you(r, ada)!;
     expect(ya.bag?.[0]).toBeNull();
-    expect(ya.items).toEqual([[1, 'bronze_hatchet', 1, 2, 3]]);
+    expect(ya.items).toEqual([[1, 'stone_hatchet', 1, 2, 3]]);
     expect(r.snapshotFor(bob.id)?.items).toEqual([]);
-    expect(r.snapshotFor(ada.id)?.items).toEqual([[1, 'bronze_hatchet', 1, 2, 3]]);
+    expect(r.snapshotFor(ada.id)?.items).toEqual([[1, 'stone_hatchet', 1, 2, 3]]);
     expect(r.drop(ada.id, 0)).toBe(false); // nothing there now
     // Bob cannot take what he cannot see.
     const sb = { n: 0 };
@@ -226,12 +227,12 @@ describe('items on the ground', () => {
       const delta = r.advance();
       if (delta.drops.length > 0) shown = delta;
     }
-    expect(shown?.drops).toEqual([[1, 'bronze_hatchet', 1, 2, 3]]);
-    expect(r.snapshotFor(bob.id)?.items).toEqual([[1, 'bronze_hatchet', 1, 2, 3]]);
+    expect(shown?.drops).toEqual([[1, 'stone_hatchet', 1, 2, 3]]);
+    expect(r.snapshotFor(bob.id)?.items).toEqual([[1, 'stone_hatchet', 1, 2, 3]]);
     useAndArrive(r, bob, { x: 2, y: 3 }, sb);
-    expect(bob.bag.filter((s) => s?.itemId === 'bronze_hatchet')).toHaveLength(2);
+    expect(bob.bag.filter((s) => s?.itemId === 'stone_hatchet')).toHaveLength(2);
     expect(r.groundItem(1)).toBeNull();
-    expect(you(r, bob)?.bag?.filter((s) => s?.[0] === 'bronze_hatchet')).toHaveLength(2);
+    expect(you(r, bob)?.bag?.filter((s) => s?.[0] === 'stone_hatchet')).toHaveLength(2);
     // What nobody takes goes away.
     r.drop(bob.id, 0);
     let gone = null;
@@ -249,7 +250,7 @@ describe('items on the ground', () => {
     r.drop(ada.id, 0);
     const sa = { n: 0 };
     useAndArrive(r, ada, { x: 2, y: 3 }, sa); // standing on it already
-    expect(ada.bag[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 });
+    expect(ada.bag[0]).toEqual({ itemId: 'stone_hatchet', qty: 1 });
     r.drop(ada.id, 0);
     const full = enterOk(r, 'Full', { x: 3, y: 3 }, { bag: new Array(28).fill({ itemId: 'oak_log', qty: 1 }) });
     r.advance();
@@ -264,7 +265,7 @@ describe('items on the ground', () => {
 describe('the bank', () => {
   it('opens beside the chest, takes deposits and gives withdrawals, and shuts when you walk off', () => {
     const r = room();
-    const p = enterOk(r, 'Ada', { x: 5, y: 2 }, { bag: [{ itemId: 'bronze_hatchet', qty: 1 }, { itemId: 'oak_log', qty: 1 }, { itemId: 'oak_log', qty: 1 }] });
+    const p = enterOk(r, 'Ada', { x: 5, y: 2 }, { bag: [{ itemId: 'stone_hatchet', qty: 1 }, { itemId: 'oak_log', qty: 1 }, { itemId: 'oak_log', qty: 1 }] });
     const seq = { n: 0 };
     expect(r.bank(p.id, { t: 'bank', op: 'all' })).toBe(false); // not open yet
     useAndArrive(r, p, BANK, seq);
@@ -279,10 +280,10 @@ describe('the bank', () => {
     expect(y.bag?.[1]).toBeNull();
     expect(r.bank(p.id, { t: 'bank', op: 'all' })).toBe(true);
     expect(p.bag.every((s) => s === null)).toBe(true);
-    expect(p.bank).toEqual([{ itemId: 'oak_log', qty: 2 }, { itemId: 'bronze_hatchet', qty: 1 }]);
+    expect(p.bank).toEqual([{ itemId: 'oak_log', qty: 2 }, { itemId: 'stone_hatchet', qty: 1 }]);
     expect(r.bank(p.id, { t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 })).toBe(true); // only two to give
     expect(p.bag.filter((s) => s?.itemId === 'oak_log')).toHaveLength(2);
-    expect(p.bank).toEqual([{ itemId: 'bronze_hatchet', qty: 1 }]);
+    expect(p.bank).toEqual([{ itemId: 'stone_hatchet', qty: 1 }]);
     expect(r.bank(p.id, { t: 'bank', op: 'withdraw', item: 'oak_log', qty: 1 })).toBe(false);
     expect(r.bank(p.id, { t: 'bank', op: 'withdraw', item: 'unobtainium', qty: 1 })).toBe(false);
     expect(r.bank(p.id, { t: 'bank', op: 'deposit', slot: 20, qty: 1 })).toBe(false);
@@ -349,7 +350,7 @@ describe('gear', () => {
 
   it('puts tomes in the off hand and trinkets in the first free trinket slot, counts a hatchet in hand as a tool, and keeps hit points within the maximum', () => {
     const r = room();
-    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: [{ itemId: 'tome_of_sparks', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'bronze_hatchet', qty: 1 }], hp: 999, mana: 2 });
+    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: [{ itemId: 'tome_of_sparks', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'stone_hatchet', qty: 1 }], hp: 999, mana: 2 });
     expect(p.hp).toBe(11); // never above the maximum
     expect(p.mana).toBe(2);
     expect(r.equip(p.id, 0)).toBe(true);
@@ -361,7 +362,7 @@ describe('gear', () => {
     expect(p.gear.trinket_2?.itemId).toBe('copper_ring');
     expect(r.statsOf(p).attack).toBe(5);
     expect(r.equip(p.id, 3)).toBe(true); // the hatchet, wielded
-    expect(p.gear.main_hand?.itemId).toBe('bronze_hatchet');
+    expect(p.gear.main_hand?.itemId).toBe('stone_hatchet');
     expect(p.bag.every((s) => s === null)).toBe(true);
     useAndArrive(r, p, OAK, { n: 0 });
     expect(p.action?.kind).toBe('gather'); // a tool in hand is a tool
@@ -399,8 +400,8 @@ describe('stopping', () => {
 
 describe('what the character keeps', () => {
   it('starts new characters with the kit, reads saved state back, and drops what the content no longer has', () => {
-    const fresh = parseState({}, content, [{ itemId: 'bronze_hatchet', qty: 1 }]);
-    expect(fresh.bag[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 });
+    const fresh = parseState({}, content, [{ itemId: 'stone_hatchet', qty: 1 }]);
+    expect(fresh.bag[0]).toEqual({ itemId: 'stone_hatchet', qty: 1 });
     expect(fresh.bag.slice(1).every((s) => s === null)).toBe(true);
     expect(fresh.skills.lumberjack).toBe(0);
     expect(fresh.bank).toEqual([]);
@@ -410,7 +411,10 @@ describe('what the character keeps', () => {
     expect(saved.bag.slice(0, 4)).toEqual([null, { itemId: 'oak_log', qty: 1 }, null, null]);
     expect(saved.bank).toEqual([{ itemId: 'oak_log', qty: 5 }]);
     expect(parseState(stateOf(saved), content, []).bag).toEqual(saved.bag);
-    const empty = parseState({ bag: [] }, content, [{ itemId: 'bronze_hatchet', qty: 1 }]);
+    const renamed = parseState({ bag: [{ itemId: 'bronze_hatchet', qty: 1 }], gear: { main_hand: { itemId: 'bronze_pickaxe', qty: 1 } } }, content, []);
+    expect(renamed.bag[0]).toEqual({ itemId: 'stone_hatchet', qty: 1 }); // the old name of the tool still reads
+    expect(renamed.gear.main_hand).toEqual({ itemId: 'stone_pickaxe', qty: 1 });
+    const empty = parseState({ bag: [] }, content, [{ itemId: 'stone_hatchet', qty: 1 }]);
     expect(empty.bag.every((s) => s === null)).toBe(true); // a saved empty bag is not a new character
     const worn = parseState({ gear: { head: { itemId: 'bronze_helmet', qty: 3 }, main_hand: { itemId: 'oak_log', qty: 1 }, off_hand: { itemId: 'bronze_sword', qty: 1 }, hat: { itemId: 'bronze_helmet', qty: 1 } }, hp: 7, mana: -2 }, content, []);
     expect(worn.gear).toEqual({ head: { itemId: 'bronze_helmet', qty: 1 } }); // a log is not gear, a sword does not go in the off hand, a hat is not a slot

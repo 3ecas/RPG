@@ -39,9 +39,8 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .world { position: absolute; inset: 0; overflow: hidden; }
 .world-canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
 .stage-closed .win, .stage-closed .menubar { display: none !important; }
-.menubar { position: absolute; z-index: 15; display: flex; align-items: center; gap: 2px; padding: 3px; background: rgba(26, 29, 35, 0.92); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); user-select: none; }
-.menubar .grip { padding: 2px 6px; color: var(--muted); cursor: grab; letter-spacing: -2px; }
-.menubar button { font: inherit; font-size: 12px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; }
+.menubar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; z-index: 15; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; background: rgba(26, 29, 35, 0.94); border-top: 1px solid var(--border); user-select: none; }
+.menubar button { font: inherit; font-size: 12px; padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; }
 .menubar button:hover { background: var(--bg-3); }
 .menubar button.on { background: var(--bg-4); color: var(--accent); }
 .win { position: absolute; display: flex; flex-direction: column; min-width: 160px; min-height: 90px; resize: both; overflow: hidden; background: rgba(26, 29, 35, 0.94); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
@@ -59,6 +58,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .small { font-size: 11px; }
 
 /* ---- the bag and the gear ---- */
+.inv { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.inv-gear { flex: 0 0 150px; }
+.inv-bag { flex: 1; min-width: 160px; }
+.purse { display: flex; align-items: center; gap: 6px; padding: 4px 6px; margin-bottom: 6px; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); font-size: 12px; }
+.purse b { color: #f0c674; }
+.purse .bag-foot { margin-left: auto; padding: 0; }
+.coin { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe08a, #c9962a 70%, #8a6412); box-shadow: 0 0 0 1px #5a4310 inset; flex: none; }
 .bag { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; align-content: start; }
 .slot { position: relative; aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
 .slot-full { cursor: pointer; }
@@ -66,13 +72,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #1b1520; letter-spacing: 0.02em; flex: none; }
 .qty { position: absolute; right: 3px; bottom: 2px; font-size: 10px; color: #f0c674; text-shadow: 0 0 2px #000; }
 .bag-foot { font-size: 11px; text-align: right; padding-top: 6px; }
-.gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 200px; margin: 0 auto; }
+.gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .gslot { aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; text-align: center; }
 .gslot-name { font-size: 10px; color: var(--muted); }
 .gslot-full { border-style: solid; cursor: pointer; }
 .gslot-full:hover { border-color: var(--accent-2); }
-.stats { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; font-size: 12px; }
-.stats div { display: flex; justify-content: space-between; padding: 3px 6px; border-radius: 5px; background: var(--bg-3); }
+.stats { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 11px; }
+.stats div { display: flex; justify-content: space-between; padding: 2px 6px; border-radius: 5px; background: var(--bg-3); }
 .stats b { color: var(--accent); }
 
 /* ---- skills ---- */
@@ -91,14 +97,41 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .unlock-row.next { color: var(--text); background: rgba(124, 196, 255, 0.12); outline: 1px solid var(--accent-2); }
 .unlock-level { font-weight: 700; text-align: right; }
 
-/* ---- journal and settings ---- */
-.jtabs { display: flex; gap: 2px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
-.jtab { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
-.jtab.on { color: var(--text); border-bottom-color: var(--accent-2); }
+/* ---- the journal: tabs across the top, a list on the left, the page on the right ---- */
+.win[data-win="journal"] .win-body { display: flex; flex-direction: column; padding: 0; }
+.jtabs { display: flex; gap: 0; flex: none; background: var(--bg-3); border-bottom: 1px solid var(--border); }
+.jtab { font: inherit; font-size: 12px; padding: 7px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+.jtab.on { color: var(--text); border-bottom-color: var(--accent-2); background: var(--bg-2); }
+.jpane { flex: 1; min-height: 0; display: flex; }
+.jlist { width: 42%; min-width: 150px; max-width: 240px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow-y: auto; scrollbar-width: thin; }
+.jlist .filter { margin: 6px; width: auto; }
+.jitem { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.jitem:hover { background: var(--bg-3); }
+.jitem.on { background: var(--bg-4); }
+.jitem .jname { flex: 1; }
+.jitem.q-active .jname { color: #f0c674; }
+.jitem.q-done .jname { color: var(--ok); }
+.jitem.q-locked .jname { color: var(--muted); }
+.jdetail { flex: 1; min-width: 0; overflow-y: auto; padding: 10px 12px; font-size: 12px; scrollbar-width: thin; }
+.jdetail h3 { margin: 0 0 2px; font-size: 14px; }
+.jdetail h4 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.jdetail p { margin: 0 0 6px; }
+.jdetail .row { display: flex; gap: 8px; margin-top: 12px; }
+.objective { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.objective.todo { color: var(--bad); }
+.objective.done { color: var(--ok); }
+.jlog { flex: 1; overflow-y: auto; padding: 8px; scrollbar-width: thin; }
 .entry { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px; margin-bottom: 4px; border-radius: 6px; background: var(--bg-3); font-size: 12px; }
 .entry > div { width: 100%; }
-.tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-4); color: var(--muted); }
-.filter { width: 100%; font: inherit; padding: 5px 8px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-4); color: var(--muted); white-space: nowrap; }
+.filter { width: 100%; font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+
+/* ---- the quest tracker, top left ---- */
+.tracker { position: absolute; left: 12px; top: 10px; z-index: 12; width: 240px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.tracker[hidden] { display: none; }
+.track { padding: 6px 8px; border-radius: 6px; background: rgba(18, 20, 24, 0.72); font-size: 12px; }
+.track b { display: block; margin-bottom: 2px; color: #f0c674; }
+.track .objective { padding: 1px 0; font-size: 11px; }
 .settings { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
 .settings label { display: flex; align-items: center; gap: 8px; }
 .settings .row { display: flex; gap: 8px; }
@@ -108,6 +141,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .menu[hidden] { display: none; }
 .menu button { font: inherit; font-size: 12px; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; }
 .menu button:hover { background: var(--bg-3); color: var(--accent); }
+.fire-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.fire-head b { color: #f0c674; }
+.cook-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+.cook-name { flex: 1; }
 .stacks { display: flex; flex-direction: column; gap: 4px; }
 .stack { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
 .stack-name { flex: 1; }
@@ -131,7 +168,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .join-button[disabled] { opacity: 0.6; cursor: wait; }
 
 /* ---- chat dock ---- */
-.chatbox { position: absolute; left: 12px; bottom: 12px; width: min(420px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 2; }
+.chatbox { position: absolute; left: 12px; bottom: 50px; width: min(420px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 2; }
 .chatbox[hidden] { display: none; }
 .chat-log { max-height: 132px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; font-size: 12px; pointer-events: auto; scrollbar-width: thin; }
 .chat-line { background: rgba(18, 20, 24, 0.72); padding: 2px 8px; border-radius: 4px; word-break: break-word; }

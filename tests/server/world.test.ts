@@ -72,7 +72,8 @@ describe('world: rooms', () => {
     const saved = w.recordOf(ada, 500)!;
     expect(saved).toMatchObject({ name: 'Ada', zone: 'greenhollow', x: 10, y: 13, lastSeenAt: 500, dir: 1 });
     expect(saved.state).toMatchObject({ skills: { lumberjack: 0 }, bank: [] });
-    expect((saved.state.bag as unknown[])[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 });
+    expect((saved.state.bag as unknown[])[0]).toBeNull();
+    expect(saved.state.coins).toBe(0);
     w.queueInput(ada.id, { seq: 1, to: { x: 15, y: 13 } });
     w.queueInput(ada.id, { seq: 2 });
     w.queueInput(ada.id, { seq: 3 });

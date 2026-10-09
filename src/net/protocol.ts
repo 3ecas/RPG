@@ -11,7 +11,7 @@ import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 8;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -72,6 +72,12 @@ export type ClientMessage =
   | { t: 'equip'; slot: number }
   /** Takes off what is in this gear slot, into the bag. */
   | { t: 'unequip'; slot: EquipSlot }
+  /** Takes a quest from the journal, or gives one up. */
+  | { t: 'quest'; op: 'accept' | 'abandon'; id: string }
+  /** Campfires: build one where you stand from two stones and a log, feed the one you stand by a log, or step away from the one you were using. */
+  | { t: 'fire'; op: 'build' | 'feed' | 'close' }
+  /** Cook this many of a recipe at the fire you stand by. */
+  | { t: 'cook'; recipe: string; qty: number }
   /** The bank, while it is open: move a bag slot in, take an item out, put the whole bag in, or shut it. */
   | { t: 'bank'; op: 'deposit'; slot: number; qty: number }
   | { t: 'bank'; op: 'withdraw'; item: string; qty: number }
@@ -95,6 +101,18 @@ export type StackView = [item: string, qty: number];
 
 /** What is worn: one entry per filled gear slot. */
 export type GearView = [slot: EquipSlot, item: string, qty: number][];
+
+/** A quest the character has taken or finished, with how far each objective is. */
+export type QuestView = [id: string, status: 'active' | 'done', progress: number[]];
+
+/** A campfire a player built, burning on a cell. */
+export type FireView = [fid: number, x: number, y: number];
+
+/** The fire you stand by, while you use it: which built one (null for a village fire) and how long it burns yet (null for ever). */
+export interface FireSession {
+  fid: number | null;
+  fuelMs: number | null;
+}
 
 /** A character's numbers as the panels show them. */
 export interface StatsView {
@@ -123,33 +141,40 @@ export interface TickDelta {
   /** Items that appeared for everyone, and items that are gone. */
   drops: GroundItemView[];
   taken: number[];
+  /** Campfires lit this tick, and ones that went out. */
+  fires: FireView[];
+  doused: number[];
   chat: ChatLine[];
 }
 
-/** A zone as a client first sees it: which one, the server tick, everyone in it, what lies on the ground for you, the empty nodes, and the number of your last input the server applied. */
+/** A zone as a client first sees it: which one, the server tick, everyone in it, what lies on the ground for you, the empty nodes, the fires burning, and the number of your last input the server applied. */
 export interface ZoneSnapshot {
   zone: string;
   tick: number;
   entities: EntitySnapshot[];
   items: GroundItemView[];
   nodes: number[];
+  fires: FireView[];
   seq: number;
 }
 
-/** Things only you learn: your bag after a change, xp gained, your gear and numbers after a change, the bank while it is open (null when it shuts), items of yours on the ground, and lines from the game. */
+/** Things only you learn: your bag after a change, xp gained, your gear and numbers after a change, your coins, the bank while it is open (null when it shuts), the fire you stand by (null when you step away), items of yours on the ground, and lines from the game. */
 export interface YouDelta {
   bag?: BagView;
   xp?: [skill: string, xp: number][];
   gear?: GearView;
   stats?: StatsView;
+  quests?: QuestView[];
+  coins?: number;
   bank?: StackView[] | null;
+  fire?: FireSession | null;
   items?: GroundItemView[];
   notes?: string[];
 }
 
 export type ServerMessage =
-  /** You are in the world: your id, a session token, the step length, whether this is a character coming back, your bag and skills, and the zone you stand in. */
-  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView } & ZoneSnapshot)
+  /** You are in the world: your id, a session token, the step length, whether this is a character coming back, your bag, skills, gear, numbers, quests and coins, and the zone you stand in. */
+  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView; quests: QuestView[]; coins: number } & ZoneSnapshot)
   /** You walked into another zone: forget the old one, here is the new. Your id, token, bag and skills stay. */
   | ({ t: 'zone' } & ZoneSnapshot)
   | ({ t: 'tick' } & TickDelta)
@@ -233,6 +258,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'equip', slot: raw.slot } : null;
     case 'unequip':
       return typeof raw.slot === 'string' && (EQUIP_SLOTS as readonly string[]).includes(raw.slot) ? { t: 'unequip', slot: raw.slot as EquipSlot } : null;
+    case 'quest':
+      return (raw.op === 'accept' || raw.op === 'abandon') && isId(raw.id) ? { t: 'quest', op: raw.op, id: raw.id } : null;
+    case 'fire':
+      return raw.op === 'build' || raw.op === 'feed' || raw.op === 'close' ? { t: 'fire', op: raw.op } : null;
+    case 'cook':
+      return isId(raw.recipe) && isInt(raw.qty, 1, LIMITS.QTY_MAX) ? { t: 'cook', recipe: raw.recipe, qty: raw.qty } : null;
     case 'bank':
       switch (raw.op) {
         case 'deposit':

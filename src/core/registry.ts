@@ -3,7 +3,7 @@
  * cross-reference. If validate() returns errors the game refuses to start.
  */
 import {
-  BIG_KINDS, MAX_LEVEL, TERRAIN_CHARS,
+  BIG_KINDS, MAX_LEVEL, TERRAIN_CHARS, WALKABLE_TERRAIN,
   type ChapterDef, type ContentTables, type GatherNodeDef, type ItemDef, type Keyed, type MapObjectDef, type MissionDef, type MonsterDef, type NpcDef, type Objective, type ProgressNodeDef, type QuestDef, type RecipeDef, type Requirement, type ShopDef, type SkillDef, type SkillUnlock, type StationDef, type TraderDef, type ZoneDef, type ZoneMapDef,
 } from '@/types/content';
 import type { ItemId, MissionId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
@@ -196,6 +196,14 @@ export class Registry {
         check(l.min <= l.max && l.min > 0, `monster ${id}: bad loot range for '${l.itemId}'`);
       }
     }
+    for (const [id, def] of Object.entries(t.npcs)) {
+      check(def.id === id, `npc ${id}: id field is '${def.id}'`);
+      if (def.handout) {
+        const tool = t.items[def.handout.itemId]?.tool;
+        check(tool !== undefined && tool.skill === def.handout.skill, `npc ${id}: handout '${def.handout.itemId}' is not a ${def.handout.skill} tool`);
+        check(def.handout.line.length > 0, `npc ${id}: handout needs a line`);
+      }
+    }
     for (const [id, def] of Object.entries(t.quests)) {
       check(def.id === id, `quest ${id}: id field is '${def.id}'`);
       check(def.giverId in t.npcs, `quest ${id}: unknown giver '${def.giverId}'`);
@@ -328,7 +336,16 @@ export class Registry {
         check(n > 0, `${owner}: legend key '${key}' is never used`);
         if (BIG_KINDS.includes(obj.kind)) check(this.wellFormedBlocks(map, key), `${owner}: '${key}' must fill 2×2 blocks`);
         switch (obj.kind) {
-          case 'node': check(zone.nodes.includes(obj.id), `${owner}: node '${obj.id}' is not in the zone`); placed.node.add(obj.id); break;
+          case 'node': {
+            check(zone.nodes.includes(obj.id), `${owner}: node '${obj.id}' is not in the zone`);
+            placed.node.add(obj.id);
+            // A fishing spot stands in the water, in the cell right beside the bank one fishes from.
+            if (t.nodes[obj.id]?.skill === 'fishing') {
+              check(obj.terrain === 'water', `${owner}: fishing spot '${key}' must stand in the water (terrain: 'water')`);
+              check(this.everyTouchesLand(map, key), `${owner}: every fishing spot '${key}' must have a walkable cell beside it`);
+            }
+            break;
+          }
           case 'station': check(zone.stations.includes(obj.id), `${owner}: station '${obj.id}' is not in the zone`); placed.station.add(obj.id); break;
           case 'shop': check(zone.shops.includes(obj.id), `${owner}: shop '${obj.id}' is not in the zone`); placed.shop.add(obj.id); break;
           case 'trader': check(zone.traders.includes(obj.id), `${owner}: trader '${obj.id}' is not in the zone`); placed.trader.add(obj.id); break;
@@ -358,6 +375,16 @@ export class Registry {
       for (const id of zone.monsters) check(placed.monster.has(id), `${owner}: monster '${id}' is not on the map`);
     }
     return errors;
+  }
+
+  /** True when every cell of `key` has a walkable terrain cell to its north, south, east or west. */
+  private everyTouchesLand(map: ZoneMapDef, key: string): boolean {
+    const walkable = (x: number, y: number) => {
+      const ch = map.rows[y]?.[x];
+      const ground = ch === undefined ? undefined : TERRAIN_CHARS[ch];
+      return ground !== undefined && WALKABLE_TERRAIN.includes(ground);
+    };
+    return map.rows.every((row, y) => [...row].every((ch, x) => ch !== key || walkable(x - 1, y) || walkable(x + 1, y) || walkable(x, y - 1) || walkable(x, y + 1)));
   }
 
   /** True when every occurrence of `key` belongs to a full 2×2 block of `key`. */
