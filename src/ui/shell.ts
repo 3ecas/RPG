@@ -1,8 +1,9 @@
 /**
  * The page: a top bar with the zone, the connection and who is here, the
  * world canvas, a docked chat, and the join card that asks for a name and
- * knows where the server is. Wires the socket to the replica and the replica
- * to the scene; holds no rule.
+ * knows where the server is. Keeps the browser's secret, which is what ties
+ * a character to this browser until there are accounts. Wires the socket to
+ * the replica and the replica to the scene; holds no rule.
  */
 import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
@@ -24,6 +25,8 @@ export interface OnlineConfig {
 }
 
 const NAME_KEY = 'rpg.online.name';
+/** Made up once per browser and never shown: the characters made here answer to it. */
+const SECRET_KEY = 'rpg.online.secret';
 /** Per tab, so two tabs in one browser are two characters. */
 const SESSION_KEY = 'rpg.online.session';
 const PING_MS = 5000;
@@ -64,7 +67,7 @@ export class OnlineApp {
       '<span class="right"><button class="menu-btn" id="on-run" type="button" title="Toggle running (R); Shift runs while held">Walking</button><span class="muted" id="on-tick"></span></span></header>' +
       '<main class="stage"><div class="world" id="on-world"></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
-      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the village with whoever is here and talk. Click where you want to go, hold Shift to run, Enter to talk.</p>' +
+      '<div class="join" id="on-join"><form class="join-card" id="on-join-form"><h1>Greenhollow Online</h1><p class="muted">Walk the world with whoever is here and talk. Click where you want to go, hold Shift to run, Enter to talk. Your character is saved under its name and comes back where you left it; until there are accounts, it answers only to this browser.</p>' +
       '<label>Name<input id="on-name" type="text" autocomplete="off" maxlength="' + LIMITS.NAME_MAX + '" value="' + escapeHtml(savedName) + '" placeholder="Letters, digits, spaces" required></label>' +
       '<label>Server<input id="on-server" type="text" autocomplete="off" value="' + escapeHtml(this.config.serverUrl) + '" placeholder="wss://your-server"></label>' +
       '<p class="join-hint" id="on-hint"' + (this.config.serverUrl ? ' hidden' : '') + '>' + escapeHtml(NO_SERVER_HINT) + '</p>' +
@@ -141,7 +144,7 @@ export class OnlineApp {
     const session = readSession();
     const token = session && session.name.toLowerCase() === name.toLowerCase() ? session.token : null;
     this.socket?.close();
-    this.socket = new GameSocket(serverUrl, name, token, {
+    this.socket = new GameSocket(serverUrl, name, browserSecret(), token, {
       onMessage: (msg, now) => this.onMessage(msg, now),
       onStatus: (kind, detail) => this.onStatus(kind, detail),
     });
@@ -154,19 +157,17 @@ export class OnlineApp {
   private onMessage(msg: ServerMessage, now: number): void {
     if (msg.t === 'welcome') {
       const me = msg.entities.find((e) => e.id === msg.id);
-      write(sessionStorage, SESSION_KEY, JSON.stringify({ name: me?.name ?? this.els.name.value, token: msg.token } satisfies Session));
-      if (this.content.hasZone(msg.zone)) {
-        const map = this.content.map(msg.zone);
-        const grid = parseMap(map);
-        this.scene.setMap(grid, map.biome);
-        this.replica.setGrid(grid);
-        this.els.zone.textContent = this.content.zone(msg.zone).name;
-      }
+      const name = me?.name ?? this.els.name.value;
+      write(sessionStorage, SESSION_KEY, JSON.stringify({ name, token: msg.token } satisfies Session));
+      const zoneName = this.showZone(msg.zone);
       this.els.join.hidden = true;
       this.els.chat.hidden = false;
       this.runToggled = false;
       this.applyRunning(true);
       if (!this.pingTimer) this.pingTimer = setInterval(() => this.socket?.send({ t: 'ping', at: performance.now() }), PING_MS);
+      this.appendSystem(msg.resumed ? `Welcome back, ${name}. You are in ${zoneName}, where you left off.` : `Welcome, ${name}. You are in ${zoneName}.`);
+    } else if (msg.t === 'zone') {
+      this.appendSystem(`You enter ${this.showZone(msg.zone)}.`);
     } else if (msg.t === 'pong') {
       this.rtt = Math.round(performance.now() - msg.at);
       return;
@@ -181,6 +182,18 @@ export class OnlineApp {
     }
     this.replica.apply(msg, now);
     if (msg.t === 'tick' && msg.chat.length > 0) this.appendChat();
+  }
+
+  /** Shows a zone: its map on the scene and in the prediction, its name in the top bar. Returns the name. */
+  private showZone(zoneId: string): string {
+    if (!this.content.hasZone(zoneId)) return zoneId;
+    const map = this.content.map(zoneId);
+    const grid = parseMap(map);
+    this.scene.setMap(grid, map.biome);
+    this.replica.setGrid(grid);
+    const name = this.content.zone(zoneId).name;
+    this.els.zone.textContent = name;
+    return name;
   }
 
   private onStatus(kind: SocketStatus, detail: string): void {
@@ -223,8 +236,21 @@ export class OnlineApp {
       el.innerHTML = `<b>${escapeHtml(line.name)}</b> ${escapeHtml(line.text)}`;
       this.els.log.appendChild(el);
     }
-    while (this.els.log.children.length > 60) this.els.log.firstElementChild?.remove();
     this.lastChatLine = lines[lines.length - 1] ?? null;
+    this.trimLog();
+  }
+
+  /** A line from the game itself in the chat log: where you are, what just happened. */
+  private appendSystem(text: string): void {
+    const el = document.createElement('div');
+    el.className = 'chat-line chat-system';
+    el.textContent = text;
+    this.els.log.appendChild(el);
+    this.trimLog();
+  }
+
+  private trimLog(): void {
+    while (this.els.log.children.length > 60) this.els.log.firstElementChild?.remove();
     this.els.log.scrollTop = this.els.log.scrollHeight;
   }
 
@@ -260,6 +286,17 @@ function write(store: Storage, key: string, value: string): void {
   } catch {
     /* storage may be unavailable; the game still works */
   }
+}
+
+/** The secret this browser sends with its name: made once, kept in localStorage. Without storage it lasts one page load. */
+function browserSecret(): string {
+  const kept = read(localStorage, SECRET_KEY);
+  if (kept && /^[A-Za-z0-9_-]{16,64}$/.test(kept)) return kept;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  write(localStorage, SECRET_KEY, secret);
+  return secret;
 }
 
 function readSession(): Session | null {

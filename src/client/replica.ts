@@ -5,10 +5,11 @@
  * input comes back it is checked against the prediction and replayed from
  * there only if the two differ, with the difference faded out instead of
  * snapped. Everyone else is drawn a little behind the newest server tick,
- * interpolated between the placements the server sent. Pure data and
+ * interpolated between the placements the server sent. Walking into another
+ * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { ClientMessage, EntitySnapshot, Placement, ServerMessage, TickDelta } from '@/net/protocol';
+import type { ClientMessage, EntitySnapshot, Placement, ServerMessage, TickDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 
@@ -154,25 +155,33 @@ export class Replica {
   apply(msg: ServerMessage, now: number): void {
     if (msg.t === 'welcome') {
       this.tickMs = msg.tickMs;
-      this.tick = msg.tick;
       this.selfId = msg.id;
-      this.zone = msg.zone;
-      this.seq = msg.seq;
-      this.entities.clear();
       this.chat.length = 0;
-      this.pending = [];
-      this.click = null;
-      this.smooth = { x: 0, y: 0 };
-      this.clockOffset = now - msg.tick * msg.tickMs;
-      for (const e of msg.entities) this.upsert(e, msg.tick);
-      const me = msg.entities.find((e) => e.id === msg.id);
-      if (me) {
-        this.place(me, me.dir);
-        this.self.running = me.running;
-        this.self.moving = false;
-      }
+      this.enterZone(msg, now);
+    } else if (msg.t === 'zone') {
+      this.enterZone(msg, now);
     } else if (msg.t === 'tick') {
       this.applyTick(msg, now);
+    }
+  }
+
+  /** A zone from scratch: its entities replace what was known, you stand where the server says, and input numbers continue from where it is. */
+  private enterZone(msg: ZoneSnapshot, now: number): void {
+    this.tick = msg.tick;
+    this.zone = msg.zone;
+    this.seq = msg.seq;
+    this.entities.clear();
+    this.pending = [];
+    this.click = null;
+    this.accumulator = 0;
+    this.smooth = { x: 0, y: 0 };
+    this.clockOffset = now - msg.tick * this.tickMs;
+    for (const e of msg.entities) this.upsert(e, msg.tick);
+    const me = msg.entities.find((e) => e.id === this.selfId);
+    if (me) {
+      this.place(me, me.dir);
+      this.self.running = me.running;
+      this.self.moving = false;
     }
   }
 

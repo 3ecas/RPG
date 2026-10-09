@@ -1,8 +1,9 @@
 /**
- * The zone server: a WebSocket endpoint in front of one Room, a
- * drift-corrected tick loop, sessions with reconnect tokens, and a limit on
- * everything a client can send. The rules of the world live in the room;
- * this file only moves messages.
+ * The game server: a WebSocket endpoint in front of the world of rooms, a
+ * drift-corrected tick loop, sessions with reconnect tokens, characters
+ * loaded from and saved to the store, and a limit on everything a client can
+ * send. The rules of the world live in the rooms; this file only moves
+ * messages and records.
  */
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -12,25 +13,38 @@ import { CONTENT } from '@/content';
 import { Registry } from '@/core/registry';
 import { type ClientMessage, decodeClientMessage, LIMITS, PROTOCOL_VERSION, type ServerMessage } from '@/net/protocol';
 import type { ZoneId } from '@/types/ids';
-import { Room } from './room';
+import { hashSecret, keyOf, newCharacter } from './character';
+import type { RoomPlayer } from './room';
+import { type CharacterStore, MemoryStore } from './store';
+import { World } from './world';
 
 export interface ServerOptions {
   /** 0 picks a free port. */
   port: number;
   host?: string;
-  zone: ZoneId;
+  /** Where new characters start. */
+  startZone: ZoneId;
   tickMs: number;
   /** How long a dropped connection may come back for before its character leaves. */
   graceMs: number;
+  /** How often everyone online is written to the store; 0 turns the periodic save off (they are still saved on leaving and at shutdown). */
+  saveMs?: number;
+  /** Most characters per zone at once. */
   capacity?: number;
+  /** Where characters are kept between sessions; memory when not given. */
+  store?: CharacterStore;
   log?: (line: string) => void;
 }
 
 export interface GameServer {
   readonly port: number;
-  readonly room: Room;
+  readonly world: World;
+  readonly store: CharacterStore;
   /** Connections that have said hello and stand in the world. */
   readonly connections: number;
+  /** Writes everyone in the world to the store now. */
+  saveAll(): Promise<void>;
+  /** Saves everyone, closes every socket and the store. */
   close(): Promise<void>;
 }
 
@@ -41,10 +55,13 @@ const BURST = 60;
 const MAX_STRIKES = 10;
 const HELLO_TIMEOUT_MS = 10_000;
 const KEEPALIVE_MS = 30_000;
+const OTHER_BROWSER = 'That name belongs to a character made in another browser. Until there are accounts, a character answers only to the browser that made it; pick another name here.';
 
 interface Connection {
   socket: WebSocket;
   playerId: number | null;
+  /** A hello is being answered: the character is being looked up in the store. */
+  joining: boolean;
   strikes: number;
   budget: number;
   refilledAt: number;
@@ -54,16 +71,20 @@ interface Connection {
 
 export function startServer(options: ServerOptions): Promise<GameServer> {
   const log = options.log ?? (() => {});
+  const store = options.store ?? new MemoryStore();
   const content = new Registry(CONTENT);
   const problems = content.validate();
   if (problems.length > 0) throw new Error(`Content validation failed:\n${problems.join('\n')}`);
   const graceTicks = Math.max(1, Math.ceil(options.graceMs / options.tickMs));
-  const room = new Room(options.zone, content.map(options.zone), { graceTicks, capacity: options.capacity ?? 200 });
+  const world = new World(content, { startZone: options.startZone, graceTicks, capacity: options.capacity ?? 200 });
 
   const http = createServer((req, res) => {
     if (req.url === '/health') {
+      const zones: Record<string, number> = {};
+      for (const room of world.rooms.values()) if (room.size > 0) zones[room.zoneId] = room.size;
+      const tick = world.room(options.startZone).tick;
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({ ok: true, zone: room.zoneId, tick: room.tick, players: room.size, tickMs: options.tickMs, protocol: PROTOCOL_VERSION }));
+      res.end(JSON.stringify({ ok: true, tick, players: world.size, zones, tickMs: options.tickMs, protocol: PROTOCOL_VERSION, store: store.kind }));
       return;
     }
     res.writeHead(404, { 'content-type': 'text/plain' });
@@ -77,14 +98,18 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   /** Session tokens: proof that a reconnecting socket owns a character. */
   const tokens = new Map<string, number>();
   const tokenOf = new Map<number, string>();
+  /** One hello at a time per name, so two tabs racing for the same character meet an orderly answer. */
+  const nameLocks = new Map<string, Promise<void>>();
+
+  const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
   const send = (socket: WebSocket, msg: ServerMessage): void => {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   };
 
-  const broadcast = (msg: ServerMessage): void => {
-    const text = JSON.stringify(msg);
-    for (const conn of byPlayer.values()) if (conn.socket.readyState === WebSocket.OPEN) conn.socket.send(text);
+  const reject = (conn: Connection, reason: string): void => {
+    send(conn.socket, { t: 'reject', reason });
+    conn.socket.close(1008, 'Refused');
   };
 
   const forget = (playerId: number): void => {
@@ -134,12 +159,39 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
     }
   };
 
-  const welcome = (conn: Connection, playerId: number, token: string): void => {
-    send(conn.socket, { t: 'welcome', id: playerId, token, tickMs: options.tickMs, tick: room.tick, zone: room.zoneId, entities: room.snapshot(), seq: room.player(playerId)?.seq ?? 0 });
+  /** Set once the final save of a shutdown is done: the sockets closing after it have nothing new to write. */
+  let closing = false;
+
+  /** Writes these characters as they stand now; a store that fails is logged, never fatal to the game. */
+  const persist = (players: RoomPlayer[]): Promise<void> => {
+    if (closing) return Promise.resolve();
+    const now = Date.now();
+    const records = players.flatMap((p) => world.recordOf(p, now) ?? []);
+    if (records.length === 0) return Promise.resolve();
+    return store.saveMany(records).catch((error: unknown) => log(`could not save ${records.map((r) => r.name).join(', ')}: ${describe(error)}`));
   };
 
-  const hello = (conn: Connection, msg: Extract<ClientMessage, { t: 'hello' }>): void => {
-    if (conn.playerId !== null) {
+  const withName = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const previous = nameLocks.get(key) ?? Promise.resolve();
+    const run = previous.then(fn);
+    const settled: Promise<void> = run.then(
+      () => undefined,
+      () => undefined,
+    ).then(() => {
+      if (nameLocks.get(key) === settled) nameLocks.delete(key);
+    });
+    nameLocks.set(key, settled);
+    return run;
+  };
+
+  const welcome = (conn: Connection, player: RoomPlayer, token: string, resumed: boolean): void => {
+    const room = world.roomOf(player.id)!;
+    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, zone: room.zoneId, tick: room.tick, entities: room.snapshot(), seq: player.seq });
+  };
+
+  /** Who this connection is: a character coming back on its token, a character of this browser's loaded from the store, or a new one. */
+  const hello = async (conn: Connection, msg: Extract<ClientMessage, { t: 'hello' }>): Promise<void> => {
+    if (conn.playerId !== null || conn.joining) {
       strike(conn, 'a second hello');
       return;
     }
@@ -150,30 +202,60 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
     }
     if (msg.token) {
       const owned = tokens.get(msg.token);
-      if (owned !== undefined && room.player(owned)) {
-        room.reconnect(owned);
-        bind(conn, owned);
-        welcome(conn, owned, msg.token);
-        log(`${room.player(owned)!.name} reconnected`);
+      const player = owned !== undefined ? world.player(owned) : null;
+      if (player) {
+        world.reconnect(player.id);
+        bind(conn, player.id);
+        welcome(conn, player, msg.token, true);
+        log(`${player.name} reconnected`);
         return;
       }
     }
-    const result = room.join(msg.name);
-    if (!result.ok) {
-      send(conn.socket, { t: 'reject', reason: result.reason });
-      conn.socket.close(1008, 'Refused');
-      return;
+    conn.joining = true;
+    try {
+      await withName(keyOf(msg.name), async () => {
+        if (conn.socket.readyState !== WebSocket.OPEN) return;
+        const secretHash = hashSecret(msg.secret);
+        const present = world.byName(msg.name);
+        if (present) {
+          if (present.secretHash !== secretHash) return reject(conn, OTHER_BROWSER);
+          if (present.connected) return reject(conn, 'That name is already in the world.');
+          // Dropped and back under its own name from the same browser: the character is taken over.
+          world.reconnect(present.id);
+          const token = issueToken(present.id);
+          bind(conn, present.id);
+          welcome(conn, present, token, true);
+          log(`${present.name} took their character back`);
+          return;
+        }
+        let record = await store.load(keyOf(msg.name));
+        if (conn.socket.readyState !== WebSocket.OPEN) return;
+        if (record && record.secretHash !== secretHash) return reject(conn, OTHER_BROWSER);
+        const resumed = record !== null;
+        if (!record) {
+          const start = world.room(options.startZone);
+          record = newCharacter(msg.name, secretHash, start.zoneId, start.grid.spawn, Date.now());
+        }
+        const placed = world.enter(record);
+        if (!placed.ok) return reject(conn, placed.reason);
+        const player = placed.value;
+        if (!resumed) void persist([player]); // the name is this browser's from now on
+        const token = issueToken(player.id);
+        bind(conn, player.id);
+        welcome(conn, player, token, resumed);
+        log(`${player.name} ${resumed ? 'is back' : 'joined'} in ${world.zoneOf(player.id)} (${world.size} in the world)`);
+      });
+    } catch (error) {
+      log(`could not let ${msg.name} in: ${describe(error)}`);
+      if (conn.socket.readyState === WebSocket.OPEN) reject(conn, 'Your character could not be loaded. Try again in a moment.');
+    } finally {
+      conn.joining = false;
     }
-    const { player, resumed } = result.value;
-    const token = issueToken(player.id);
-    bind(conn, player.id);
-    welcome(conn, player.id, token);
-    log(`${player.name} ${resumed ? 'took their character back' : 'joined'} (${room.size} in ${room.zoneId})`);
   };
 
   const handle = (conn: Connection, msg: ClientMessage): void => {
     if (msg.t === 'hello') {
-      hello(conn, msg);
+      void hello(conn, msg);
       return;
     }
     if (msg.t === 'ping') {
@@ -186,14 +268,14 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       return;
     }
     switch (msg.t) {
-      case 'input': room.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq }); break;
-      case 'run': room.setRunning(id, msg.on); break;
-      case 'chat': room.chat(id, msg.text); break;
+      case 'input': world.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] } } : { seq: msg.seq }); break;
+      case 'run': world.setRunning(id, msg.on); break;
+      case 'chat': world.chat(id, msg.text); break;
     }
   };
 
   wss.on('connection', (socket) => {
-    const conn: Connection = { socket, playerId: null, strikes: 0, budget: BURST, refilledAt: Date.now(), alive: true, helloTimer: null };
+    const conn: Connection = { socket, playerId: null, joining: false, strikes: 0, budget: BURST, refilledAt: Date.now(), alive: true, helloTimer: null };
     connections.add(conn);
     conn.helloTimer = setTimeout(() => {
       if (conn.playerId === null) socket.close(1008, 'No hello');
@@ -213,8 +295,12 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       if (conn.helloTimer) clearTimeout(conn.helloTimer);
       if (conn.playerId !== null && byPlayer.get(conn.playerId) === conn) {
         byPlayer.delete(conn.playerId);
-        room.disconnect(conn.playerId);
-        log(`${room.player(conn.playerId)?.name ?? '?'} dropped; holding their character for ${Math.round(options.graceMs / 1000)} s`);
+        const player = world.player(conn.playerId);
+        world.disconnect(conn.playerId);
+        if (player) {
+          void persist([player]);
+          log(`${player.name} dropped; holding their character for ${Math.round(options.graceMs / 1000)} s`);
+        }
       }
     });
     socket.on('error', () => {
@@ -227,9 +313,28 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   let ticks = 0;
   let tickTimer: ReturnType<typeof setTimeout> | null = null;
   const step = (): void => {
-    const delta = room.advance();
-    for (const id of delta.left) forget(id);
-    broadcast({ t: 'tick', ...delta });
+    const { deltas, moved, gone } = world.advance();
+    for (const id of gone) forget(id);
+    for (const { player, to } of moved) {
+      const conn = byPlayer.get(player.id);
+      const room = world.room(to);
+      if (conn) send(conn.socket, { t: 'zone', zone: to, tick: room.tick, entities: room.snapshot(), seq: player.seq });
+      log(`${player.name} walked into ${to}`);
+    }
+    // Each room's delta goes to the connections standing in it, encoded once per room.
+    const encoded = new Map<ZoneId, string>();
+    for (const conn of byPlayer.values()) {
+      if (conn.playerId === null || conn.socket.readyState !== WebSocket.OPEN) continue;
+      const zone = world.zoneOf(conn.playerId);
+      if (!zone) continue;
+      let text = encoded.get(zone);
+      if (text === undefined) {
+        text = JSON.stringify({ t: 'tick', ...deltas.get(zone)! });
+        encoded.set(zone, text);
+      }
+      conn.socket.send(text);
+    }
+    if (moved.length > 0) void persist(moved.map((m) => m.player));
     schedule();
   };
   const schedule = (): void => {
@@ -248,32 +353,49 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
     }
   }, KEEPALIVE_MS);
 
-  return new Promise((resolve, reject) => {
+  const saveMs = options.saveMs ?? 30_000;
+  const saver = saveMs > 0 ? setInterval(() => void persist(world.players()), saveMs) : null;
+
+  const listen = (): Promise<GameServer> => new Promise((resolve, reject) => {
     http.once('error', reject);
     http.listen(options.port, options.host ?? '0.0.0.0', () => {
       const port = (http.address() as AddressInfo).port;
       schedule();
-      log(`zone ${room.zoneId} listening on port ${port}, tick ${options.tickMs} ms`);
+      log(`${world.rooms.size} zones listening on port ${port}, tick ${options.tickMs} ms, characters in ${store.kind}`);
       resolve({
         port,
-        room,
+        world,
+        store,
         get connections() {
           return byPlayer.size;
         },
-        close: () =>
-          new Promise<void>((done) => {
-            if (tickTimer) clearTimeout(tickTimer);
-            clearInterval(keepalive);
-            for (const conn of connections) {
-              if (conn.helloTimer) clearTimeout(conn.helloTimer);
-              conn.socket.close(1001, 'Server shutting down');
-            }
+        saveAll: () => persist(world.players()),
+        close: async () => {
+          if (tickTimer) clearTimeout(tickTimer);
+          clearInterval(keepalive);
+          if (saver) clearInterval(saver);
+          await persist(world.players());
+          closing = true;
+          for (const conn of connections) {
+            if (conn.helloTimer) clearTimeout(conn.helloTimer);
+            conn.socket.close(1001, 'Server shutting down');
+          }
+          await new Promise<void>((done) => {
             wss.close(() => {
               http.closeAllConnections();
               http.close(() => done());
             });
-          }),
+          });
+          await store.close();
+        },
       });
     });
+  });
+
+  // The store first: a file that cannot be read or a database that cannot be reached is a reason not to start.
+  return store.open().then(listen, (error: unknown) => {
+    clearInterval(keepalive);
+    if (saver) clearInterval(saver);
+    throw new Error(`The character store (${store.kind}) could not be opened: ${describe(error)}`);
   });
 }

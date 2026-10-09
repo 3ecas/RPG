@@ -1,5 +1,8 @@
-# One-click hosting of the zone server on Render (https://render.com): New -> Blueprint -> this repository.
+# One-click hosting of the game server on Render (https://render.com): New -> Blueprint -> this repository.
 # Render sets PORT itself; the free plan sleeps after inactivity and wakes on the first connection.
+# Render asks for DATABASE_URL when the blueprint is created: paste a Postgres connection string
+# (Neon's free tier works; the README says how). Without one, characters are kept in a file on the
+# service's disk, which the free plan loses on every deploy and restart.
 services:
   - type: web
     name: greenhollow-server
@@ -15,3 +18,7 @@ services:
         value: "50"
       - key: GRACE_MS
         value: "30000"
+      - key: SAVE_MS
+        value: "30000"
+      - key: DATABASE_URL
+        sync: false

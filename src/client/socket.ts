@@ -1,7 +1,8 @@
 /**
- * The line to the zone server: opens, says hello, hands every message to the
- * shell, and reconnects with backoff when the connection drops. Remembers the
- * session token so a reconnect resumes the same character.
+ * The line to the game server: opens, says hello, hands every message to the
+ * shell, and reconnects with backoff when the connection drops. Carries the
+ * browser's secret, which is what makes a character this browser's, and
+ * remembers the session token so a reconnect resumes the same character.
  */
 import { type ClientMessage, decodeServerMessage, PROTOCOL_VERSION, type ServerMessage } from '@/net/protocol';
 
@@ -22,7 +23,7 @@ export class GameSocket {
   private stopped = false;
   private rejected = false;
 
-  constructor(private readonly url: string, private readonly name: string, token: string | null, private readonly handlers: SocketHandlers) {
+  constructor(private readonly url: string, private readonly name: string, private readonly secret: string, token: string | null, private readonly handlers: SocketHandlers) {
     this.token = token;
   }
 
@@ -39,7 +40,7 @@ export class GameSocket {
     }
     this.ws = ws;
     ws.onopen = () => {
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: this.name, token: this.token });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: this.name, secret: this.secret, token: this.token });
     };
     ws.onmessage = (event) => {
       const msg = decodeServerMessage(typeof event.data === 'string' ? event.data : '');

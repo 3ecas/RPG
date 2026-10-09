@@ -17,7 +17,7 @@ const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, 
 const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, seq };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, seq, resumed: false };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
@@ -113,6 +113,36 @@ describe('replica: yourself, predicted', () => {
     r.walkTo({ x: 9, y: 4 });
     r.update(1000 + 5000);
     expect(sent.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('replica: another zone', () => {
+  it('starts over with the new zone, keeping who it is, the chat and the input numbering the server gives', () => {
+    const { r, sent } = replica([ada, bob]);
+    r.apply(tick(101, { chat: [{ id: 2, text: 'bye' }] }), 1050);
+    r.walkTo({ x: 9, y: 1 });
+    r.update(1000 + STEP_MS * 3); // inputs 1..3 in flight
+    const arrived: EntitySnapshot = { ...ada, cx: 0, cy: 12, dir: 2 };
+    const cyd: EntitySnapshot = { ...bob, id: 3, name: 'Cyd', cx: 2, cy: 12 };
+    r.apply({ t: 'zone', zone: 'copper_hills', tick: 400, entities: [arrived, cyd], seq: 1003 }, 1200);
+    expect(r.zone).toBe('copper_hills');
+    expect(r.selfId).toBe(1);
+    expect(r.tick).toBe(400);
+    expect([...r.entities.keys()]).toEqual([1, 3]);
+    expect(r.self.cell).toEqual({ x: 0, y: 12 });
+    expect(r.self.path).toEqual([]);
+    expect(r.self.dir).toBe(2);
+    expect(r.positionAt(r.selfEntity!, 1200)).toEqual({ x: 0.5, y: 12.5, dir: 2, moving: false });
+    expect(r.positionAt(r.entities.get(3)!, 1200)).toMatchObject({ x: 2.5, y: 12.5 });
+    expect(r.chat.map((c) => c.text)).toEqual(['bye']); // what was said travels with you
+    // Standing still sends nothing; the next click numbers on from the server's count, and the old prediction is forgotten.
+    r.update(1200 + STEP_MS);
+    expect(sent).toHaveLength(3);
+    r.walkTo({ x: 2, y: 12 });
+    r.update(1200 + STEP_MS * 2);
+    expect(sent[3]).toEqual({ t: 'input', seq: 1004, to: [2, 12] });
+    r.apply(tick(401, { moves: [[1, 0, 12, 1, 12, 0.2, 2, 1, 1004]] }), 1300); // the server agrees
+    expect(r.self.t).toBeCloseTo(0.2, 6);
   });
 });
 

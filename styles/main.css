@@ -60,6 +60,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .chat-log { max-height: 132px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; font-size: 12px; pointer-events: auto; scrollbar-width: thin; }
 .chat-line { background: rgba(18, 20, 24, 0.72); padding: 2px 8px; border-radius: 4px; word-break: break-word; }
 .chat-line b { color: var(--accent); margin-right: 4px; }
+.chat-system { color: var(--muted); font-style: italic; }
 .chat-form input { width: 100%; font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: rgba(18, 20, 24, 0.85); color: var(--text); pointer-events: auto; }
 .chat-form input:focus { outline: none; border-color: var(--accent-2); }
 

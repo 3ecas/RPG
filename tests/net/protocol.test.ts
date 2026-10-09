@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { decodeClientMessage, decodeServerMessage, LIMITS, normalizeName, parseClientMessage, PROTOCOL_VERSION, sanitizeChat } from '@/net/protocol';
+import { decodeClientMessage, decodeServerMessage, isSecret, LIMITS, normalizeName, parseClientMessage, PROTOCOL_VERSION, sanitizeChat } from '@/net/protocol';
+
+const SECRET = '0123456789abcdef0123456789abcdef';
 
 describe('protocol: names and chat', () => {
   it('normalizes names and refuses the unusable', () => {
@@ -23,9 +25,10 @@ describe('protocol: names and chat', () => {
 
 describe('protocol: parsing what clients send', () => {
   it('accepts every message exactly on the schema', () => {
-    expect(parseClientMessage({ t: 'hello', v: PROTOCOL_VERSION, name: ' Ada ', token: null })).toEqual({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ada', token: null });
-    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', token: 'abc' })).toEqual({ t: 'hello', v: 1, name: 'Ada', token: 'abc' });
-    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada' })).toEqual({ t: 'hello', v: 1, name: 'Ada', token: null });
+    expect(parseClientMessage({ t: 'hello', v: PROTOCOL_VERSION, name: ' Ada ', secret: SECRET, token: null })).toEqual({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ada', secret: SECRET, token: null });
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: SECRET, token: 'abc' })).toEqual({ t: 'hello', v: 1, name: 'Ada', secret: SECRET, token: 'abc' });
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: SECRET })).toEqual({ t: 'hello', v: 1, name: 'Ada', secret: SECRET, token: null });
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: 'Under_Score-dash0', token: '' })).toEqual({ t: 'hello', v: 1, name: 'Ada', secret: 'Under_Score-dash0', token: null });
     expect(parseClientMessage({ t: 'input', seq: 7 })).toEqual({ t: 'input', seq: 7 });
     expect(parseClientMessage({ t: 'input', seq: 8, to: [3, 4] })).toEqual({ t: 'input', seq: 8, to: [3, 4] });
     expect(parseClientMessage({ t: 'input', seq: 9, to: null })).toEqual({ t: 'input', seq: 9 });
@@ -53,10 +56,15 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'chat', text: '' })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: 42 })).toBeNull();
     expect(parseClientMessage({ t: 'chat', text: 'x'.repeat(LIMITS.CHAT_MAX * 4 + 1) })).toBeNull();
-    expect(parseClientMessage({ t: 'hello', v: 1, name: 'x' })).toBeNull();
-    expect(parseClientMessage({ t: 'hello', v: '1', name: 'Ada' })).toBeNull();
-    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', token: 7 })).toBeNull();
-    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', token: 'x'.repeat(LIMITS.TOKEN_MAX + 1) })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'x', secret: SECRET })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: '1', name: 'Ada', secret: SECRET })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: SECRET, token: 7 })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: SECRET, token: 'x'.repeat(LIMITS.TOKEN_MAX + 1) })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada' })).toBeNull(); // no secret (protocol 3)
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: 'short' })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: 'has spaces in it and more' })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: 'x'.repeat(LIMITS.TOKEN_MAX + 1) })).toBeNull();
+    expect(parseClientMessage({ t: 'hello', v: 1, name: 'Ada', secret: 42 })).toBeNull();
     expect(parseClientMessage({ t: 'ping', at: Infinity })).toBeNull();
   });
 
@@ -67,8 +75,18 @@ describe('protocol: parsing what clients send', () => {
     expect(decodeClientMessage(`{"t":"chat","text":"${'x'.repeat(LIMITS.MESSAGE_CHARS)}"}`)).toBeNull();
   });
 
+  it('knows a secret a browser could have made', () => {
+    expect(isSecret(SECRET)).toBe(true);
+    expect(isSecret('a'.repeat(LIMITS.SECRET_MIN))).toBe(true);
+    expect(isSecret('a'.repeat(LIMITS.SECRET_MIN - 1))).toBe(false);
+    expect(isSecret('a'.repeat(LIMITS.TOKEN_MAX + 1))).toBe(false);
+    expect(isSecret('0123456789abcdef!')).toBe(false);
+    expect(isSecret(null)).toBe(false);
+  });
+
   it('recognizes server messages by type only', () => {
     expect(decodeServerMessage('{"t":"pong","at":1}')).toEqual({ t: 'pong', at: 1 });
+    expect(decodeServerMessage('{"t":"zone","zone":"copper_hills","tick":5,"entities":[],"seq":1005}')).toMatchObject({ t: 'zone', zone: 'copper_hills' });
     expect(decodeServerMessage('{"t":"nope"}')).toBeNull();
     expect(decodeServerMessage('[]')).toBeNull();
     expect(decodeServerMessage('{')).toBeNull();

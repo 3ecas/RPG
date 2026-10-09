@@ -182,10 +182,11 @@ Each step is playable or demonstrable on its own. Status in the last column.
 |---|---|---|---|
 | 0 | This document | The design does not drift | done |
 | 1 | **Walk together**: one zone room on the tick, join with a name, click to walk, see each other move, chat over heads, reconnect; the idle game removed, the world drawn with simple shapes, the Pages client pointed at a hosted server | The tick feels right, one-tick-behind rendering is acceptable, the protocol shape, hosting | done |
-| 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, a character row in the database | Durations as ticks, shared nodes, item replication, persistence | |
+| 1b | **Characters that last**: saved by name (zone, cell, facing, pace, and a document that grows with the slices), every zone as a room on one server with the maps' exits walking you between them, a secret the browser makes once as the stand-in for accounts, Postgres through `DATABASE_URL` with a JSON file for a machine without one | Persistence, zone transitions, identity | done |
+| 2 | **One skill end to end**: woodcutting on the server, a bag of slots, logs on the ground with the visibility rule, a bank, all of it in the character's document | Durations as ticks, shared nodes, item replication | |
 | 3 | Mining, smelting, smithing, fishing, cooking, firemaking the same way | Nothing new, breadth | |
 | 4 | Monsters as entities, combat, single-combat lock, death and drops | Shared combat | |
-| 5 | Accounts, names, chat channels, mute and ban, rate limits | Safety | |
+| 5 | Accounts (replacing the browser secret), names, chat channels, mute and ban, rate limits | Safety | |
 | 6 | Tutorial island map and guides, the starting town, the first quest | Onboarding | |
 | 7 | Trade window, shops, gold sinks | Economy | |
 | 8 | Version handshake, metrics, backups, deploy pipeline | Operations | |
@@ -211,12 +212,15 @@ instancing, zone sharding, binary protocol, mobile layout.
 - **Client:** a replica of the zone: your own character predicted from
   your inputs and reconciled against the server, everyone else interpolated
   a little behind it. The same canvas renderer draws it.
-- **Persistence (slice 2):** Postgres, one JSON document per character written
-  through the existing serialize / sanitize / migrate code; relational tables
-  only for what must be queried across players.
+- **Persistence:** one JSON document per character, keyed by name, behind a
+  small store interface: Postgres (`DATABASE_URL`, one `jsonb` row each) in
+  production, a JSON file on a machine without a database, memory in tests.
+  Written on leaving, on changing zone, every thirty seconds and at
+  shutdown. Relational tables only for what must be queried across players,
+  when that day comes.
 - **Hosting:** the client stays static (GitHub Pages, which bakes the
   server's address in from the `SERVER_URL` repository variable); the server
   is one Node process on any host (`render.yaml` for Render's free tier, a
-  `Dockerfile` for everything else), later with a managed database. The
-  protocol version travels in the handshake so stale clients are told to
-  reload.
+  `Dockerfile` for everything else) with a managed Postgres (Neon's free
+  tier) for the characters. The protocol version travels in the handshake
+  so stale clients are told to reload.

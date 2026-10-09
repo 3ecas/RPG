@@ -8,7 +8,7 @@
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -17,6 +17,8 @@ export const LIMITS = {
   /** Longest client message accepted, as JSON text. */
   MESSAGE_CHARS: 1024,
   TOKEN_MAX: 64,
+  /** The browser's secret is random and at least this long (and at most TOKEN_MAX). */
+  SECRET_MIN: 16,
   COORD_MAX: 4096,
 } as const;
 
@@ -38,8 +40,12 @@ export interface EntitySnapshot extends Placement {
 }
 
 export type ClientMessage =
-  /** First message on a connection: who you are, and your session token if you are coming back. */
-  | { t: 'hello'; v: number; name: string; token: string | null }
+  /**
+   * First message on a connection: who you are, the secret this browser made
+   * up once and keeps (the character answers only to it until accounts
+   * arrive), and your session token if you are coming back.
+   */
+  | { t: 'hello'; v: number; name: string; secret: string; token: string | null }
   /**
    * One step of movement, sent every step while a path is being walked.
    * `seq` numbers them so the server can say how far it got. `to` plans a
@@ -66,13 +72,25 @@ export interface TickDelta {
   chat: ChatLine[];
 }
 
+/** A zone as a client first sees it: which one, the server tick, everyone in it, and the number of the client's last input the server applied. */
+export interface ZoneSnapshot {
+  zone: string;
+  tick: number;
+  entities: EntitySnapshot[];
+  seq: number;
+}
+
 export type ServerMessage =
-  | { t: 'welcome'; id: number; token: string; tickMs: number; tick: number; zone: string; entities: EntitySnapshot[]; seq: number }
+  /** You are in the world: your id, a session token, the step length, whether this is a character coming back, and the zone you stand in. */
+  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean } & ZoneSnapshot)
+  /** You walked into another zone: forget the old one, here is the new. Your id and token stay. */
+  | ({ t: 'zone' } & ZoneSnapshot)
   | ({ t: 'tick' } & TickDelta)
   | { t: 'reject'; reason: string }
   | { t: 'pong'; at: number };
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*(?: [A-Za-z0-9_]+)*$/;
+const SECRET_RE = /^[A-Za-z0-9_-]+$/;
 /** Control characters, format characters (zero-width spaces, bidi marks, the byte-order mark) and the Unicode line and paragraph separators. */
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
@@ -81,6 +99,11 @@ export function normalizeName(raw: string): string | null {
   const name = raw.trim().replace(/\s+/g, ' ');
   if (name.length < LIMITS.NAME_MIN || name.length > LIMITS.NAME_MAX || !NAME_RE.test(name)) return null;
   return name;
+}
+
+/** Whether this is a secret a browser could have made: letters, digits, dash and underscore, within the limits. */
+export function isSecret(v: unknown): v is string {
+  return typeof v === 'string' && v.length >= LIMITS.SECRET_MIN && v.length <= LIMITS.TOKEN_MAX && SECRET_RE.test(v);
 }
 
 /** Chat text as it will be shown: no control or invisible characters, collapsed whitespace, cut to the limit. Null when nothing is left. */
@@ -98,18 +121,18 @@ function isInt(v: unknown, min: number, max: number): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
 
-
 /** The message a client sent, if it is exactly one of ours; null otherwise. Names and chat come back normalized. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (!isRecord(raw) || typeof raw.t !== 'string') return null;
   switch (raw.t) {
     case 'hello': {
       if (!isInt(raw.v, 0, 1_000_000) || typeof raw.name !== 'string' || raw.name.length > LIMITS.NAME_MAX * 4) return null;
+      if (!isSecret(raw.secret)) return null;
       const token = raw.token;
       if (token !== null && token !== undefined && (typeof token !== 'string' || token.length > LIMITS.TOKEN_MAX)) return null;
       const name = normalizeName(raw.name);
       if (!name) return null;
-      return { t: 'hello', v: raw.v, name, token: typeof token === 'string' && token.length > 0 ? token : null };
+      return { t: 'hello', v: raw.v, name, secret: raw.secret, token: typeof token === 'string' && token.length > 0 ? token : null };
     }
     case 'input': {
       if (!isInt(raw.seq, 0, 1_000_000_000)) return null;
@@ -142,7 +165,7 @@ export function decodeClientMessage(text: string): ClientMessage | null {
   }
 }
 
-const SERVER_TYPES: ReadonlySet<string> = new Set(['welcome', 'tick', 'reject', 'pong']);
+const SERVER_TYPES: ReadonlySet<string> = new Set(['welcome', 'zone', 'tick', 'reject', 'pong']);
 
 /** A light check that text from the server has one of our shapes. The server is trusted; this only catches a wrong endpoint. */
 export function decodeServerMessage(text: string): ServerMessage | null {

@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@/net/protocol';
+import { hashSecret } from '@/server/character';
 import { type GameServer, startServer } from '@/server/server';
+import { MemoryStore } from '@/server/store';
 
 const TICK_MS = 25;
 const GRACE_MS = 100;
+/** What a browser would have made up once and kept. */
+const SECRET = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+const OTHER_BROWSER = 'ffffffffffffffffffffffffffffffff';
 
 /** A bare WebSocket client that records what the server says and lets a test wait for a message. */
 class TestClient {
@@ -35,8 +40,8 @@ class TestClient {
     this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
 
-  hello(name: string, token: string | null = null, v = PROTOCOL_VERSION): void {
-    this.send({ t: 'hello', v, name, token });
+  hello(name: string, token: string | null = null, v = PROTOCOL_VERSION, secret = SECRET): void {
+    this.send({ t: 'hello', v, name, secret, token });
   }
 
   /** The next unread message matching `pred`, waiting up to `timeoutMs` for it to arrive. */
@@ -89,15 +94,31 @@ class TestClient {
 }
 
 const isWelcome = (m: ServerMessage): m is Extract<ServerMessage, { t: 'welcome' }> => m.t === 'welcome';
+const isZone = (m: ServerMessage): m is Extract<ServerMessage, { t: 'zone' }> => m.t === 'zone';
 const isTick = (m: ServerMessage): m is Extract<ServerMessage, { t: 'tick' }> => m.t === 'tick';
 const isReject = (m: ServerMessage): m is Extract<ServerMessage, { t: 'reject' }> => m.t === 'reject';
 
-describe('zone server', () => {
+/** Walks a client one cell at a time: a click, then one step per message until `steps` are sent. */
+function walk(client: TestClient, seq: number, to: [number, number], steps: number): number {
+  client.send({ t: 'input', seq: ++seq, to });
+  for (let i = 1; i < steps; i++) client.send({ t: 'input', seq: ++seq });
+  return seq;
+}
+
+const until = async (check: () => Promise<boolean>, what: string, timeoutMs = 2000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
+
+describe('game server', () => {
   let server: GameServer | null = null;
   const clients: TestClient[] = [];
 
-  async function start(): Promise<GameServer> {
-    server = await startServer({ port: 0, host: '127.0.0.1', zone: 'greenhollow', tickMs: TICK_MS, graceMs: GRACE_MS });
+  async function start(store = new MemoryStore()): Promise<GameServer> {
+    server = await startServer({ port: 0, host: '127.0.0.1', startZone: 'greenhollow', tickMs: TICK_MS, graceMs: GRACE_MS, saveMs: 0, store });
     return server;
   }
 
@@ -121,6 +142,7 @@ describe('zone server', () => {
     const w1 = await ada.next(isWelcome);
     expect(w1.tickMs).toBe(TICK_MS);
     expect(w1.zone).toBe('greenhollow');
+    expect(w1.resumed).toBe(false);
     expect(w1.entities.map((e) => e.name)).toEqual(['Ada']);
     expect(w1.token).toMatch(/^[0-9a-f-]{36}$/);
 
@@ -173,37 +195,140 @@ describe('zone server', () => {
     const vandal = await connect(port);
     for (let i = 0; i < 10; i++) vandal.send('{"t":"teleport"}');
     expect(await vandal.closed()).toBe(1008);
-    expect(server!.room.size).toBe(1);
+    expect(server!.world.size).toBe(1);
   });
 
-  it('resumes a character by token, replacing the old connection, and lets a dropped one lapse', async () => {
+  it('resumes a character by token, replacing the old connection, and brings a lapsed one back from the store where it stood', async () => {
     const { port } = await start();
     const first = await connect(port);
     first.hello('Ada');
     const w1 = await first.next(isWelcome);
+    const spawn = w1.entities.find((e) => e.id === w1.id)!;
 
     const second = await connect(port);
     second.hello('Ada', w1.token);
     const w2 = await second.next(isWelcome);
     expect(w2.id).toBe(w1.id);
     expect(w2.token).toBe(w1.token);
+    expect(w2.resumed).toBe(true);
     expect(await first.closed()).toBe(4000);
-    expect(server!.room.size).toBe(1);
+    expect(server!.world.size).toBe(1);
 
+    // One cell east, then the connection goes and the grace period runs out.
+    walk(second, w2.seq, [spawn.cx + 1, spawn.cy], 5);
     const watcher = await connect(port);
     watcher.hello('Bob');
     await watcher.next(isWelcome);
+    await watcher.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w1.id && mv[8] === 5));
     second.close();
     const left = await watcher.next((m) => isTick(m) && m.left.includes(w1.id), GRACE_MS * 6);
     expect(isTick(left) && left.left).toEqual([w1.id]);
-    expect(server!.room.size).toBe(1);
+    expect(server!.world.size).toBe(1);
+    expect(await server!.store.load('ada')).toMatchObject({ name: 'Ada', zone: 'greenhollow', x: spawn.cx + 1, y: spawn.cy, dir: 2 });
 
-    // The lapsed token is no longer good for anything: a hello with it starts a fresh character.
+    // The lapsed token is no longer good for anything, but the name and secret bring the saved character back.
     const third = await connect(port);
     third.hello('Ada', w1.token);
     const w3 = await third.next(isWelcome);
     expect(w3.id).not.toBe(w1.id);
     expect(w3.token).not.toBe(w1.token);
+    expect(w3.resumed).toBe(true);
+    const me = w3.entities.find((e) => e.id === w3.id)!;
+    expect([me.cx, me.cy, me.dir]).toEqual([spawn.cx + 1, spawn.cy, 2]);
+  });
+
+  it('ties a name to the browser that made it', async () => {
+    const { port } = await start();
+    const ada = await connect(port);
+    ada.hello('Ada');
+    const w1 = await ada.next(isWelcome);
+    const spawn = w1.entities.find((e) => e.id === w1.id)!;
+    walk(ada, 0, [spawn.cx, spawn.cy + 1], 5);
+    await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w1.id && mv[8] === 5));
+    ada.close();
+    await until(async () => server!.world.player(w1.id)?.connected === false, 'the drop');
+
+    // Within the grace period, another browser cannot take the dropped character over by name.
+    const thief = await connect(port);
+    thief.hello('ada', null, PROTOCOL_VERSION, OTHER_BROWSER);
+    expect((await thief.next(isReject)).reason).toMatch(/another browser/);
+    expect(await thief.closed()).toBe(1008);
+    expect(server!.world.player(w1.id)?.connected).toBe(false);
+
+    // Nor after it, from the store.
+    await until(async () => server!.world.size === 0, 'the lapse');
+    const later = await connect(port);
+    later.hello('Ada', null, PROTOCOL_VERSION, OTHER_BROWSER);
+    expect((await later.next(isReject)).reason).toMatch(/another browser/);
+
+    // The right browser gets it back, where it stood.
+    const owner = await connect(port);
+    owner.hello('Ada');
+    const w2 = await owner.next(isWelcome);
+    expect(w2.resumed).toBe(true);
+    const me = w2.entities.find((e) => e.id === w2.id)!;
+    expect([me.cx, me.cy]).toEqual([spawn.cx, spawn.cy + 1]);
+    expect((await server!.store.load('ada'))?.secretHash).toBe(hashSecret(SECRET));
+  });
+
+  it('walks a player through an exit into the next zone, where the others cannot see them any more', async () => {
+    const store = new MemoryStore();
+    await store.save({ name: 'Ada', secretHash: hashSecret(SECRET), createdAt: 1, dir: 0, running: false, state: {}, zone: 'greenhollow', x: 38, y: 11, lastSeenAt: 1 });
+    const { port } = await start(store);
+    const bob = await connect(port);
+    bob.hello('Bob');
+    const wb = await bob.next(isWelcome);
+    const ada = await connect(port);
+    ada.hello('Ada');
+    const wa = await ada.next(isWelcome);
+    expect(wa.resumed).toBe(true);
+    expect(wa.entities.find((e) => e.id === wa.id)).toMatchObject({ cx: 38, cy: 11 });
+    await bob.next((m) => isTick(m) && m.joined.some((e) => e.id === wa.id));
+
+    const sent = walk(ada, wa.seq, [39, 11], 5); // the road east, one cell
+    const zone = await ada.next(isZone);
+    expect(zone.zone).toBe('copper_hills');
+    expect(zone.seq).toBe(sent + 1000);
+    expect(zone.entities.map((e) => e.name)).toEqual(['Ada']);
+    expect(zone.entities[0]).toMatchObject({ cx: 0, cy: 12, nx: -1, t: 0 });
+    const gone = await bob.next((m) => isTick(m) && m.left.includes(wa.id));
+    expect(isTick(gone) && gone.left).toEqual([wa.id]);
+    expect(server!.world.zoneOf(wa.id)).toBe('copper_hills');
+    expect(server!.world.room('greenhollow').size).toBe(1);
+
+    // Ticks now come from the hills; a step there is Ada's alone to see.
+    ada.send({ t: 'input', seq: zone.seq + 1, to: [3, 12] });
+    const moved = await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === wa.id));
+    expect(isTick(moved) && moved.moves[0]?.slice(1, 5)).toEqual([0, 12, 1, 12]);
+    const bobSaw = bob.received.filter((m) => isTick(m) && m.moves.some((mv) => mv[0] === wa.id && mv[1] === 0 && mv[2] === 12));
+    expect(bobSaw).toEqual([]);
+    expect(wb.id).not.toBe(wa.id);
+    await until(async () => (await store.load('ada'))?.zone === 'copper_hills', 'the save after the zone change');
+  });
+
+  it('brings everyone back after a restart with the same store', async () => {
+    const store = new MemoryStore();
+    const first = await start(store);
+    const ada = await connect(first.port);
+    ada.hello('Ada');
+    const w1 = await ada.next(isWelcome);
+    const spawn = w1.entities.find((e) => e.id === w1.id)!;
+    ada.send({ t: 'run', on: true });
+    walk(ada, 0, [spawn.cx + 2, spawn.cy], 6); // two cells at running speed
+    await ada.next((m) => isTick(m) && m.moves.some((mv) => mv[0] === w1.id && mv[8] === 6));
+    expect(server!.world.player(w1.id)?.cell).toEqual({ x: spawn.cx + 2, y: spawn.cy });
+    await first.close(); // saves everyone on the way out
+    server = null;
+    expect(await ada.closed()).toBe(1001);
+    expect(await store.load('ada')).toMatchObject({ x: spawn.cx + 2, y: spawn.cy, running: true, zone: 'greenhollow' });
+
+    const second = await start(store);
+    const back = await connect(second.port);
+    back.hello('Ada');
+    const w2 = await back.next(isWelcome);
+    expect(w2.resumed).toBe(true);
+    const me = w2.entities.find((e) => e.id === w2.id)!;
+    expect([me.cx, me.cy, me.running]).toEqual([spawn.cx + 2, spawn.cy, true]);
   });
 
   it('answers the health check', async () => {
@@ -213,11 +338,12 @@ describe('zone server', () => {
     await ada.next(isWelcome);
     const res = await fetch(`http://127.0.0.1:${port}/health`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; players: number; zone: string; protocol: number };
+    const body = (await res.json()) as { ok: boolean; players: number; zones: Record<string, number>; protocol: number; store: string };
     expect(body.ok).toBe(true);
     expect(body.players).toBe(1);
-    expect(body.zone).toBe('greenhollow');
+    expect(body.zones).toEqual({ greenhollow: 1 });
     expect(body.protocol).toBe(PROTOCOL_VERSION);
+    expect(body.store).toBe('memory');
     expect((await fetch(`http://127.0.0.1:${port}/`)).status).toBe(404);
   });
 });
