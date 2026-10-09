@@ -3,8 +3,8 @@
  * cross-reference. If validate() returns errors the game refuses to start.
  */
 import {
-  BIG_KINDS, TERRAIN_CHARS,
-  type ChapterDef, type ContentTables, type GatherNodeDef, type ItemDef, type Keyed, type MapObjectDef, type MissionDef, type MonsterDef, type NpcDef, type Objective, type ProgressNodeDef, type QuestDef, type RecipeDef, type Requirement, type ShopDef, type SkillDef, type StationDef, type TraderDef, type ZoneDef, type ZoneMapDef,
+  BIG_KINDS, MAX_LEVEL, TERRAIN_CHARS,
+  type ChapterDef, type ContentTables, type GatherNodeDef, type ItemDef, type Keyed, type MapObjectDef, type MissionDef, type MonsterDef, type NpcDef, type Objective, type ProgressNodeDef, type QuestDef, type RecipeDef, type Requirement, type ShopDef, type SkillDef, type SkillUnlock, type StationDef, type TraderDef, type ZoneDef, type ZoneMapDef,
 } from '@/types/content';
 import type { ItemId, MissionId, MonsterId, NodeId, NpcId, ProgressNodeId, QuestId, RecipeId, ShopId, SkillId, StationId, TraderId, ZoneId } from '@/types/ids';
 
@@ -18,6 +18,8 @@ export class Registry {
   constructor(readonly tables: ContentTables) {}
 
   skill(id: SkillId): Keyed<SkillDef, SkillId> { return must(this.tables.skills, id, 'skill'); }
+  /** What every level of a skill gives, level 1 first. */
+  unlocks(id: SkillId): readonly SkillUnlock[] { return this.tables.unlocks[id] ?? []; }
   station(id: StationId): Keyed<StationDef, StationId> { return must(this.tables.stations, id, 'station'); }
   item(id: ItemId): Keyed<ItemDef, ItemId> { return must(this.tables.items, id, 'item'); }
   recipe(id: RecipeId): Keyed<RecipeDef, RecipeId> { return must(this.tables.recipes, id, 'recipe'); }
@@ -67,6 +69,7 @@ export class Registry {
   get itemIds(): ItemId[] { return Object.keys(this.tables.items) as ItemId[]; }
   get recipeIds(): RecipeId[] { return Object.keys(this.tables.recipes) as RecipeId[]; }
   get zoneIds(): ZoneId[] { return Object.keys(this.tables.zones) as ZoneId[]; }
+  get monsterIds(): MonsterId[] { return Object.keys(this.tables.monsters) as MonsterId[]; }
   get questIds(): QuestId[] { return Object.keys(this.tables.quests) as QuestId[]; }
   get shopIds(): ShopId[] { return Object.keys(this.tables.shops) as ShopId[]; }
   get traderIds(): TraderId[] { return Object.keys(this.tables.traders) as TraderId[]; }
@@ -184,6 +187,7 @@ export class Registry {
     for (const [id, def] of Object.entries(t.monsters)) {
       check(def.id === id, `monster ${id}: id field is '${def.id}'`);
       check(def.hp > 0 && def.attackIntervalMs > 0, `monster ${id}: hp and attackIntervalMs must be > 0`);
+      check(def.attack >= 0 && def.armor >= 0, `monster ${id}: attack and armor must be >= 0`);
       check(validTier(def.tier), `monster ${id}: bad tier ${def.tier}`);
       check(def.gold[0] <= def.gold[1], `monster ${id}: gold min > max`);
       for (const l of def.loot) {
@@ -206,6 +210,11 @@ export class Registry {
     }
     errors.push(...this.questCycles());
     errors.push(...this.validateProgression());
+    for (const id of Object.keys(t.skills)) {
+      const list = t.unlocks[id];
+      check(list !== undefined && list.length === MAX_LEVEL && list.every((u, i) => u.level === i + 1 && u.text.length > 0), `skill ${id}: needs one unlock per level from 1 to ${MAX_LEVEL}`);
+    }
+    for (const id of Object.keys(t.unlocks)) check(id in t.skills, `unlocks: unknown skill '${id}'`);
 
     const chapterNumbers = t.chapters.map((c) => c.number);
     check(chapterNumbers.every((n, i) => n === i + 1), 'chapters must be numbered 1..N in order');

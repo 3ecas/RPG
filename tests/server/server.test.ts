@@ -343,7 +343,9 @@ describe('game server', () => {
     ada.hello('Ada');
     const wa = await ada.next(isWelcome);
     expect(wa.bag[0]).toEqual(['bronze_hatchet', 1]);
-    expect(wa.skills).toContainEqual(['woodcutting', 0]);
+    expect(wa.skills).toContainEqual(['lumberjack', 0]);
+    expect(wa.gear).toEqual([]);
+    expect(wa.stats).toEqual({ hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 });
     expect(wa.items).toEqual([]);
     const bob = await connect(port);
     bob.hello('Bob');
@@ -353,7 +355,7 @@ describe('game server', () => {
     const swing = await bob.next((m) => isTick(m) && m.acts.some((a) => a[0] === wa.id && a[1] === 3));
     expect(isTick(swing) && swing.acts).toEqual([[wa.id, 3, 2, 3]]); // facing up, at the tree
     const chopped = await ada.next((m): m is You => isYou(m) && !!m.bag?.some((s) => s?.[0] === 'oak_log'), 8000);
-    expect(chopped.xp?.[0]?.[0]).toBe('woodcutting');
+    expect(chopped.xp?.[0]?.[0]).toBe('lumberjack');
     expect(chopped.xp?.[0]?.[1]).toBeGreaterThanOrEqual(10);
     const slot = chopped.bag!.findIndex((s) => s?.[0] === 'oak_log');
 
@@ -377,7 +379,7 @@ describe('game server', () => {
     await server!.saveAll();
     const saved = await store.load('bob');
     expect((saved?.state.bag as unknown[]).filter((s) => (s as { itemId?: string } | null)?.itemId === 'oak_log')).toHaveLength(1);
-    expect(((await store.load('ada'))?.state.skills as Record<string, number>).woodcutting).toBeGreaterThanOrEqual(10);
+    expect(((await store.load('ada'))?.state.skills as Record<string, number>).lumberjack).toBeGreaterThanOrEqual(10);
   });
 
   it('answers the health check', async () => {

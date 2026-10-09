@@ -41,7 +41,7 @@ export const QUESTS: { readonly [K in QuestId]: QuestDef & { readonly id: K } } 
       { type: 'craft', recipeId: 'smelt_bronze_bar', count: 5 },
       { type: 'craft', recipeId: 'smith_bronze_dagger', count: 1 },
     ],
-    rewards: [{ type: 'item', itemId: 'bronze_sword', qty: 1 }, { type: 'xp', skill: 'blacksmithing', amount: 300 }, { type: 'points', amount: 2 }],
+    rewards: [{ type: 'item', itemId: 'bronze_sword', qty: 1 }, { type: 'xp', skill: 'smithing', amount: 300 }, { type: 'points', amount: 2 }],
     completionText: 'Not bad. Not good, but not bad. Take this sword; I made it on a better day.',
   },
   fresh_catch: {

@@ -17,7 +17,7 @@ const ada: EntitySnapshot = { id: 1, name: 'Ada', cx: 1, cy: 1, nx: -1, ny: -1, 
 const bob: EntitySnapshot = { id: 2, name: 'Bob', cx: 4, cy: 4, nx: -1, ny: -1, t: 0, dir: 3, running: true, moving: false, act: null };
 
 function welcome(entities: EntitySnapshot[] = [ada], seq = 0): ServerMessage {
-  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], seq, resumed: false, bag: [['bronze_hatchet', 1], null], skills: [['woodcutting', 0], ['mining', 83]] };
+  return { t: 'welcome', id: 1, token: 'tok', tickMs: 50, tick: 100, zone: 'greenhollow', entities, items: [], nodes: [], seq, resumed: false, bag: [['bronze_hatchet', 1], null], skills: [['lumberjack', 0], ['mining', 83]], gear: [], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 1, spellPower: 0 } };
 }
 
 function tick(tickNo: number, part: Partial<Extract<ServerMessage, { t: 'tick' }>>): ServerMessage {
@@ -106,6 +106,21 @@ describe('replica: yourself, predicted', () => {
     r.walkTo({ x: 3, y: 5 });
     r.update(1050 + STEP_MS);
     expect(sent[0]?.seq).toBe(42);
+  });
+
+  it('stops at the next whole cell when told, and tells the server so', () => {
+    const { r, sent } = replica();
+    r.walkTo({ x: 9, y: 1 });
+    r.update(1000 + STEP_MS * 3); // 0.6 of the way into (2, 1)
+    r.stop();
+    r.update(1000 + STEP_MS * 4);
+    expect(sent[3]).toEqual({ t: 'input', seq: 4, stop: true });
+    expect(r.self.path).toEqual([{ x: 2, y: 1 }]);
+    r.update(1000 + STEP_MS * 6);
+    expect(r.self.cell).toEqual({ x: 2, y: 1 });
+    expect(r.self.path).toEqual([]);
+    expect(sent).toHaveLength(5); // the step that finished the cell, then quiet
+    expect(r.positionAt(r.selfEntity!, 2000)).toEqual({ x: 2.5, y: 1.5, dir: 2, moving: false });
   });
 
   it('does not burst inputs after a long pause', () => {
@@ -202,15 +217,20 @@ describe('replica: the zone around you', () => {
     expect(r.bag).toEqual([['bronze_hatchet', 1], null]);
     expect(r.skills.get('mining')).toBe(83);
     const before = r.version;
-    r.apply({ t: 'you', bag: [['bronze_hatchet', 1], ['oak_log', 1]], xp: [['woodcutting', 10]], items: [[5, 'oak_log', 1, 1, 1]], notes: ['Your bag is full.'] }, 2000);
+    r.apply({ t: 'you', bag: [['bronze_hatchet', 1], ['oak_log', 1]], xp: [['lumberjack', 10]], items: [[5, 'oak_log', 1, 1, 1]], notes: ['Your bag is full.'] }, 2000);
     expect(r.bag[1]).toEqual(['oak_log', 1]);
-    expect(r.skills.get('woodcutting')).toBe(10);
-    expect(r.xpDrops).toEqual([{ skill: 'woodcutting', amount: 10, at: 2000 }]);
+    expect(r.skills.get('lumberjack')).toBe(10);
+    expect(r.xpDrops).toEqual([{ skill: 'lumberjack', amount: 10, at: 2000 }]);
     expect(r.items.get(5)?.item).toBe('oak_log');
     expect(notes).toEqual(['Your bag is full.']);
     expect(r.version).toBeGreaterThan(before);
     r.apply({ t: 'you', bank: [['oak_log', 3]] }, 2100);
     expect(r.bank).toEqual([['oak_log', 3]]);
+    expect(r.gear).toEqual([]);
+    expect(r.stats?.maxHp).toBe(11);
+    r.apply({ t: 'you', gear: [['main_hand', 'bronze_sword', 1]], stats: { hp: 11, maxHp: 11, mana: 6, maxMana: 6, armor: 0, attack: 6, spellPower: 0 } }, 2150);
+    expect(r.gear).toEqual([['main_hand', 'bronze_sword', 1]]);
+    expect(r.stats?.attack).toBe(6);
     r.apply({ t: 'you', bank: null }, 2200);
     expect(r.bank).toBeNull();
     r.update(2000 + XP_DROP_MS + 100);

@@ -35,6 +35,11 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'input', seq: 10, to: [3, 4], use: true })).toEqual({ t: 'input', seq: 10, to: [3, 4], use: true });
     expect(parseClientMessage({ t: 'input', seq: 11, to: [3, 4], use: false })).toEqual({ t: 'input', seq: 11, to: [3, 4] });
     expect(parseClientMessage({ t: 'drop', slot: 27 })).toEqual({ t: 'drop', slot: 27 });
+    expect(parseClientMessage({ t: 'input', seq: 12, stop: true })).toEqual({ t: 'input', seq: 12, stop: true });
+    expect(parseClientMessage({ t: 'input', seq: 13, stop: false })).toEqual({ t: 'input', seq: 13 });
+    expect(parseClientMessage({ t: 'input', seq: 14, to: [1, 1], stop: true })).toEqual({ t: 'input', seq: 14, to: [1, 1], stop: true });
+    expect(parseClientMessage({ t: 'equip', slot: 3 })).toEqual({ t: 'equip', slot: 3 });
+    expect(parseClientMessage({ t: 'unequip', slot: 'head' })).toEqual({ t: 'unequip', slot: 'head' });
     expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 1 })).toEqual({ t: 'bank', op: 'deposit', slot: 0, qty: 1 });
     expect(parseClientMessage({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 })).toEqual({ t: 'bank', op: 'withdraw', item: 'oak_log', qty: 5 });
     expect(parseClientMessage({ t: 'bank', op: 'all' })).toEqual({ t: 'bank', op: 'all' });
@@ -63,6 +68,10 @@ describe('protocol: parsing what clients send', () => {
     expect(parseClientMessage({ t: 'input', seq: 1, to: [1, 1], use: 'yes' })).toBeNull();
     expect(parseClientMessage({ t: 'input', seq: 1, use: true })).toEqual({ t: 'input', seq: 1 }); // use without a cell means nothing
     expect(parseClientMessage({ t: 'drop' })).toBeNull();
+    expect(parseClientMessage({ t: 'input', seq: 1, stop: 'yes' })).toBeNull();
+    expect(parseClientMessage({ t: 'equip', slot: 'head' })).toBeNull();
+    expect(parseClientMessage({ t: 'unequip', slot: 'hat' })).toBeNull();
+    expect(parseClientMessage({ t: 'unequip', slot: 0 })).toBeNull();
     expect(parseClientMessage({ t: 'drop', slot: -1 })).toBeNull();
     expect(parseClientMessage({ t: 'drop', slot: LIMITS.SLOT_MAX })).toBeNull();
     expect(parseClientMessage({ t: 'bank', op: 'deposit', slot: 0, qty: 0 })).toBeNull();

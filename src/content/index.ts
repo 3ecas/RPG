@@ -15,9 +15,11 @@ import { MARKET_ITEMS } from './market';
 import { PROGRESSION } from './progression';
 import { CHAPTERS, MISSIONS } from './missions';
 import { MAPS } from './maps';
+import { UNLOCKS } from './unlocks';
 
 export const CONTENT = {
   skills: SKILLS,
+  unlocks: UNLOCKS,
   stations: STATIONS,
   items: ITEMS,
   recipes: RECIPES,

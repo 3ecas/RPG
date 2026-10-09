@@ -18,7 +18,8 @@ it is being built in live in [DESIGN.md](DESIGN.md).
 | Characters | One JSON document per name behind a small store interface: Postgres (`DATABASE_URL`, one `jsonb` row each) in production, a JSON file without a database, memory in tests | The document grows with the slices without migrations; the server never knows which store it has. |
 | Identity  | A name plus a secret the browser makes once and keeps; the server stores its hash | A stand-in for accounts that costs nothing and lets a tester come back to their character. Accounts replace it (DESIGN.md §13, slice 5). |
 | World     | Tile maps as text rows plus a legend; a grid with footprints; eight-way paths with the corner rule; one motion model (cell to cell, path-following) shared by server and client; the xp curve and the bag rules as pure functions | The server and the browser simulate the same code from the same inputs, so prediction is exact; the panels compute levels the way the server does. |
-| Actions   | An action tick every 12 steps (600 ms) on top of the 50 ms step; each is one roll by level and tool at a gather node; items and the bank change on commands, not predicted | Walking must feel immediate, gathering need not: a roll every 600 ms reads as a swing, and nothing the client cannot predict is predicted. |
+| Actions   | An action tick every 12 steps (600 ms) on top of the 50 ms step; each is one roll by level and tool at a gather node; items, gear and the bank change on commands, not predicted | Walking must feel immediate, gathering need not: a roll every 600 ms reads as a swing, and nothing the client cannot predict is predicted. |
+| Chrome    | Floating windows over the canvas (drag, resize, close, remembered per browser) opened from a draggable menu bar, a minimap, a docked chat | The game will keep growing panels; one window manager and one way to open them keeps the shell from growing a layout per feature. |
 | Tests     | Vitest: the room, the protocol, the replica, paths, content, and the server with real sockets | Everything that decides something is a pure function or a headless class. |
 | Not used  | A framework, ECS, Phaser, an ORM, physics | Not yet needed: a circle sliding on a grid is all the movement needs, and one table with one `jsonb` column is all the data needs. |
 
@@ -64,7 +65,7 @@ rpg/
 │  ├─ content/                # zones, maps, and the tables the maps' legends refer to
 │  ├─ core/{registry,rng}.ts  # typed content lookup + validate(); seeded PRNG
 │  ├─ world/{grid,path,motion}.ts  # parseMap, walkability, footprints; BFS paths, eight-way with the corner rule; the motion model
-│  ├─ world/{skills,bag}.ts    # the xp curve, tier bands, the gather roll; bag slots and bank stacks
+│  ├─ world/{skills,bag,stats}.ts  # the xp curve, tier bands, the gather roll; bag slots and bank stacks; hit points, mana, armor, attack, spell power from levels and gear
 │  ├─ net/protocol.ts         # message types, limits, parseClientMessage
 │  ├─ server/
 │  │  ├─ room.ts              # one zone: enter, path, step, use what you clicked, gather, items, bank, chat, grace, exits
@@ -78,8 +79,10 @@ rpg/
 │  │  ├─ replica.ts           # the zone as the client knows it, one tick behind, interpolated
 │  │  └─ socket.ts            # hello, reconnect with backoff, the session token
 │  └─ ui/
-│     ├─ shell.ts             # top bar, join card, chat dock; wires socket → replica → scene
-│     ├─ scene.ts             # the canvas: flat tiles, shapes, players, labels, bubbles
+│     ├─ shell.ts             # top bar, join card, menu bar, the windows' contents, menus, chat dock; wires socket → replica → scene
+│     ├─ windows.ts           # draggable, resizable, closable windows that remember their layout; the menu bar's dragging
+│     ├─ minimap.ts           # the zone small: ground, things, everyone, the view's edge
+│     ├─ scene.ts             # the canvas: flat tiles, shapes, items, players, swings, labels, bubbles, xp drops
 │     └─ html.ts              # escaping
 └─ tests/
    ├─ net/protocol.test.ts · server/{room,gather,world,store,server}.test.ts · client/replica.test.ts
@@ -167,11 +170,27 @@ nothing. Any new click first stops whatever was being done.
   after each tick, so the server sends one `you` message per changed player
   per tick while the room's delta stays one encoding per zone.
 
-A character's skills, bag and bank are the typed `PlayerState`
-(`state.ts`), read from the record's `state` document when it enters (the
-starting kit when there is none, unknown items and skills dropped) and
-written back by `stateOf`. Monsters and crafting are not in the room yet
-(DESIGN.md §13).
+**Gear and numbers** (`equip`, `unequip`, `statsOf`): a bag slot with an
+`equip` goes to the slot its kind names (a weapon to the main hand, a shield
+or tome to the off hand, a trinket to the first free trinket slot) once the
+item's requirements hold (a tier's level in Hand Weapons, Bows, Magic or
+Vitality); what was worn takes the bag slot the new piece came from; what
+is removed goes to the first free bag slot. `deriveStats` (`world/stats.ts`)
+turns levels and worn gear into max hit points, max mana, armor, attack and
+spell power; the room keeps the current hit points and mana within the
+maximums and brings a point of each back every `regenInterval` action ticks
+(twelve at level 1 of Vitality or Spirit, one fewer every ten levels). The
+best tool for a skill is looked for in the bag and the main hand.
+
+**Stopping**: an input with `stop` cuts the path to the cell under way,
+clears the intent and the action, and shuts the bank; the client predicts
+the same cut, so the two agree.
+
+A character's skills, bag, bank, gear, hit points and mana are the typed
+`PlayerState` (`state.ts`), read from the record's `state` document when it
+enters (the starting kit when there is none, unknown items and skills
+dropped, hit points and mana full when unknown) and written back by
+`stateOf`. Monsters and crafting are not in the room yet (DESIGN.md §13).
 
 **The world** owns one room per zone and the one id counter they share. It
 finds a player by name wherever it stands, `enter(record)` puts a saved or
@@ -189,14 +208,16 @@ entrance does nothing; stepping onto an exit does.
 
 Client → server: `hello` (name, protocol version, the browser's secret,
 session token or null), `input` (one step: a sequence number, the clicked
-cell to walk to when there is one, and `use` when the click was on
-something to use once there), `run` (on or off), `chat` (text), `drop` (a
-bag slot), `bank` (`deposit` a slot and quantity, `withdraw` an item and
-quantity, `all`, `close`), `ping`.
+cell to walk to when there is one, `use` when the click was on something to
+use once there, `stop` to halt at the next cell), `run` (on or off), `chat`
+(text), `drop` (a bag slot), `equip` (a bag slot), `unequip` (a gear slot),
+`bank` (`deposit` a slot and quantity, `withdraw` an item and quantity,
+`all`, `close`), `ping`.
 Server → client: `welcome` (your id, a session token, the step length,
-whether this is a saved character coming back, your bag and skills, and the
-zone: its id, the server tick, a full snapshot of the entities, the items
-you can see, the empty nodes, and the number of your last input it knows),
+whether this is a saved character coming back, your bag, skills, gear and
+numbers, and the zone: its id, the server tick, a full snapshot of the
+entities, the items you can see, the empty nodes, and the number of your
+last input it knows),
 `zone` (the same zone snapshot for the zone you just walked into; id, token,
 bag and skills stay), `tick` (the delta: `joined`, `left`, `moves` as `[id,
 cell x, cell y, next x, next y, progress, facing, moving, seq]` for everyone
@@ -204,10 +225,10 @@ who moved or just stopped, `acts` as `[id, x, y, facing]` for whoever
 started working on the thing at a cell or stopped (x = -1), `nodes` as
 `[object index, 1 or 0]` for nodes emptied or back, `drops` and `taken` for
 items that appeared for everyone or are gone, `chat`), `you` (what only you
-learn: your bag after a change, xp per skill, the bank while it is open or
-null when it shuts, your own drops, notes), `reject` (a reason, then the
-socket closes), `pong`. A placement is whole cells plus one fraction, never
-a free position.
+learn: your bag after a change, xp per skill, your gear and numbers after a
+change, the bank while it is open or null when it shuts, your own drops,
+notes), `reject` (a reason, then the socket closes), `pong`. A placement is
+whole cells plus one fraction, never a free position.
 
 `parseClientMessage` accepts exactly these shapes and nothing else: integers
 within bounds, booleans, names normalized (trimmed, single spaces, a letter
@@ -290,9 +311,10 @@ character store behind it.
   the replica over with the new zone's snapshot, keeping who you are, the
   chat log and the input numbering the server gives. It also keeps the
   items on the ground you can see, the empty nodes, what each entity is
-  working on, and your own bag, skills (with xp drops to show for a moment)
-  and the bank while it is open; `use(cell)` is a click whose input carries
-  the intent; a `version` counter tells the panels when to redraw.
+  working on, and your own bag, skills (with xp drops to show for a moment),
+  gear, numbers and the bank while it is open; `use(cell)` is a click whose
+  input carries the intent and `stop()` an input that halts; a `version`
+  counter tells the panels when to redraw.
 - **`ui/scene.ts`**: pre-renders the ground once per map (a flat colour per
   terrain with a little texture), then each frame draws exits, the click
   marker, items on the ground (a tilted square in the colour of the item's
@@ -304,21 +326,38 @@ character store behind it.
   camera is locked on you, so the void shows past the map's edge. Clicks go
   up as `onClick(cell, button, screen)`; `labelAt(cell)` asks the shell what
   to say about a cell.
+- **`ui/windows.ts`**: the window manager. A window is a title bar to drag
+  by (`makeDraggable`, also lent to the menu bar), a close button, a native
+  resize grip, a body; it is placed where it was last left and opened or not
+  as it was, from `localStorage`, kept inside the stage when the stage
+  shrinks, and brought to the front when touched. `reset()` restores the
+  defaults.
+- **`ui/minimap.ts`**: the zone's ground once at a pixel per cell, scaled up
+  without smoothing each frame, with what stands on the map as dots,
+  everyone as a dot in their colour, you with a ring, and the edge of what
+  the main view shows.
 - **`ui/shell.ts`**: the join card (name, server address, the hint when the
   page was built without one), the top bar (zone, connection, players, tick,
-  ping), the side panel (the bag as 28 slots with coloured initials for
-  icons; the skills as levels with a bar to the next), the chat dock, the
-  bank window (stacks with 1 / 5 / All, deposit all, close), the run toggle.
-  A click on the world does the first thing worth doing there (take an
-  item, chop a tree, use the bank) or walks; a right click lists the choices
-  (`optionsAt`: Take, Chop/Mine/Fish/Harvest/Pick, Use Bank, Examine, Walk
-  here); a click on a bag slot offers Deposit (while the bank is open), Drop
-  and Examine. Shift held or R toggled runs, Enter talks, Escape closes a
-  menu, the bank, or the chat box. Notes from the game and examine texts are
-  lines in the chat log. The name is remembered per browser, the session
-  token per tab, and the secret per browser (`localStorage`, made once from
-  `crypto.getRandomValues`). On `welcome` and `zone` it swaps the map on the
-  scene and in the prediction and writes a line in the chat log.
+  ping), the menu bar (Inventory, Gear, Journal, Skills, Map, Settings, with
+  I, G, J, K, M, O as keys), the windows' contents (the bag as 28 slots with
+  coloured initials for icons; the gear as nine slots around a body with the
+  numbers under it; the journal with quests, the adventure log, the bestiary
+  and a filterable item database from content; the skills as levels with a
+  bar, and each skill's hundred unlocks with the current one marked; the
+  settings with run, hover labels, chat, a layout reset and a way out; the
+  bank with stacks, 1 / 5 / All and deposit all), the chat dock, the run
+  toggle. A click on the world does the first thing worth doing there (take
+  an item, chop a tree, use the bank) or walks; a right click lists the
+  choices (`optionsAt`: Take, Chop/Mine/Fish/Harvest, Use Bank, Examine,
+  Walk here); a click on a bag slot offers Wear or Wield, Deposit (while the
+  bank is open), Drop and Examine; a click on a gear slot offers Remove and
+  Examine. Shift held or R toggled runs, Space stops, Enter talks, Escape
+  closes a menu, the bank, or the chat box. Notes from the game and examine
+  texts are lines in the chat log and in the journal. The name is remembered
+  per browser, the session token per tab, the secret per browser
+  (`localStorage`, made once from `crypto.getRandomValues`), and the window
+  layout per browser. On `welcome` and `zone` it swaps the map on the scene,
+  the minimap and the prediction and writes a line in the chat log.
 - **`main.ts`**: validates content, decides the server address (`?server=`,
   then `VITE_SERVER_URL`, then `ws://localhost:8080` when running locally,
   else nothing), mounts the shell.
@@ -357,8 +396,13 @@ them first.
   or beside it, the bank opening beside the chest and shutting on a walk,
   deposits and withdrawals within the bag's room, saved state read back.
 - `tests/world/skills.test.ts`, `tests/world/bag.test.ts`: the curve's
-  known values, levels and tier bands, the gather roll; slots, stacking,
-  room, taking, bank stacks.
+  known values to level 100, levels and tier bands, the gather roll; the
+  numbers from levels and gear, the weapon's skill, regeneration intervals,
+  which slot takes what; slots, stacking, room, taking, bank stacks.
+- `tests/server/gather.test.ts` also covers gear: wearing from the bag and
+  the swap back, refusals by level and kind and a full bag, tomes and
+  trinkets and a wielded hatchet, hit points held within the maximum and
+  mana coming back, and a stop input halting at the next cell.
 - `tests/server/world.test.ts`: one room per zone with shared ids, placing
   from a record, the record of where one stands, lapsing, walking through
   an exit into the matching entrance and back, the input-number jump.
@@ -399,8 +443,10 @@ them first.
 
 ## 11. Status
 
-Slices 1, 1b and 2 of DESIGN.md §13 are done: walking together, characters
-that last across every zone on one server, and woodcutting end to end: trees
-that empty for everyone, a bag, logs on the ground with the owner-first
-rule, a bank, all saved in the character's document. Next: slice 3, the
-other gathering and production skills the same way.
+Slices 1 to 2b of DESIGN.md §13 are done: walking together, characters that
+last across every zone on one server, woodcutting end to end (trees that
+empty for everyone, a bag, logs on the ground with the owner-first rule, a
+bank), and the thirteen skills to level 100 with the character's numbers,
+nine gear slots and the windowed chrome, all saved in the character's
+document. Next: slice 3, the other gathering and production skills the same
+way.

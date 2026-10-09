@@ -9,7 +9,7 @@
  * zone starts the replica over with that zone's snapshot. Pure data and
  * arithmetic: the socket feeds it and the scene draws it.
  */
-import type { BagView, ClientMessage, EntitySnapshot, Placement, ServerMessage, StackView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { BagView, ClientMessage, EntitySnapshot, GearView, Placement, ServerMessage, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
 import type { Cell, Dir, Grid } from '@/world/grid';
 import { type Mover, planWalk, positionOf, step, STEP_MS } from '@/world/motion';
 
@@ -104,6 +104,8 @@ export class Replica {
   /** Gather nodes that are empty right now, by their index among the map's objects. */
   readonly depleted = new Set<number>();
   bag: BagView = [];
+  gear: GearView = [];
+  stats: StatsView | null = null;
   /** Total xp per skill. */
   readonly skills = new Map<string, number>();
   /** The bank while it is open. */
@@ -120,6 +122,7 @@ export class Replica {
   private grid: Grid | null = null;
   private click: Cell | null = null;
   private clickUse = false;
+  private stopRequested = false;
   private seq = 0;
   private pending: Pending[] = [];
   private accumulator = 0;
@@ -148,13 +151,20 @@ export class Replica {
     this.clickUse = true;
   }
 
+  /** Halt at the next whole cell and forget what was planned; the next input says so. */
+  stop(): void {
+    this.click = null;
+    this.clickUse = false;
+    this.stopRequested = true;
+  }
+
   setRunning(on: boolean): void {
     this.self.running = on;
   }
 
   /** Whether there is anything to simulate for yourself right now. */
   get active(): boolean {
-    return this.self.path.length > 0 || this.click !== null;
+    return this.self.path.length > 0 || this.click !== null || this.stopRequested;
   }
 
   /** Advance the prediction by fixed steps up to `now`; every step while active becomes an input for the server. */
@@ -182,7 +192,10 @@ export class Replica {
         continue;
       }
       const msg: InputMessage = { t: 'input', seq: ++this.seq };
-      if (this.click) {
+      if (this.stopRequested) {
+        msg.stop = true;
+        this.stopRequested = false;
+      } else if (this.click) {
         msg.to = [this.click.x, this.click.y];
         if (this.clickUse) msg.use = true;
         this.click = null;
@@ -201,6 +214,8 @@ export class Replica {
       this.selfId = msg.id;
       this.chat.length = 0;
       this.bag = msg.bag;
+      this.gear = msg.gear;
+      this.stats = msg.stats;
       this.skills.clear();
       for (const [skill, xp] of msg.skills) this.skills.set(skill, xp);
       this.bank = null;
@@ -337,9 +352,11 @@ export class Replica {
         if (xp > before) this.xpDrops.push({ skill, amount: xp - before, at: now });
       }
     }
+    if (you.gear) this.gear = you.gear;
+    if (you.stats) this.stats = you.stats;
     if (you.bank !== undefined) this.bank = you.bank;
     if (you.items) for (const [gid, item, qty, x, y] of you.items) this.items.set(gid, { gid, item, qty, x, y });
-    if (you.bag || you.xp || you.bank !== undefined) this.version++;
+    if (you.bag || you.xp || you.gear || you.stats || you.bank !== undefined) this.version++;
     if (you.notes) for (const note of you.notes) this.onNote?.(note);
   }
 
@@ -391,7 +408,8 @@ export class Replica {
   }
 
   private applyInput(grid: Grid, msg: InputMessage): void {
-    if (msg.to) planWalk(grid, this.self, { x: msg.to[0], y: msg.to[1] });
+    if (msg.stop) this.self.path = this.self.t > 0 ? this.self.path.slice(0, 1) : [];
+    else if (msg.to) planWalk(grid, this.self, { x: msg.to[0], y: msg.to[1] });
     this.self.moving = step(grid, this.self);
   }
 

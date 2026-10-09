@@ -16,6 +16,6 @@ const INPUTS: Readonly<Record<Metal, readonly Readonly<ItemStack>[]>> = {
 
 /** Station: furnace. Ore in, bars out. */
 export const SMELTING = defineTiered(METALS, 'smelt_', '_bar', (metal, tier) => ({
-  station: 'furnace', skill: 'blacksmithing', tier, durationMs: 3000 + 300 * (tier - 1), xp: scaled(8, tier, 1.6),
+  station: 'furnace', skill: 'smithing', tier, durationMs: 3000 + 300 * (tier - 1), xp: scaled(8, tier, 1.6),
   inputs: INPUTS[metal], outputs: [{ itemId: `${metal}_bar`, qty: 1 }],
 }));

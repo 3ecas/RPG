@@ -13,7 +13,7 @@ describe('content', () => {
       ...CONTENT,
       recipes: {
         ...CONTENT.recipes,
-        bad: { id: 'bad', station: 'furnace', skill: 'blacksmithing', tier: 1, durationMs: 1000, xp: 1, inputs: [{ itemId: 'unobtainium' as never, qty: 1 }], outputs: [{ itemId: 'bronze_bar', qty: 1 }] },
+        bad: { id: 'bad', station: 'furnace', skill: 'smithing', tier: 1, durationMs: 1000, xp: 1, inputs: [{ itemId: 'unobtainium' as never, qty: 1 }], outputs: [{ itemId: 'bronze_bar', qty: 1 }] },
       },
     };
     const errors = new Registry(broken).validate();
@@ -37,18 +37,35 @@ describe('content', () => {
     const nodes = Object.values(CONTENT.nodes);
     const recipes = Object.values(CONTENT.recipes);
     for (const tier of [1, 2, 3, 4, 5, 6] as const) {
-      for (const skill of ['mining', 'woodcutting', 'fishing', 'farming', 'harvesting'] as const) {
+      for (const skill of ['mining', 'lumberjack', 'fishing', 'harvesting'] as const) {
         expect(nodes.some((n) => n.skill === skill && n.tier === tier), `${skill} has a tier ${tier} node`).toBe(true);
       }
-      for (const skill of ['blacksmithing', 'woodworking', 'leatherworking', 'cooking'] as const) {
+      for (const skill of ['smithing', 'crafting', 'cooking'] as const) {
         expect(recipes.some((r) => r.skill === skill && r.tier === tier), `${skill} has a tier ${tier} recipe`).toBe(true);
       }
-      for (const skill of ['swords', 'axes', 'daggers', 'shields', 'armor'] as const) {
+      for (const skill of ['hand_weapons', 'bows', 'magic', 'vitality'] as const) {
         const gear = registry.itemIds.map((id) => registry.item(id)).filter((i) => i.equip?.requirements?.some((r) => r.skill === skill && r.tier === tier));
         expect(gear.length, `${skill} has tier ${tier} gear`).toBeGreaterThan(0);
       }
       expect(Object.values(CONTENT.monsters).some((m) => m.tier === tier), `a tier ${tier} monster exists`).toBe(true);
     }
+  });
+
+  it('gives every level of every skill something, with the content a tier opens at its level', () => {
+    const registry = new Registry(CONTENT);
+    for (const skill of registry.skillIds) {
+      const unlocks = registry.unlocks(skill);
+      expect(unlocks).toHaveLength(100);
+      expect(unlocks[0]?.level).toBe(1);
+      expect(unlocks.every((u) => u.text.length > 0)).toBe(true);
+    }
+    expect(registry.unlocks('lumberjack')[0]?.text).toContain('Oak Tree');
+    expect(registry.unlocks('lumberjack')[14]?.text).toContain('Willow Tree');
+    expect(registry.unlocks('lumberjack')[1]?.text).toBe('+2% chance to get a log each swing');
+    expect(registry.unlocks('vitality')[9]?.text).toContain('HP comes back faster');
+    expect(registry.unlocks('magic')[29]?.text).toContain('Tome of Tides');
+    expect(registry.unlocks('bows')[49]?.text).toContain('Yew Bow');
+    expect(registry.unlocks('smithing')[0]?.text).toContain('Bronze Bar');
   });
 
   it('every recipe output is either equipment, food, or a material used somewhere', () => {

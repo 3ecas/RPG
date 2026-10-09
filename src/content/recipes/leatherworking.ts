@@ -4,10 +4,10 @@ import { HIDES, LEATHERS, METALS, scaled, WOODS } from '../tiers';
 
 const defineTiered = tieredDefiner<RecipeDef>();
 
-/** Station: tannery. Each leather tier is made from the hide of the same tier; boots get wooden soles, bodies metal studs and buckles. */
+/** Station: tannery, skill: crafting. Each leather tier is made from the hide of the same tier; boots get wooden soles, bodies metal studs and buckles. */
 function piece(suffix: 'body' | 'boots' | 'gloves', hides: number, wood: number, bars: number, baseXp: number) {
   return defineTiered(LEATHERS, 'craft_', `_${suffix}`, (leather, tier) => ({
-    station: 'tannery', skill: 'leatherworking', tier, durationMs: 3000 + 500 * hides + 300 * (tier - 1), xp: scaled(baseXp, tier, 1.6),
+    station: 'tannery', skill: 'crafting', tier, durationMs: 3000 + 500 * hides + 300 * (tier - 1), xp: scaled(baseXp, tier, 1.6),
     inputs: [
       { itemId: HIDES[tier - 1]!, qty: hides },
       ...(wood > 0 ? [{ itemId: `${WOODS[tier - 1]!}_log` as const, qty: wood }] : []),

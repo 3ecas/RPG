@@ -7,10 +7,11 @@
  * anything that is not exactly on the schema, and the limits here hold on
  * both sides.
  */
+import { EQUIP_SLOTS, type EquipSlot } from '@/types/ids';
 import type { Dir } from '@/world/grid';
 
 /** Bumped whenever a message changes shape; the server turns other versions away. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 export const LIMITS = {
   NAME_MIN: 3,
@@ -59,13 +60,18 @@ export type ClientMessage =
    * `seq` numbers them so the server can say how far it got. `to` plans a
    * walk to a clicked cell before the step is taken; with `use`, the click
    * was on something to use (a tree, an item, the bank) and the server acts
-   * on it once you stand beside it.
+   * on it once you stand beside it. `stop` halts at the next whole cell and
+   * drops whatever was planned.
    */
-  | { t: 'input'; seq: number; to?: [number, number]; use?: boolean }
+  | { t: 'input'; seq: number; to?: [number, number]; use?: boolean; stop?: boolean }
   | { t: 'run'; on: boolean }
   | { t: 'chat'; text: string }
   /** Puts the item in this bag slot on the ground where you stand. */
   | { t: 'drop'; slot: number }
+  /** Wears or wields the item in this bag slot; what was there goes to the bag. */
+  | { t: 'equip'; slot: number }
+  /** Takes off what is in this gear slot, into the bag. */
+  | { t: 'unequip'; slot: EquipSlot }
   /** The bank, while it is open: move a bag slot in, take an item out, put the whole bag in, or shut it. */
   | { t: 'bank'; op: 'deposit'; slot: number; qty: number }
   | { t: 'bank'; op: 'withdraw'; item: string; qty: number }
@@ -86,6 +92,20 @@ export type GroundItemView = [gid: number, item: string, qty: number, x: number,
 export type BagView = ([item: string, qty: number] | null)[];
 
 export type StackView = [item: string, qty: number];
+
+/** What is worn: one entry per filled gear slot. */
+export type GearView = [slot: EquipSlot, item: string, qty: number][];
+
+/** A character's numbers as the panels show them. */
+export interface StatsView {
+  hp: number;
+  maxHp: number;
+  mana: number;
+  maxMana: number;
+  armor: number;
+  attack: number;
+  spellPower: number;
+}
 
 export interface ChatLine {
   id: number;
@@ -116,10 +136,12 @@ export interface ZoneSnapshot {
   seq: number;
 }
 
-/** Things only you learn: your bag after a change, xp gained, the bank while it is open (null when it shuts), items of yours on the ground, and lines from the game. */
+/** Things only you learn: your bag after a change, xp gained, your gear and numbers after a change, the bank while it is open (null when it shuts), items of yours on the ground, and lines from the game. */
 export interface YouDelta {
   bag?: BagView;
   xp?: [skill: string, xp: number][];
+  gear?: GearView;
+  stats?: StatsView;
   bank?: StackView[] | null;
   items?: GroundItemView[];
   notes?: string[];
@@ -127,7 +149,7 @@ export interface YouDelta {
 
 export type ServerMessage =
   /** You are in the world: your id, a session token, the step length, whether this is a character coming back, your bag and skills, and the zone you stand in. */
-  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][] } & ZoneSnapshot)
+  | ({ t: 'welcome'; id: number; token: string; tickMs: number; resumed: boolean; bag: BagView; skills: [skill: string, xp: number][]; gear: GearView; stats: StatsView } & ZoneSnapshot)
   /** You walked into another zone: forget the old one, here is the new. Your id, token, bag and skills stay. */
   | ({ t: 'zone' } & ZoneSnapshot)
   | ({ t: 'tick' } & TickDelta)
@@ -188,11 +210,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case 'input': {
       if (!isInt(raw.seq, 0, 1_000_000_000)) return null;
-      const to = raw.to;
-      if (to === undefined || to === null) return { t: 'input', seq: raw.seq };
-      if (!Array.isArray(to) || to.length !== 2 || !isInt(to[0], 0, LIMITS.COORD_MAX) || !isInt(to[1], 0, LIMITS.COORD_MAX)) return null;
       if (raw.use !== undefined && typeof raw.use !== 'boolean') return null;
-      return raw.use ? { t: 'input', seq: raw.seq, to: [to[0], to[1]], use: true } : { t: 'input', seq: raw.seq, to: [to[0], to[1]] };
+      if (raw.stop !== undefined && typeof raw.stop !== 'boolean') return null;
+      const to = raw.to;
+      if (to === undefined || to === null) return raw.stop ? { t: 'input', seq: raw.seq, stop: true } : { t: 'input', seq: raw.seq };
+      if (!Array.isArray(to) || to.length !== 2 || !isInt(to[0], 0, LIMITS.COORD_MAX) || !isInt(to[1], 0, LIMITS.COORD_MAX)) return null;
+      const msg: Extract<ClientMessage, { t: 'input' }> = { t: 'input', seq: raw.seq, to: [to[0], to[1]] };
+      if (raw.use) msg.use = true;
+      if (raw.stop) msg.stop = true;
+      return msg;
     }
     case 'run':
       return typeof raw.on === 'boolean' ? { t: 'run', on: raw.on } : null;
@@ -203,6 +229,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case 'drop':
       return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'drop', slot: raw.slot } : null;
+    case 'equip':
+      return isInt(raw.slot, 0, LIMITS.SLOT_MAX - 1) ? { t: 'equip', slot: raw.slot } : null;
+    case 'unequip':
+      return typeof raw.slot === 'string' && (EQUIP_SLOTS as readonly string[]).includes(raw.slot) ? { t: 'unequip', slot: raw.slot as EquipSlot } : null;
     case 'bank':
       switch (raw.op) {
         case 'deposit':

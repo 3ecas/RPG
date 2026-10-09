@@ -28,13 +28,13 @@ export type ClickButton = 'left' | 'right';
 /** A colour per kind of item, for the ground and the bag alike. */
 export const ITEM_COLORS: Readonly<Record<ItemGroup, string>> = {
   log: '#9a6a3a', ore: '#8a8f98', bar: '#d0b060', fish: '#6ab0e0', crop: '#e0c060', herb: '#70c070', hide: '#b08060',
-  food: '#f09060', weapon: '#c8c8d0', armor: '#90a0b0', shield: '#7888a8', trinket: '#d8a8e8', tool: '#c08848', misc: '#a8a8a8',
+  food: '#f09060', weapon: '#c8c8d0', armor: '#90a0b0', shield: '#7888a8', trinket: '#d8a8e8', book: '#8878c8', tool: '#c08848', misc: '#a8a8a8',
 };
 
 /** World units per cell; the camera scales these up by a whole number. */
 export const TILE = 16;
 const MARKER_MS = 700;
-const SELF_COLOR = '#7cc4ff';
+export const SELF_COLOR = '#7cc4ff';
 const OUTLINE = '#1b1520';
 const LABEL_RANGE = 3;
 
@@ -71,7 +71,7 @@ export function colorFor(name: string): string {
   return `hsl(${hash(name.toLowerCase()) % 360} 62% 56%)`;
 }
 
-function terrainColor(biome: Biome, terrain: Terrain): string {
+export function terrainColor(biome: Biome, terrain: Terrain): string {
   return BIOME_TINTS[biome][terrain] ?? TERRAIN_COLORS[terrain];
 }
 
@@ -80,6 +80,8 @@ export class OnlineScene {
   onClick: ((cell: Cell, button: ClickButton, screen: { x: number; y: number }) => void) | null = null;
   /** What the pointer is over, as a short label ("Chop Oak Tree"), or null for nothing worth saying. */
   labelAt: ((cell: Cell) => string | null) | null = null;
+  /** Whether that label is drawn. */
+  showHover = true;
   private host!: HTMLElement;
   private canvas!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
@@ -136,6 +138,11 @@ export class OnlineScene {
   /** Marks a cell as clicked, for a click that came through a menu. */
   mark(cell: Cell): void {
     this.marker = { x: cell.x, y: cell.y, at: this.now };
+  }
+
+  /** How many cells the view shows across and down. */
+  viewCells(): { w: number; h: number } {
+    return { w: this.canvas.clientWidth / this.scale / TILE, h: this.canvas.clientHeight / this.scale / TILE };
   }
 
   frame(now: number): void {
@@ -333,7 +340,7 @@ export class OnlineScene {
       });
     }
 
-    if (this.hover) {
+    if (this.hover && this.showHover) {
       ctx.textAlign = 'left';
       text(ctx, this.hover.label, 10, 18, '#f6f3ea', 12, true);
       ctx.textAlign = 'center';
@@ -501,14 +508,14 @@ function drawNode(ctx: CanvasRenderingContext2D, x: number, y: number, skill: Sk
   if (depleted) {
     // A stump, a hollow, bare rows: the node is spent until it comes back.
     switch (skill) {
-      case 'woodcutting': disc(ctx, x + 8, y + 10, 4, '#7a5a34'); ctx.fillStyle = '#a8824a'; dot(ctx, x + 8, y + 10, 2); return;
+      case 'lumberjack': disc(ctx, x + 8, y + 10, 4, '#7a5a34'); ctx.fillStyle = '#a8824a'; dot(ctx, x + 8, y + 10, 2); return;
       case 'mining': disc(ctx, x + 8, y + 10, 5, '#55585f'); return;
       case 'fishing': return;
       default: box(ctx, x + 2, y + 2, 12, 12, '#8a6a44'); ctx.fillStyle = '#6a4a2a'; for (let i = 4; i < 14; i += 3) ctx.fillRect(x + 3, y + i, 10, 1); return;
     }
   }
   switch (skill) {
-    case 'woodcutting':
+    case 'lumberjack':
       box(ctx, x + 6, y + 8, 4, 8, '#5e4526', null);
       disc(ctx, x + 8, y + 6, 6.5, '#2f6a2a');
       ctx.fillStyle = '#3f8a38';
@@ -529,7 +536,7 @@ function drawNode(ctx: CanvasRenderingContext2D, x: number, y: number, skill: Sk
       ctx.arc(x + 8, y + 8, 2.5, 0, Math.PI * 2);
       ctx.stroke();
       return;
-    case 'farming':
+    case 'harvesting':
       box(ctx, x + 2, y + 2, 12, 12, '#c4a878');
       ctx.fillStyle = '#8a6a2a';
       for (let i = 4; i < 14; i += 3) ctx.fillRect(x + 3, y + i, 10, 1);

@@ -2,14 +2,12 @@
  * Levels from experience. The curve is the classic one: level 2 at 83 xp,
  * level 99 at a little over thirteen million, each level about ten percent
  * further than the last, so the early dings come every few minutes and the
- * late ones are a season's work. Tiers of content are bands of levels.
+ * late ones are a season's work. Levels run to 100. Tiers of content are
+ * bands of levels, and every level makes a skill a little better.
  */
-import type { Tier } from '@/types/content';
+import { MAX_LEVEL, TIER_LEVELS, type Tier } from '@/types/content';
 
-export const MAX_LEVEL = 99;
-
-/** The level at which each tier's content opens, by tier (index 0 is tier 1). */
-export const TIER_LEVELS: readonly number[] = [1, 15, 30, 50, 70, 85];
+export { MAX_LEVEL, TIER_LEVELS };
 
 /** Cumulative xp needed for each level, by level; index 0 is unused and level 1 is 0 xp. */
 const XP_FOR_LEVEL: readonly number[] = (() => {
@@ -50,12 +48,13 @@ export function progressOf(xp: number): { level: number; into: number; span: num
 
 /**
  * The chance that one try at a gather node succeeds: the node's expected
- * time per item (for a character at the tier's level with a tier 1 tool),
- * better by three percent per level above that and a fifth per tool tier,
- * never below one in twenty nor above nineteen in twenty.
+ * time per item for a level 1 character with a tier 1 tool, two percent
+ * better for every level after the first and a fifth per tool tier, never
+ * below one in twenty nor above nineteen in twenty. Slow at first, quick
+ * by the end.
  */
-export function gatherChance(node: { durationMs: number; tier: Tier }, level: number, toolTier: number, actionMs: number): number {
+export function gatherChance(node: { durationMs: number }, level: number, toolTier: number, actionMs: number): number {
   const base = actionMs / node.durationMs;
-  const chance = base * (1 + 0.03 * (level - levelForTier(node.tier))) * (1 + 0.2 * (Math.max(1, toolTier) - 1));
+  const chance = base * (1 + 0.02 * (Math.max(1, level) - 1)) * (1 + 0.2 * (Math.max(1, toolTier) - 1));
   return Math.min(0.95, Math.max(0.05, chance));
 }

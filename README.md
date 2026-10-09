@@ -6,7 +6,7 @@ world is drawn with simple shapes for now; art comes once the mechanics are
 in. [DESIGN.md](DESIGN.md) is the design and the build order;
 [ARCHITECTURE.md](ARCHITECTURE.md) is how the code is put together.
 
-## What works today (slices 1, 1b and 2: walk together, characters that last, woodcutting end to end)
+## What works today (slices 1 to 2b: walk together, characters that last, woodcutting end to end, skills and gear and windows)
 
 - Pick a name, enter Greenhollow Village, see everyone else who is there.
 - **Chop trees.** Click an oak (or right-click it for Chop, Examine, Walk
@@ -22,7 +22,24 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
 - **Bank.** The chest east of the village square: Use Bank from beside it,
   deposit a slot or everything, withdraw one, five or all of a kind. The
   bank stacks everything; the bag does not.
-- Skills, bag and bank are saved with the character.
+- **Thirteen skills to level 100.** Lumberjack, Mining, Fishing, Harvesting,
+  Smithing, Crafting, Cooking, Hand Weapons, Bows, Vitality, Spirit, Magic,
+  Witchcraft. Every level gives something, and the Skills window lists all
+  hundred for each: the trees, rocks, recipes and gear a tier opens, and the
+  small bonus every other level adds (gathering gets 2% likelier per level,
+  so it is slow at first and quick late).
+- **Numbers and gear.** Hit points, mana, armor, attack and spell power come
+  from Vitality, Spirit, Magic and what you wear in nine slots: head, torso,
+  legs, hands, feet, main hand, off hand, two trinkets. Wear and wield from
+  the inventory, remove from the Gear window; too high a tier and the game
+  says which level you need. Hatchets and pickaxes can be wielded.
+- **Windows.** A draggable menu bar opens the Inventory, Gear, Journal
+  (quests, your adventure log, a bestiary, the item database), Skills, Map
+  and Settings. Every window drags by its title, resizes by its corner, and
+  closes with its X; the layout is remembered per browser. The map sits top
+  right. Keys: I, G, J, K, M, O for the windows, R to run, Space to stop,
+  Enter to talk.
+- Skills, bag, bank, gear, hit points and mana are saved with the character.
 - Your character is saved under its name: leave and come back, on the same
   day or after the server restarted, and you stand where you left off, in
   the zone you were in. Every zone runs on the one server; walk onto an
@@ -93,9 +110,9 @@ port reports the tick, who is in which zone, and which store is in use.
 
 A character is one JSON document keyed by its lower-cased name: the zone,
 the cell, the facing, walking or running, when it was made and last seen,
-and a `state` object holding the skills (total xp each), the bag (28 slots)
-and the bank, which the next slices extend (flags such as "finished the
-tutorial"). It is written when you leave, when you change zone, every
+and a `state` object holding the skills (total xp each), the bag (28 slots),
+the bank, the gear by slot, and the current hit points and mana, which the
+next slices extend (flags such as "finished the tutorial"). It is written when you leave, when you change zone, every
 `SAVE_MS` while you play, and when the server shuts down. On Postgres it is
 the `characters` table, one `jsonb` row per name; on a machine without a
 database it is the file. An item or skill the content no longer has is
@@ -122,13 +139,13 @@ npm start              # runs the built server
 | `src/types/`    | Shared types, typed content ids                             | content, type-only      |
 | `src/content/`  | The world's data: zones, tile maps, and the tables they list | types                  |
 | `src/core/`     | The content registry with its validation, the seeded RNG    | types                   |
-| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve, the bag rules | types |
+| `src/world/`    | Tile map model: grid, footprints, four- and eight-way paths, the motion model shared by server and client, the xp curve, the bag rules, the character's numbers | types |
 | `src/net/`      | The wire protocol: message types and the strict parser      | types, world            |
 | `src/server/`   | The game server: the room simulation (walking, gathering, items, the bank), the world of rooms, the character record, state and store, the WebSocket adapter | everything but ui, client |
 | `src/client/`   | The browser's replica of the zone and the socket to the server | types, world, net    |
-| `src/ui/`       | The page: the shapes renderer, the shell, the join card, chat | client, net, world, types |
+| `src/ui/`       | The page: the shapes renderer, the minimap, the window manager, the shell with its windows and menus, the join card, chat | client, net, world, types |
 | `src/main.ts`   | The entry point                                             | everything              |
-| `tests/`        | Vitest: protocol, room, gathering and the bank, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, skills, bag, content |         |
+| `tests/`        | Vitest: protocol, room, gathering, gear and the bank, world, store (Postgres too when `TEST_DATABASE_URL` is set), server (real sockets), replica, motion, paths, skills and stats, bag, content |         |
 
 ESLint fails the build if a layer imports something it should not.
 

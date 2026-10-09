@@ -35,5 +35,5 @@ export type EquipSlot = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'main_hand
 export const EQUIP_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet', 'main_hand', 'off_hand', 'trinket_1', 'trinket_2'];
 export const ARMOR_SLOTS: readonly EquipSlot[] = ['head', 'body', 'legs', 'hands', 'feet'];
 
-/** What kind of gear an item is; decides which slots accept it. */
-export type GearKind = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'weapon' | 'shield' | 'trinket';
+/** What kind of gear an item is; decides which slots accept it. Tomes are books for the off hand. */
+export type GearKind = 'head' | 'body' | 'legs' | 'hands' | 'feet' | 'weapon' | 'shield' | 'book' | 'trinket';

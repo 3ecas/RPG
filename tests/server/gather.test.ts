@@ -90,15 +90,15 @@ describe('gathering: chopping a tree', () => {
     expect(logsIn(p)).toBe(1);
     const y1 = you(r, p)!;
     expect(y1.bag?.filter((s) => s?.[0] === 'oak_log')).toHaveLength(1);
-    expect(y1.xp).toEqual([['woodcutting', 10]]);
-    expect(p.skills.woodcutting).toBe(10);
+    expect(y1.xp).toEqual([['lumberjack', 10]]);
+    expect(p.skills.lumberjack).toBe(10);
     r.advance();
     r.advance();
     expect(logsIn(p)).toBe(1);
     r.advance();
     r.advance();
     expect(logsIn(p)).toBe(2);
-    expect(p.skills.woodcutting).toBe(20);
+    expect(p.skills.lumberjack).toBe(20);
     expect(p.action).not.toBeNull(); // still at it
   });
 
@@ -129,7 +129,7 @@ describe('gathering: chopping a tree', () => {
     const low = enterOk(r, 'Low', { x: 6, y: 3 });
     const seq2 = { n: 0 };
     useAndArrive(r, low, WILLOW, seq2);
-    expect(you(r, low)?.notes).toEqual(['You need Woodcutting level 15 for the willow tree.']);
+    expect(you(r, low)?.notes).toEqual(['You need Lumberjack level 15 for the willow tree.']);
 
     const full = enterOk(r, 'Full', { x: 2, y: 1 }, { bag: new Array(28).fill({ itemId: 'bronze_hatchet', qty: 1 }) });
     const seq3 = { n: 0 };
@@ -153,7 +153,7 @@ describe('gathering: chopping a tree', () => {
     expect(freeSlots(p.bag)).toBe(0);
     expect(p.action).toBeNull();
     expect(you(r, p)?.notes).toEqual(['Your bag is full.']);
-    expect(p.skills.woodcutting).toBe(20);
+    expect(p.skills.lumberjack).toBe(20);
   });
 
   it('fells the tree for everyone, who all stop, and lets it grow back', () => {
@@ -192,13 +192,13 @@ describe('gathering: chopping a tree', () => {
 
   it('tells of a new level', () => {
     const r = room({ rng: new ScriptedRng([true, false]) });
-    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { skills: { woodcutting: 80 } });
+    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { skills: { lumberjack: 80 } });
     useAndArrive(r, p, OAK, { n: 0 });
     r.takeYou();
     r.advance();
     r.advance();
-    expect(p.skills.woodcutting).toBe(90);
-    expect(you(r, p)?.notes).toEqual(['Congratulations, your Woodcutting level is now 2.']);
+    expect(p.skills.lumberjack).toBe(90);
+    expect(you(r, p)?.notes).toEqual(['Congratulations, your Lumberjack level is now 2.']);
   });
 });
 
@@ -307,29 +307,125 @@ describe('the bank', () => {
   });
 });
 
+describe('gear', () => {
+  it('wears what the bag holds, swaps what was there back into the bag, and the numbers follow', () => {
+    const r = room();
+    const p = enterOk(r, 'Ada', null, { bag: [{ itemId: 'bronze_sword', qty: 1 }, { itemId: 'iron_sword', qty: 1 }, { itemId: 'bronze_helmet', qty: 1 }], skills: { hand_weapons: 2411 } }); // level 15
+    expect(r.statsOf(p)).toEqual({ maxHp: 11, maxMana: 6, armor: 0, attack: 1, spellPower: 0 });
+    expect(p.hp).toBe(11); // a new character is whole
+    r.takeYou();
+    expect(r.equip(p.id, 0)).toBe(true);
+    expect(p.gear.main_hand).toEqual({ itemId: 'bronze_sword', qty: 1 });
+    expect(p.bag[0]).toBeNull();
+    expect(r.statsOf(p).attack).toBe(1 + Math.round(5 * 1.14));
+    const y = you(r, p)!;
+    expect(y.gear).toEqual([['main_hand', 'bronze_sword', 1]]);
+    expect(y.stats).toMatchObject({ attack: 7, hp: 11, maxHp: 11 });
+    expect(y.bag?.[0]).toBeNull();
+    expect(r.equip(p.id, 1)).toBe(true); // the iron sword takes the hand; the bronze one goes where the iron one was
+    expect(p.gear.main_hand?.itemId).toBe('iron_sword');
+    expect(p.bag[1]).toEqual({ itemId: 'bronze_sword', qty: 1 });
+    expect(r.statsOf(p).attack).toBe(1 + Math.round(9 * 1.14));
+    expect(r.equip(p.id, 2)).toBe(true);
+    expect(r.statsOf(p).armor).toBe(3);
+    expect(r.unequip(p.id, 'head')).toBe(true);
+    expect(p.gear.head).toBeUndefined();
+    expect(p.bag[0]).toEqual({ itemId: 'bronze_helmet', qty: 1 }); // the first free slot
+    expect(r.unequip(p.id, 'head')).toBe(false);
+  });
+
+  it('refuses gear above your level, things that are not gear, and taking off into a full bag', () => {
+    const r = room();
+    const p = enterOk(r, 'Bob', null, { bag: [{ itemId: 'rune_sword', qty: 1 }, { itemId: 'oak_log', qty: 1 }] });
+    expect(r.equip(p.id, 0)).toBe(false);
+    expect(r.equip(p.id, 1)).toBe(false);
+    expect(r.equip(p.id, 5)).toBe(false);
+    expect(you(r, p)?.notes).toEqual(['You need Hand Weapons level 85 to wield the rune sword.', "You can't wear the oak log."]);
+    const full = enterOk(r, 'Cyd', null, { gear: { head: { itemId: 'bronze_helmet', qty: 1 } }, bag: new Array(28).fill({ itemId: 'oak_log', qty: 1 }) });
+    expect(full.gear.head?.itemId).toBe('bronze_helmet');
+    expect(r.unequip(full.id, 'head')).toBe(false);
+    expect(you(r, full)?.notes).toEqual(['Your bag is full.']);
+  });
+
+  it('puts tomes in the off hand and trinkets in the first free trinket slot, counts a hatchet in hand as a tool, and keeps hit points within the maximum', () => {
+    const r = room();
+    const p = enterOk(r, 'Ada', { x: 3, y: 1 }, { bag: [{ itemId: 'tome_of_sparks', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'copper_ring', qty: 1 }, { itemId: 'bronze_hatchet', qty: 1 }], hp: 999, mana: 2 });
+    expect(p.hp).toBe(11); // never above the maximum
+    expect(p.mana).toBe(2);
+    expect(r.equip(p.id, 0)).toBe(true);
+    expect(p.gear.off_hand?.itemId).toBe('tome_of_sparks');
+    expect(r.statsOf(p)).toMatchObject({ maxMana: 9, spellPower: 2 });
+    expect(r.equip(p.id, 1)).toBe(true);
+    expect(r.equip(p.id, 2)).toBe(true);
+    expect(p.gear.trinket_1?.itemId).toBe('copper_ring');
+    expect(p.gear.trinket_2?.itemId).toBe('copper_ring');
+    expect(r.statsOf(p).attack).toBe(5);
+    expect(r.equip(p.id, 3)).toBe(true); // the hatchet, wielded
+    expect(p.gear.main_hand?.itemId).toBe('bronze_hatchet');
+    expect(p.bag.every((s) => s === null)).toBe(true);
+    useAndArrive(r, p, OAK, { n: 0 });
+    expect(p.action?.kind).toBe('gather'); // a tool in hand is a tool
+    // Mana comes back a point every twelve action ticks (twenty-four ticks here), and the client hears of it.
+    r.takeYou();
+    const before = p.mana;
+    for (let i = 0; i < 24; i++) r.advance();
+    expect(p.mana).toBe(before + 1);
+    expect(you(r, p)?.stats).toMatchObject({ mana: before + 1, maxMana: 9 });
+  });
+});
+
+describe('stopping', () => {
+  it('halts at the next whole cell on a stop input and forgets what was planned', () => {
+    const r = room();
+    const p = enterOk(r, 'Ada');
+    r.queueInput(p.id, { seq: 1, to: OAK, use: true });
+    r.queueInput(p.id, { seq: 2 });
+    r.queueInput(p.id, { seq: 3 });
+    r.advance(); // 0.6 of the way into (2, 1), bound for the oak
+    expect(p.intent).toEqual(OAK);
+    r.queueInput(p.id, { seq: 4, stop: true });
+    r.advance();
+    expect(p.path).toEqual([{ x: 2, y: 1 }]);
+    expect(p.intent).toBeNull();
+    r.queueInput(p.id, { seq: 5 });
+    r.advance();
+    expect(p.cell).toEqual({ x: 2, y: 1 });
+    expect(p.t).toBe(0);
+    expect(p.path).toEqual([]);
+    for (let i = 0; i < 5; i++) r.advance();
+    expect(p.action).toBeNull(); // the oak was forgotten with the walk
+  });
+});
+
 describe('what the character keeps', () => {
   it('starts new characters with the kit, reads saved state back, and drops what the content no longer has', () => {
     const fresh = parseState({}, content, [{ itemId: 'bronze_hatchet', qty: 1 }]);
     expect(fresh.bag[0]).toEqual({ itemId: 'bronze_hatchet', qty: 1 });
     expect(fresh.bag.slice(1).every((s) => s === null)).toBe(true);
-    expect(fresh.skills.woodcutting).toBe(0);
+    expect(fresh.skills.lumberjack).toBe(0);
     expect(fresh.bank).toEqual([]);
-    const saved = parseState({ skills: { woodcutting: 150, mining: -5, dancing: 9 }, bag: [null, { itemId: 'oak_log', qty: 1 }, { itemId: 'unobtainium', qty: 1 }, { itemId: 'coal', qty: 0 }], bank: [{ itemId: 'oak_log', qty: 3 }, { itemId: 'oak_log', qty: 2 }, 'junk'] }, content, []);
-    expect(saved.skills.woodcutting).toBe(150);
+    const saved = parseState({ skills: { lumberjack: 150, mining: -5, dancing: 9 }, bag: [null, { itemId: 'oak_log', qty: 1 }, { itemId: 'unobtainium', qty: 1 }, { itemId: 'coal', qty: 0 }], bank: [{ itemId: 'oak_log', qty: 3 }, { itemId: 'oak_log', qty: 2 }, 'junk'] }, content, []);
+    expect(saved.skills.lumberjack).toBe(150);
     expect(saved.skills.mining).toBe(0);
     expect(saved.bag.slice(0, 4)).toEqual([null, { itemId: 'oak_log', qty: 1 }, null, null]);
     expect(saved.bank).toEqual([{ itemId: 'oak_log', qty: 5 }]);
     expect(parseState(stateOf(saved), content, []).bag).toEqual(saved.bag);
     const empty = parseState({ bag: [] }, content, [{ itemId: 'bronze_hatchet', qty: 1 }]);
     expect(empty.bag.every((s) => s === null)).toBe(true); // a saved empty bag is not a new character
+    const worn = parseState({ gear: { head: { itemId: 'bronze_helmet', qty: 3 }, main_hand: { itemId: 'oak_log', qty: 1 }, off_hand: { itemId: 'bronze_sword', qty: 1 }, hat: { itemId: 'bronze_helmet', qty: 1 } }, hp: 7, mana: -2 }, content, []);
+    expect(worn.gear).toEqual({ head: { itemId: 'bronze_helmet', qty: 1 } }); // a log is not gear, a sword does not go in the off hand, a hat is not a slot
+    expect(worn.hp).toBe(7);
+    expect(worn.mana).toBe(Infinity); // unknown means full
+    expect(stateOf(worn)).toMatchObject({ gear: { head: { itemId: 'bronze_helmet', qty: 1 } }, hp: 7 });
+    expect(fresh.hp).toBe(Infinity);
   });
 
   it('comes back into a room as it was', () => {
     const r = room();
-    const p = enterOk(r, 'Ada', null, { skills: { woodcutting: 2411 }, bag: [{ itemId: 'oak_log', qty: 1 }], bank: [{ itemId: 'oak_log', qty: 40 }] });
-    expect(p.skills.woodcutting).toBe(2411);
+    const p = enterOk(r, 'Ada', null, { skills: { lumberjack: 2411 }, bag: [{ itemId: 'oak_log', qty: 1 }], bank: [{ itemId: 'oak_log', qty: 40 }] });
+    expect(p.skills.lumberjack).toBe(2411);
     expect(p.bag[0]).toEqual({ itemId: 'oak_log', qty: 1 });
     expect(p.bank).toEqual([{ itemId: 'oak_log', qty: 40 }]);
-    expect(r.youOf(p.id)).toEqual({ bag: expect.arrayContaining([['oak_log', 1]]), skills: expect.arrayContaining([['woodcutting', 2411], ['mining', 0]]) });
+    expect(r.youOf(p.id)).toMatchObject({ bag: expect.arrayContaining([['oak_log', 1]]), skills: expect.arrayContaining([['lumberjack', 2411], ['mining', 0]]), gear: [], stats: { maxHp: 11 } });
   });
 });

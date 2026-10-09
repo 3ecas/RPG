@@ -7,9 +7,21 @@ export type Keyed<TDef, Id extends string> = TDef & { readonly id: Id };
 /** Every skill, item, node, recipe and monster sits on one of six tiers. */
 export type Tier = 1 | 2 | 3 | 4 | 5 | 6;
 
-export type WeaponType = 'sword' | 'axe' | 'dagger';
+export type WeaponType = 'sword' | 'axe' | 'dagger' | 'bow' | 'staff';
 
-export type SkillGroup = 'gathering' | 'production' | 'combat';
+export type SkillGroup = 'gathering' | 'production' | 'combat' | 'magic';
+
+/** Levels run from 1 to this. */
+export const MAX_LEVEL = 100;
+
+/** The level at which each tier's content opens, by tier (index 0 is tier 1). */
+export const TIER_LEVELS: readonly number[] = [1, 15, 30, 50, 70, 85];
+
+/** What a level of a skill gives: the content it opens, or the small bonus every level gives. */
+export interface SkillUnlock {
+  readonly level: number;
+  readonly text: string;
+}
 
 export interface SkillDef {
   readonly id: string;
@@ -28,20 +40,23 @@ export interface StationDef {
   readonly description: string;
 }
 
-/** Every combat-relevant number. Base values come from levels; gear and buffs add to them. */
+/**
+ * What a piece of gear adds to a character: hit points, mana, armor (shields
+ * count), attack damage (weapons; scaled by the weapon's skill), spell power
+ * (staffs, tomes; added to the Magic level).
+ */
 export interface StatBlock {
+  hp: number;
+  mana: number;
+  armor: number;
   attack: number;
-  strength: number;
-  defence: number;
-  magic: number;
-  maxHp: number;
-  maxMana: number;
+  spellPower: number;
 }
 
 export type ItemCategory = 'material' | 'weapon' | 'armor' | 'food' | 'potion' | 'misc';
 
 /** Finer grouping for catalogue lists (shops, market, crafting). */
-export type ItemGroup = 'ore' | 'bar' | 'log' | 'fish' | 'crop' | 'herb' | 'hide' | 'food' | 'weapon' | 'armor' | 'shield' | 'trinket' | 'tool' | 'misc';
+export type ItemGroup = 'ore' | 'bar' | 'log' | 'fish' | 'crop' | 'herb' | 'hide' | 'food' | 'weapon' | 'armor' | 'shield' | 'trinket' | 'book' | 'tool' | 'misc';
 
 export interface SkillRequirement {
   readonly skill: SkillId;
@@ -49,13 +64,14 @@ export interface SkillRequirement {
 }
 
 export interface EquipInfo {
-  /** Weapons go in the main hand (daggers also fit the off hand), shields in the off hand, trinkets in either trinket slot. */
+  /** Weapons (swords, axes, daggers, bows, staffs) go in the main hand, shields and tomes in the off hand, trinkets in either trinket slot. */
   readonly kind: GearKind;
   readonly stats: Readonly<Partial<StatBlock>>;
   /** Weapons only: time between attacks. */
   readonly attackIntervalMs?: number;
-  /** Weapons only: which combat skill using it trains. */
+  /** Weapons only: which skill scales it and is trained by it. */
   readonly weaponType?: WeaponType;
+  /** Skill tiers (level bands) needed to wear it. */
   readonly requirements?: readonly SkillRequirement[];
 }
 
@@ -127,9 +143,9 @@ export interface MonsterDef {
   readonly description: string;
   readonly tier: Tier;
   readonly hp: number;
+  /** Damage per hit and what it shrugs off, on the same scale as the character's attack and armor. */
   readonly attack: number;
-  readonly strength: number;
-  readonly defence: number;
+  readonly armor: number;
   readonly attackIntervalMs: number;
   readonly gold: readonly [min: number, max: number];
   readonly loot: readonly LootEntry[];
@@ -338,6 +354,8 @@ export interface ZoneMapDef {
 /** Everything the registry is built from. */
 export interface ContentTables {
   readonly skills: Readonly<Record<string, SkillDef>>;
+  /** What each level of each skill gives, one entry per level from 1 to MAX_LEVEL. */
+  readonly unlocks: Readonly<Record<string, readonly SkillUnlock[]>>;
   readonly stations: Readonly<Record<string, StationDef>>;
   readonly items: Readonly<Record<string, ItemDef>>;
   readonly recipes: Readonly<Record<string, RecipeDef>>;

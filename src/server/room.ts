@@ -19,16 +19,17 @@ import { CONTENT } from '@/content';
 import { STARTING_KIT } from '@/content/starting-kit';
 import { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
-import type { ActState, BagView, ChatLine, ClientMessage, EntitySnapshot, GroundItemView, MoveState, Placement, StackView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
-import type { GatherNodeDef, ItemDef, ItemStack, ZoneMapDef } from '@/types/content';
-import type { ItemId, NodeId, SkillId, ZoneId } from '@/types/ids';
+import type { ActState, BagView, ChatLine, ClientMessage, EntitySnapshot, GearView, GroundItemView, MoveState, Placement, StackView, StatsView, TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
+import type { EquipInfo, GatherNodeDef, ItemDef, ItemStack, ZoneMapDef } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type NodeId, type SkillId, type ZoneId } from '@/types/ids';
 import { fail, ok, type Result } from '@/types/result';
 import { addToBag, addToStacks, type Bag, countInStacks, freeSlots, roomFor, takeFromSlot, takeFromStacks } from '@/world/bag';
 import { type Cell, dirOf, type Grid, isWalkable, objectAt, parseMap, type PlacedObject } from '@/world/grid';
 import { type Mover, planWalk, step, STEP_MS } from '@/world/motion';
 import { gatherChance, levelForTier, levelOf, MAX_XP } from '@/world/skills';
+import { type CharacterStats, deriveStats, regenInterval, slotsFor } from '@/world/stats';
 import { type Character, keyOf } from './character';
-import { parseState, type PlayerState } from './state';
+import { type Gear, parseState, type PlayerState } from './state';
 
 /** What the room needs to know about content. The registry satisfies it. */
 export interface RoomContent {
@@ -70,6 +71,8 @@ export interface PlayerInput {
   to?: Cell;
   /** The click was on something to use once there. */
   use?: boolean;
+  /** Halt at the next whole cell and forget what was planned. */
+  stop?: boolean;
 }
 
 export interface GatherAction {
@@ -83,6 +86,8 @@ export interface GatherAction {
 interface YouPending {
   bag: boolean;
   bank: boolean;
+  gear: boolean;
+  stats: boolean;
   xp: [SkillId, number][];
   items: GroundItemView[];
   notes: string[];
@@ -105,6 +110,9 @@ export interface RoomPlayer extends Mover, PlayerState {
   intent: Cell | null;
   action: GatherAction | null;
   nextActionAt: number;
+  /** When the next point of hit points and of mana comes back. */
+  nextHpAt: number;
+  nextManaAt: number;
   bankOpen: boolean;
   you: YouPending;
 }
@@ -135,7 +143,7 @@ const MAX_QUEUED = 8;
 /** Inputs applied per tick per player: one in the steady state, a few to catch up after a hiccup. */
 const MAX_PER_TICK = 3;
 /** Skills that need a tool in the bag, and what it is called. */
-const TOOL_FOR: Partial<Record<SkillId, string>> = { woodcutting: 'hatchet', mining: 'pickaxe' };
+const TOOL_FOR: Partial<Record<SkillId, string>> = { lumberjack: 'hatchet', mining: 'pickaxe' };
 const BAG_FULL = 'Your bag is full.';
 const CANT_REACH = "You can't reach that from here.";
 
@@ -200,11 +208,34 @@ export class Room {
     return { zone: this.zoneId, tick: this.tick, entities: this.snapshot(), items: this.itemsFor(p), nodes: [...this.depleted.keys()], seq: p.seq };
   }
 
-  /** What only this player gets on joining: its bag and skills. */
-  youOf(id: number): { bag: BagView; skills: [SkillId, number][] } | null {
+  /** What only this player gets on joining: its bag, skills, gear and numbers. */
+  youOf(id: number): { bag: BagView; skills: [SkillId, number][]; gear: GearView; stats: StatsView } | null {
     const p = this.byId.get(id);
     if (!p) return null;
-    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]) };
+    return { bag: bagView(p.bag), skills: this.content.skillIds.map((s) => [s, p.skills[s]]), gear: gearView(p.gear), stats: this.statsView(p) };
+  }
+
+  /** A character's numbers from its levels and gear. */
+  statsOf(p: RoomPlayer): CharacterStats {
+    const worn: EquipInfo[] = [];
+    for (const slot of EQUIP_SLOTS) {
+      const item = p.gear[slot];
+      const equip = item ? this.content.item(item.itemId).equip : undefined;
+      if (equip) worn.push(equip);
+    }
+    return deriveStats((skill) => levelOf(p.skills[skill]), worn);
+  }
+
+  private statsView(p: RoomPlayer): StatsView {
+    const stats = this.statsOf(p);
+    return { hp: p.hp, maxHp: stats.maxHp, mana: p.mana, maxMana: stats.maxMana, armor: stats.armor, attack: stats.attack, spellPower: stats.spellPower };
+  }
+
+  /** Hit points and mana never exceed their maximums, which gear and levels move. */
+  private clampPoints(p: RoomPlayer): void {
+    const stats = this.statsOf(p);
+    p.hp = Math.min(p.hp, stats.maxHp);
+    p.mana = Math.min(p.mana, stats.maxMana);
   }
 
   /** The player with this name, case-insensitively. */
@@ -235,10 +266,11 @@ export class Room {
     const state = parseState(character.state, this.content, this.kit);
     const player: RoomPlayer = {
       name: character.name, secretHash: character.secretHash, createdAt: character.createdAt, dir: character.dir, running: character.running,
-      skills: state.skills, bag: state.bag, bank: state.bank,
+      skills: state.skills, bag: state.bag, bank: state.bank, gear: state.gear, hp: state.hp, mana: state.mana,
       id: this.ids(), cell, t: 0, path: [], moving: false, seq: 0, inputs: [], connected: true, disconnectedAt: 0,
-      intent: null, action: null, nextActionAt: 0, bankOpen: false, you: pending(),
+      intent: null, action: null, nextActionAt: 0, nextHpAt: this.tick, nextManaAt: this.tick, bankOpen: false, you: pending(),
     };
+    this.clampPoints(player);
     this.byId.set(player.id, player);
     this.joined.push(snapshotOf(player));
     return ok(player);
@@ -281,9 +313,11 @@ export class Room {
     const out = new Map<number, YouDelta>();
     for (const p of this.byId.values()) {
       const y = p.you;
-      if (!y.bag && !y.bank && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
+      if (!y.bag && !y.bank && !y.gear && !y.stats && y.xp.length === 0 && y.items.length === 0 && y.notes.length === 0) continue;
       const delta: YouDelta = {};
       if (y.bag) delta.bag = bagView(p.bag);
+      if (y.gear) delta.gear = gearView(p.gear);
+      if (y.stats) delta.stats = this.statsView(p);
       if (y.bank) delta.bank = p.bankOpen ? stacksView(p.bank) : null;
       if (y.xp.length > 0) delta.xp = y.xp;
       if (y.items.length > 0) delta.items = y.items;
@@ -359,6 +393,65 @@ export class Room {
     const item: GroundItem = { gid: this.nextGid++, itemId: stack.itemId, qty: stack.qty, x: p.cell.x, y: p.cell.y, owner: keyOf(p.name), publicAt: this.tick + this.rules.itemPublicSteps, goneAt: this.tick + this.rules.itemGoneSteps };
     this.items.set(item.gid, item);
     p.you.items.push(itemView(item));
+    return true;
+  }
+
+  /** Wears or wields the item in a bag slot; whatever was in that gear slot goes to the bag in its place. */
+  equip(id: number, slot: number): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected) return false;
+    const stack = p.bag[slot];
+    if (!stack) return false;
+    const def = this.content.item(stack.itemId);
+    const equip = def.equip;
+    if (!equip) {
+      this.note(p, `You can't wear the ${def.name.toLowerCase()}.`);
+      return false;
+    }
+    const verb = equip.kind === 'weapon' || equip.kind === 'book' ? 'wield' : 'wear';
+    for (const req of equip.requirements ?? []) {
+      const need = levelForTier(req.tier);
+      if (levelOf(p.skills[req.skill]) < need) {
+        this.note(p, `You need ${this.content.skill(req.skill).name} level ${need} to ${verb} the ${def.name.toLowerCase()}.`);
+        return false;
+      }
+    }
+    const slots = slotsFor(equip.kind);
+    const target = slots.find((s) => !p.gear[s]) ?? slots[0]!;
+    const previous = p.gear[target];
+    if (previous && stack.qty > 1 && freeSlots(p.bag) === 0) {
+      this.note(p, BAG_FULL);
+      return false;
+    }
+    takeFromSlot(p.bag, slot, 1);
+    p.gear[target] = { itemId: stack.itemId, qty: 1 };
+    // What was worn takes the slot the new piece came from, when that slot is now free.
+    if (previous && p.bag[slot] === null) p.bag[slot] = { itemId: previous.itemId, qty: previous.qty };
+    else if (previous) addToBag(p.bag, previous.itemId, previous.qty, this.content.item(previous.itemId).stackable === true);
+    this.clampPoints(p);
+    p.you.bag = true;
+    p.you.gear = true;
+    p.you.stats = true;
+    return true;
+  }
+
+  /** Takes off what is in a gear slot, into the bag. */
+  unequip(id: number, slot: EquipSlot): boolean {
+    const p = this.byId.get(id);
+    if (!p || !p.connected) return false;
+    const worn = p.gear[slot];
+    if (!worn) return false;
+    const stackable = this.content.item(worn.itemId).stackable === true;
+    if (roomFor(p.bag, worn.itemId, worn.qty, stackable) < worn.qty) {
+      this.note(p, BAG_FULL);
+      return false;
+    }
+    delete p.gear[slot];
+    addToBag(p.bag, worn.itemId, worn.qty, stackable);
+    this.clampPoints(p);
+    p.you.bag = true;
+    p.you.gear = true;
+    p.you.stats = true;
     return true;
   }
 
@@ -442,7 +535,13 @@ export class Room {
       let moved = false;
       while (p.inputs.length > 0 && applied < MAX_PER_TICK) {
         const input = p.inputs.shift()!;
-        if (input.to) {
+        if (input.stop) {
+          // Halt: finish the cell under way, forget the rest and whatever was planned.
+          this.stopAction(p);
+          this.closeBank(p);
+          p.intent = null;
+          p.path = p.t > 0 ? p.path.slice(0, 1) : [];
+        } else if (input.to) {
           // A new click: whatever was being done stops, and the walk is planned.
           this.stopAction(p);
           this.closeBank(p);
@@ -473,6 +572,7 @@ export class Room {
         if (p.intent) this.arrive(p);
         if (p.action && this.tick >= p.nextActionAt) this.work(p);
       }
+      this.regenerate(p);
     }
     const delta: TickDelta = { tick: this.tick, joined: this.joined, left: this.left, moves, acts: this.acts, nodes: this.nodeEvents, drops: this.drops, taken: this.taken, chat: this.said };
     this.joined = [];
@@ -484,6 +584,27 @@ export class Room {
     this.taken = [];
     this.spoke.clear();
     return delta;
+  }
+
+  /** A point of hit points and of mana comes back on its own schedule, faster with Vitality and Spirit. */
+  private regenerate(p: RoomPlayer): void {
+    if (this.tick < p.nextHpAt && this.tick < p.nextManaAt) return;
+    const stats = this.statsOf(p);
+    const steps = this.rules.actionSteps;
+    if (this.tick >= p.nextHpAt) {
+      p.nextHpAt = this.tick + regenInterval(levelOf(p.skills.vitality)) * steps;
+      if (p.hp < stats.maxHp) {
+        p.hp += 1;
+        p.you.stats = true;
+      }
+    }
+    if (this.tick >= p.nextManaAt) {
+      p.nextManaAt = this.tick + regenInterval(levelOf(p.skills.spirit)) * steps;
+      if (p.mana < stats.maxMana) {
+        p.mana += 1;
+        p.you.stats = true;
+      }
+    }
   }
 
   // ---- using things --------------------------------------------------------------
@@ -544,7 +665,10 @@ export class Room {
     const after = Math.min(MAX_XP, xp + def.xp);
     p.skills[def.skill] = after;
     p.you.xp.push([def.skill, after]);
-    if (levelOf(after) > levelOf(xp)) this.note(p, `Congratulations, your ${this.content.skill(def.skill).name} level is now ${levelOf(after)}.`);
+    if (levelOf(after) > levelOf(xp)) {
+      this.note(p, `Congratulations, your ${this.content.skill(def.skill).name} level is now ${levelOf(after)}.`);
+      p.you.stats = true;
+    }
     if (def.deplete && this.rng.chance(def.deplete.chance)) this.deplete(action.object, def);
     else if (freeSlots(p.bag) === 0) {
       this.note(p, BAG_FULL);
@@ -565,10 +689,10 @@ export class Room {
     this.acts.push([p.id, -1, -1, p.dir]);
   }
 
-  /** The best tool for a skill in the bag, by tier; 0 for none. */
+  /** The best tool for a skill in the bag or in hand, by tier; 0 for none. */
   private bestTool(p: RoomPlayer, skill: SkillId): number {
     let best = 0;
-    for (const slot of p.bag) {
+    for (const slot of [...p.bag, p.gear.main_hand ?? null]) {
       if (!slot) continue;
       const tool = this.content.item(slot.itemId).tool;
       if (tool && tool.skill === skill && tool.tier > best) best = tool.tier;
@@ -621,7 +745,7 @@ export class Room {
 }
 
 function pending(): YouPending {
-  return { bag: false, bank: false, xp: [], items: [], notes: [] };
+  return { bag: false, bank: false, gear: false, stats: false, xp: [], items: [], notes: [] };
 }
 
 /** Whether `cell` touches the footprint of `obj` (eight neighbours count) without being inside it. */
@@ -647,6 +771,15 @@ export function bagView(bag: Bag): BagView {
 
 export function stacksView(stacks: ItemStack[]): StackView[] {
   return stacks.map((s) => [s.itemId, s.qty]);
+}
+
+export function gearView(gear: Gear): GearView {
+  const out: GearView = [];
+  for (const slot of EQUIP_SLOTS) {
+    const worn = gear[slot];
+    if (worn) out.push([slot, worn.itemId, worn.qty]);
+  }
+  return out;
 }
 
 function itemView(item: GroundItem): GroundItemView {

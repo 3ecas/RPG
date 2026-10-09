@@ -5,21 +5,29 @@
  * starts fresh, an item or skill the content no longer has is dropped, and
  * a brand new character gets the starting kit.
  */
-import type { ItemStack } from '@/types/content';
-import type { ItemId, SkillId } from '@/types/ids';
+import type { EquipInfo, ItemStack } from '@/types/content';
+import { EQUIP_SLOTS, type EquipSlot, type ItemId, type SkillId } from '@/types/ids';
 import { addToBag, addToStacks, type Bag, BAG_SLOTS, emptyBag } from '@/world/bag';
 import { MAX_XP } from '@/world/skills';
+import { slotsFor } from '@/world/stats';
+
+/** What is worn, by slot. Gear is never stacked: a slot holds one. */
+export type Gear = Partial<Record<EquipSlot, ItemStack>>;
 
 export interface PlayerState {
   /** Total xp per skill. */
   skills: Record<SkillId, number>;
   bag: Bag;
   bank: ItemStack[];
+  gear: Gear;
+  /** Current hit points and mana; Infinity when unknown, which the room reads as full. */
+  hp: number;
+  mana: number;
 }
 
 export interface StateContent {
   hasItem(id: string): id is ItemId;
-  item(id: ItemId): { readonly stackable?: boolean };
+  item(id: ItemId): { readonly stackable?: boolean; readonly equip?: EquipInfo };
   readonly skillIds: SkillId[];
 }
 
@@ -31,6 +39,10 @@ function parseStack(raw: unknown, content: StateContent): ItemStack | null {
   if (!isRecord(raw) || typeof raw.itemId !== 'string' || !content.hasItem(raw.itemId)) return null;
   if (typeof raw.qty !== 'number' || !Number.isInteger(raw.qty) || raw.qty <= 0) return null;
   return { itemId: raw.itemId, qty: raw.qty };
+}
+
+function parsePoints(raw: unknown): number {
+  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : Infinity;
 }
 
 /** The live state from a stored document; `kit` is what a character with no bag yet starts with. */
@@ -57,14 +69,30 @@ export function parseState(raw: Record<string, unknown>, content: StateContent, 
       if (stack) addToStacks(bank, stack.itemId, stack.qty);
     }
   }
-  return { skills, bag, bank };
+  const gear: Gear = {};
+  if (isRecord(raw.gear)) {
+    for (const slot of EQUIP_SLOTS) {
+      const stack = parseStack(raw.gear[slot], content);
+      const equip = stack ? content.item(stack.itemId).equip : undefined;
+      if (stack && equip && slotsFor(equip.kind).includes(slot)) gear[slot] = { itemId: stack.itemId, qty: 1 };
+    }
+  }
+  return { skills, bag, bank, gear, hp: parsePoints(raw.hp), mana: parsePoints(raw.mana) };
 }
 
 /** The document to store, a copy. */
 export function stateOf(state: PlayerState): Record<string, unknown> {
+  const gear: Record<string, ItemStack> = {};
+  for (const slot of EQUIP_SLOTS) {
+    const worn = state.gear[slot];
+    if (worn) gear[slot] = { itemId: worn.itemId, qty: worn.qty };
+  }
   return {
     skills: { ...state.skills },
     bag: state.bag.map((s) => (s ? { itemId: s.itemId, qty: s.qty } : null)),
     bank: state.bank.map((s) => ({ itemId: s.itemId, qty: s.qty })),
+    gear,
+    hp: state.hp,
+    mana: state.mana,
   };
 }

@@ -34,40 +34,81 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); font
 .menu-btn { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; }
 .menu-btn:hover:not([disabled]) { border-color: var(--accent-2); }
 
-/* ---- the world and the side panel ---- */
-.stage { position: relative; display: flex; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
-.world { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+/* ---- the world, the menu bar and the windows ---- */
+.stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.world { position: absolute; inset: 0; overflow: hidden; }
 .world-canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
-.side { width: 216px; flex: none; display: flex; flex-direction: column; background: var(--bg-2); border-left: 1px solid var(--border); overflow: hidden; }
-.side[hidden] { display: none; }
-.tabs { display: flex; border-bottom: 1px solid var(--border); }
-.tab { flex: 1; font: inherit; font-size: 12px; padding: 7px 0; background: var(--bg-2); color: var(--muted); border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
-.tab-on { color: var(--text); border-bottom-color: var(--accent-2); }
-.bag { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; align-content: start; }
-.bag[hidden] { display: none; }
+.stage-closed .win, .stage-closed .menubar { display: none !important; }
+.menubar { position: absolute; z-index: 15; display: flex; align-items: center; gap: 2px; padding: 3px; background: rgba(26, 29, 35, 0.92); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); user-select: none; }
+.menubar .grip { padding: 2px 6px; color: var(--muted); cursor: grab; letter-spacing: -2px; }
+.menubar button { font: inherit; font-size: 12px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; }
+.menubar button:hover { background: var(--bg-3); }
+.menubar button.on { background: var(--bg-4); color: var(--accent); }
+.win { position: absolute; display: flex; flex-direction: column; min-width: 160px; min-height: 90px; resize: both; overflow: hidden; background: rgba(26, 29, 35, 0.94); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.win[hidden] { display: none; }
+.win-fixed { resize: none; }
+.win-head { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; background: var(--bg-3); border-bottom: 1px solid var(--border); cursor: grab; user-select: none; font-weight: 700; font-size: 12px; }
+.win-head:active { cursor: grabbing; }
+.win-title { flex: 1; }
+.win-x { font: inherit; font-size: 14px; line-height: 1; width: 22px; height: 22px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+.win-x:hover { background: var(--bg-4); color: var(--text); }
+.win-body { flex: 1; min-height: 0; overflow: auto; padding: 8px; scrollbar-width: thin; }
+.win[data-win="map"] .win-body { padding: 0; overflow: hidden; }
+.minimap { display: block; width: 100%; height: 100%; }
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.small { font-size: 11px; }
+
+/* ---- the bag and the gear ---- */
+.bag { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; align-content: start; }
 .slot { position: relative; aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
 .slot-full { cursor: pointer; }
 .slot-full:hover { border-color: var(--accent-2); }
-.icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #1b1520; letter-spacing: 0.02em; }
+.icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #1b1520; letter-spacing: 0.02em; flex: none; }
 .qty { position: absolute; right: 3px; bottom: 2px; font-size: 10px; color: #f0c674; text-shadow: 0 0 2px #000; }
-.bag-foot { grid-column: 1 / -1; font-size: 11px; text-align: right; padding-top: 2px; }
-.skills { padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; scrollbar-width: thin; }
-.skills[hidden] { display: none; }
-.skill-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; }
-.skill-level { font-weight: 700; color: var(--accent); }
-.bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--bg-4); overflow: hidden; }
-.bar-fill { display: block; height: 100%; background: var(--ok); }
+.bag-foot { font-size: 11px; text-align: right; padding-top: 6px; }
+.gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 200px; margin: 0 auto; }
+.gslot { aspect-ratio: 1; border-radius: 6px; background: var(--bg-3); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; text-align: center; }
+.gslot-name { font-size: 10px; color: var(--muted); }
+.gslot-full { border-style: solid; cursor: pointer; }
+.gslot-full:hover { border-color: var(--accent-2); }
+.stats { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; font-size: 12px; }
+.stats div { display: flex; justify-content: space-between; padding: 3px 6px; border-radius: 5px; background: var(--bg-3); }
+.stats b { color: var(--accent); }
 
-/* ---- menus and windows ---- */
-.menu { position: absolute; z-index: 5; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+/* ---- skills ---- */
+.skill-list { display: flex; flex-direction: column; gap: 5px; }
+.skill-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.skill-row:hover { background: var(--bg-3); }
+.skill-level { font-weight: 700; color: var(--accent); }
+.bar { grid-column: 1 / -1; display: block; height: 3px; border-radius: 2px; background: var(--bg-4); overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--ok); }
+.skill-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.skill-head b { flex: 1; }
+.skill-xp { font-size: 12px; margin: 6px 0 4px; }
+.unlocks { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.unlock-row { display: grid; grid-template-columns: 28px 1fr; gap: 6px; font-size: 11px; padding: 3px 6px; border-radius: 4px; color: var(--muted); }
+.unlock-row.done { color: var(--text); background: rgba(152, 195, 121, 0.08); }
+.unlock-row.next { color: var(--text); background: rgba(124, 196, 255, 0.12); outline: 1px solid var(--accent-2); }
+.unlock-level { font-weight: 700; text-align: right; }
+
+/* ---- journal and settings ---- */
+.jtabs { display: flex; gap: 2px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.jtab { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+.jtab.on { color: var(--text); border-bottom-color: var(--accent-2); }
+.entry { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px; margin-bottom: 4px; border-radius: 6px; background: var(--bg-3); font-size: 12px; }
+.entry > div { width: 100%; }
+.tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-4); color: var(--muted); }
+.filter { width: 100%; font: inherit; padding: 5px 8px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.settings { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+.settings label { display: flex; align-items: center; gap: 8px; }
+.settings .row { display: flex; gap: 8px; }
+
+/* ---- menus and the bank's stacks ---- */
+.menu { position: absolute; z-index: 40; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
 .menu[hidden] { display: none; }
 .menu button { font: inherit; font-size: 12px; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; }
 .menu button:hover { background: var(--bg-3); color: var(--accent); }
-.window { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; width: min(380px, calc(100% - 24px)); max-height: 70%; display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
-.window[hidden] { display: none; }
-.window-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 700; }
-.window-head span { flex: 1; }
-.window-body { padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; scrollbar-width: thin; }
+.stacks { display: flex; flex-direction: column; gap: 4px; }
 .stack { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
 .stack-name { flex: 1; }
 .stack-qty { color: #f0c674; font-weight: 700; min-width: 30px; text-align: right; }

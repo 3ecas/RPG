@@ -10,7 +10,7 @@ const defineTiered = tieredDefiner<RecipeDef>();
  */
 function piece(suffix: 'sword' | 'axe' | 'dagger' | 'helmet' | 'platebody' | 'platelegs', bars: number, wood: number, hide: number) {
   return defineTiered(METALS, 'smith_', `_${suffix}`, (metal, tier) => ({
-    station: 'anvil', skill: 'blacksmithing', tier, durationMs: 2500 + 500 * bars + 300 * (tier - 1), xp: scaled(12 * bars, tier, 1.6),
+    station: 'anvil', skill: 'smithing', tier, durationMs: 2500 + 500 * bars + 300 * (tier - 1), xp: scaled(12 * bars, tier, 1.6),
     inputs: [
       { itemId: `${metal}_bar`, qty: bars },
       ...(wood > 0 ? [{ itemId: `${WOODS[tier - 1]!}_log` as const, qty: wood }] : []),

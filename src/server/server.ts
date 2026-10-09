@@ -14,7 +14,7 @@ import { Registry } from '@/core/registry';
 import { type ClientMessage, decodeClientMessage, LIMITS, PROTOCOL_VERSION, type ServerMessage } from '@/net/protocol';
 import type { ZoneId } from '@/types/ids';
 import { hashSecret, keyOf, newCharacter } from './character';
-import type { RoomPlayer, RoomRules } from './room';
+import type { PlayerInput, RoomPlayer, RoomRules } from './room';
 import { type CharacterStore, MemoryStore } from './store';
 import { World } from './world';
 
@@ -190,7 +190,7 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
   const welcome = (conn: Connection, player: RoomPlayer, token: string, resumed: boolean): void => {
     const snapshot = world.snapshotFor(player.id)!;
     const you = world.youOf(player.id)!;
-    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, bag: you.bag, skills: you.skills, ...snapshot });
+    send(conn.socket, { t: 'welcome', id: player.id, token, tickMs: options.tickMs, resumed, bag: you.bag, skills: you.skills, gear: you.gear, stats: you.stats, ...snapshot });
   };
 
   /** Who this connection is: a character coming back on its token, a character of this browser's loaded from the store, or a new one. */
@@ -272,10 +272,21 @@ export function startServer(options: ServerOptions): Promise<GameServer> {
       return;
     }
     switch (msg.t) {
-      case 'input': world.queueInput(id, msg.to ? { seq: msg.seq, to: { x: msg.to[0], y: msg.to[1] }, use: msg.use === true } : { seq: msg.seq }); break;
+      case 'input': {
+        const input: PlayerInput = { seq: msg.seq };
+        if (msg.to) {
+          input.to = { x: msg.to[0], y: msg.to[1] };
+          input.use = msg.use === true;
+        }
+        if (msg.stop) input.stop = true;
+        world.queueInput(id, input);
+        break;
+      }
       case 'run': world.setRunning(id, msg.on); break;
       case 'chat': world.chat(id, msg.text); break;
       case 'drop': world.drop(id, msg.slot); break;
+      case 'equip': world.equip(id, msg.slot); break;
+      case 'unequip': world.unequip(id, msg.slot); break;
       case 'bank': world.bank(id, msg); break;
     }
   };

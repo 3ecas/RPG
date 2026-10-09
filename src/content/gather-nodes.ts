@@ -23,7 +23,7 @@ export const ROCKS = defineNodes({
 });
 
 export const TREES = defineTiered(WOODS, '', '_tree', (wood, tier) => ({
-  name: `${titleCase(wood)} Tree`, description: `Tier ${tier} timber.`, skill: 'woodcutting', tier, itemId: `${wood}_log`, durationMs: duration(tier), xp: xp(tier), deplete: treeDeplete(tier),
+  name: `${titleCase(wood)} Tree`, description: `Tier ${tier} timber.`, skill: 'lumberjack', tier, itemId: `${wood}_log`, durationMs: duration(tier), xp: xp(tier), deplete: treeDeplete(tier),
 }));
 
 export const FISHING_SPOTS = defineTiered(FISH, '', '_spot', (fish, tier) => ({
@@ -31,7 +31,7 @@ export const FISHING_SPOTS = defineTiered(FISH, '', '_spot', (fish, tier) => ({
 }));
 
 export const FIELDS = defineTiered(CROPS, '', '_field', (crop, tier) => ({
-  name: `${titleCase(crop)} Field`, description: `Rows of ${crop}, ready to pick.`, skill: 'farming', tier, itemId: crop, durationMs: duration(tier), xp: xp(tier), deplete: cropDeplete(tier),
+  name: `${titleCase(crop)} Field`, description: `Rows of ${crop}, ready to pick.`, skill: 'harvesting', tier, itemId: crop, durationMs: duration(tier), xp: xp(tier), deplete: cropDeplete(tier),
 }));
 
 export const HERB_PATCHES = defineTiered(HERBS, '', '_patch', (herb, tier) => ({

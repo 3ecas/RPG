@@ -9,7 +9,7 @@
 import type { Registry } from '@/core/registry';
 import { randomSeed, Rng } from '@/core/rng';
 import type { TickDelta, YouDelta, ZoneSnapshot } from '@/net/protocol';
-import type { ZoneId } from '@/types/ids';
+import type { EquipSlot, ZoneId } from '@/types/ids';
 import type { Result } from '@/types/result';
 import type { CharacterRecord } from './character';
 import { type BankCommand, type PlayerInput, Room, type RoomPlayer, type RoomRules } from './room';
@@ -135,6 +135,14 @@ export class World {
 
   bank(id: number, command: BankCommand): boolean {
     return this.roomOf(id)?.bank(id, command) ?? false;
+  }
+
+  equip(id: number, slot: number): boolean {
+    return this.roomOf(id)?.equip(id, slot) ?? false;
+  }
+
+  unequip(id: number, slot: EquipSlot): boolean {
+    return this.roomOf(id)?.unequip(id, slot) ?? false;
   }
 
   /** Everyone's private events since the last call, wherever they stand. */
