@@ -14,7 +14,8 @@ export function tableDefiner<TDef extends { readonly id: string }>() {
 
 /**
  * Builds one entry per material in a tier list: `tieredDefiner<ItemDef>()(METALS, '', '_bar', make)`
- * yields `bronze_bar`, `iron_bar`, … with the tier taken from the material's position.
+ * yields `bronze_bar`, `iron_bar`, … with the tier taken from the material's position,
+ * counted from `firstTier` (1 unless the list starts higher, as the metal tools do).
  * The ids stay literal types, so they are still checked everywhere.
  */
 export function tieredDefiner<TDef extends { readonly id: string }>() {
@@ -23,11 +24,12 @@ export function tieredDefiner<TDef extends { readonly id: string }>() {
     prefix: P,
     suffix: S,
     make: (material: M[number], tier: Tier) => Omit<TDef, 'id'>,
+    firstTier: Tier = 1,
   ): { readonly [Mat in M[number] as `${P}${Mat}${S}`]: TDef & { readonly id: `${P}${Mat}${S}` } } => {
     const out: Record<string, unknown> = {};
     materials.forEach((material, index) => {
       const id = `${prefix}${material}${suffix}`;
-      out[id] = { ...make(material, tierOf(index)), id };
+      out[id] = { ...make(material, tierOf(index + firstTier - 1)), id };
     });
     return out as never;
   };

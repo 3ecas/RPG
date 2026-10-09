@@ -79,13 +79,13 @@ describe('content', () => {
     expect(registry.unlocks('smithing')[0]?.text).toContain('Bronze Bar');
   });
 
-  it('every recipe output is either equipment, food, or a material used somewhere', () => {
+  it('every recipe output is either equipment, a tool, food, or a material used somewhere', () => {
     const registry = new Registry(CONTENT);
     const usedAsInput = new Set(Object.values(CONTENT.recipes).flatMap((r) => r.inputs.map((i) => i.itemId)));
     for (const recipe of Object.values(CONTENT.recipes)) {
       for (const out of recipe.outputs) {
         const item = registry.item(out.itemId);
-        const useful = !!item.equip || !!item.consume || usedAsInput.has(out.itemId);
+        const useful = !!item.equip || !!item.tool || !!item.consume || usedAsInput.has(out.itemId);
         expect(useful, `${out.itemId} is crafted but has no use`).toBe(true);
       }
     }

@@ -23,4 +23,11 @@ export const STAFF_RECIPES = defineTiered(WOODS, 'carve_', '_staff', (wood, tier
   outputs: [{ itemId: `${wood}_staff`, qty: 1 }],
 }));
 
-export const WOODWORKING = { ...SHIELD_RECIPES, ...BOW_RECIPES, ...STAFF_RECIPES };
+/** A fishing rod from one log of the tier's wood. Tobb gives the first away. */
+export const ROD_RECIPES = defineTiered(WOODS, 'carve_', '_rod', (wood, tier) => ({
+  station: 'sawbench', skill: 'crafting', tier, durationMs: 2500 + 300 * (tier - 1), xp: scaled(8, tier, 1.6),
+  inputs: [{ itemId: `${wood}_log`, qty: 1 }],
+  outputs: [{ itemId: `${wood}_rod`, qty: 1 }],
+}));
+
+export const WOODWORKING = { ...SHIELD_RECIPES, ...BOW_RECIPES, ...STAFF_RECIPES, ...ROD_RECIPES };

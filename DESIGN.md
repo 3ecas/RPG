@@ -109,8 +109,10 @@ Starting values. Expect to tune them after the first playable slice.
 - **Tools replace perks.** Gather speed comes from the pickaxe or hatchet in
   your bag or hand, by tier, so speed is crafted and can be lost. Without one
   you cannot gather at all. Hatchets and pickaxes run stone → iron → steel
-  → mithril → adamant → rune; fishing rods run oak → elder. Tools hang on a
-  tool belt (one hatchet, one pickaxe, one rod), never in a bag slot. A new
+  → mithril → adamant → rune, the metal ones forged at an anvil from a bar
+  and a log; fishing rods run oak → elder, carved at a sawbench from a log.
+  Tools hang on a tool belt (one hatchet, one pickaxe, one rod), never in a
+  bag slot. A new
   character starts with nothing: Rowan the lumberjack hands a stone hatchet
   to anyone who talks to him without one, Greta the stonemason a stone
   pickaxe, Tobb the angler an oak rod, straight onto the belt; the village
@@ -195,9 +197,15 @@ with the first handful of real ones.
   left with their objectives red until done, then green. People speak in a
   balloon above the menu bar, with their role under their name on the map.
   The bestiary tells only creatures you have fought; the item database
-  tells how to come by everything. A minimap in the top right. A docked
-  chatbox. Right-click menus. The bank, the stations and shops are windows
-  too. Space stops you.
+  tells how to come by everything, one fact to a line, with links between
+  pages. A minimap in the top right. A docked chatbox. Right-click menus.
+  The bank, the stations and shops are windows too. Space stops you.
+- **One look for every panel**, the way MMO interfaces have looked since the
+  first ones: dark wood and worn brass, a gold title line on every window,
+  small gold section labels with a rule, sunken slots, serifs for titles and
+  levels, and item names in the colour of their tier (white, green, blue,
+  purple, orange, gold). The menu bar carries a line icon per window. The
+  least text possible: a fact is a line, never a sentence.
 - **Art:** simple shapes for now: flat tiles, discs for people, boxes and
   circles for what stands on the map. The renderer is one file, so pixel art
   can replace it once the mechanics are in. When it does: 16-pixel tiles,

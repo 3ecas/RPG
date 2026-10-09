@@ -16,7 +16,9 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   oak fishing rod. Tools hang on your tool belt, the column left of your
   gear in the Inventory, so they never take a bag slot: one you find or buy
   goes on it with Put on the belt (or a drag onto the belt) and comes off
-  with Take off. Hollow Goods sells all three.
+  with Take off. Hollow Goods sells all three; the iron ones and up are
+  forged at an anvil from a bar and a log, rods carved at a sawbench from a
+  log.
 - **Chop trees, break stones, fish.** Click an oak (or right-click it for
   Chop, Examine, Walk here) and you walk up beside it and swing. An item
   takes 250 ticks (12.5 s) at level 1 and 50 ticks at level 100, about two
@@ -50,11 +52,16 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   (talk to Pell, chop five oak logs) and A Walk Around the Village (meet
   three people and see the hills).
 - **The journal's other tabs.** The Bestiary tells only the creatures you
-  have fought; the rest are ??? until you meet them. The Items tab gives
-  every item its type, tier and worth as chips, one line about it, then
-  HOW TO GET IT and USED IN as short bullets (which station from what,
-  which node in which zone, which shop, who hands it out, which quest, what
-  drops it, what it goes into). The Log keeps what was said and done.
+  have fought; the rest are ??? until you meet them. The Items tab reads
+  like a tooltip: the name in its tier's colour, the type, slot, tier and
+  worth on the line under it, one line about it, then a part per thing
+  worth knowing with one fact to a line: BONUS (Armor +3), REQUIREMENT
+  (Vitality lvl 1, red while you are below it), EAT, TOOL, HOW TO GET IT
+  (a block per way: the station with its zones, each ingredient and the
+  level; the node; the shop with the price; who hands it out; the quest;
+  what drops it) and USED IN (a block per station naming what is made
+  there). Every ingredient, product, quest and creature named is a link to
+  its own page. The Log keeps what was said and done.
 - **People talk in a balloon** above the menu bar when you click them, with
   their role under their name on the map; Rowan the lumberjack and Greta the
   stonemason hand out their tools there.
@@ -86,7 +93,9 @@ in. [DESIGN.md](DESIGN.md) is the design and the build order;
   on the left and the page on the right), Skills, Map and Settings. Every
   window drags by its title, resizes by its corner, and closes with its X;
   the layout is remembered per browser; menus always open above the
-  windows. Drag a bag slot onto another to swap them, or onto the world to
+  windows. Everything is framed the same way: dark wood, a gold title line,
+  small gold section labels, sunken slots, and item names in the colour of
+  their tier (white, green, blue, purple, orange, gold). Drag a bag slot onto another to swap them, or onto the world to
   throw the thing away after a yes-or-no. The map sits top right. Keys: I,
   J, K, M, O for the windows, R to run, Space to stop, Enter to talk.
 - Skills, bag, bank, gear, hit points, mana, coins and quests are saved with

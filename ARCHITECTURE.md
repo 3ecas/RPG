@@ -423,9 +423,11 @@ character store behind it.
   the left and a page on the right: quests with their giver, task,
   objectives, rewards and the one button to accept or abandon, the
   adventure log, the bestiary that tells only the creatures met and ???
-  for the rest, and a filterable item database whose pages are chips (type,
-  tier, worth, numbers), one line, and bullets for how to get it and what
-  it is used in; the skills as levels with a bar,
+  for the rest, and a filterable item database whose pages read like a
+  tooltip: the name in its tier's colour, type · slot · tier · worth, one
+  line, then parts (Bonus, Requirement, Eat, Tool, How to get it, Used in)
+  of one fact to a line, where every ingredient, product, quest and creature
+  is a link to its page; the skills as a grid of cards with a level and a bar,
   and each skill's hundred unlocks with the current one marked; the settings
   with run, hover labels, chat, a layout reset and a way out; the bank with
   stacks, 1 / 5 / All and deposit all; the station with what the bag has the

@@ -12,14 +12,14 @@
 import { Replica } from '@/client/replica';
 import { GameSocket, type SocketStatus } from '@/client/socket';
 import { LIMITS, normalizeName, type ServerMessage } from '@/net/protocol';
-import type { GatherNodeDef, ItemDef, MonsterDef, NpcDef, Objective, QuestDef, RecipeDef, ShopDef, SkillUnlock, StationDef, ZoneDef, ZoneMapDef } from '@/types/content';
+import type { GatherNodeDef, ItemDef, ItemGroup, MonsterDef, NpcDef, Objective, QuestDef, RecipeDef, ShopDef, SkillUnlock, StationDef, ZoneDef, ZoneMapDef } from '@/types/content';
 import { EQUIP_SLOTS, type EquipSlot, type ItemId, type MonsterId, type NodeId, type NpcId, type QuestId, type RecipeId, type ShopId, type SkillId, type StationId, TOOL_SKILLS, type ToolSkill, type ZoneId } from '@/types/ids';
 import { isToolSkill, TOOL_NAMES } from '@/world/bag';
-import { FIRE_LOGS, FIRE_STONES } from '@/world/fire';
-import { healOf } from '@/world/food';
+import { FIRE_LOGS, FIRE_STONES, fuelMs } from '@/world/fire';
+import { EAT_TICKS, healOf } from '@/world/food';
 import { type Cell, type Grid, objectAt, parseMap } from '@/world/grid';
 import { levelForTier, progressOf } from '@/world/skills';
-import { SLOT_NAMES } from '@/world/stats';
+import { SLOT_NAMES, slotsFor } from '@/world/stats';
 import { escapeHtml } from './html';
 import { Minimap } from './minimap';
 import { ITEM_COLORS, OnlineScene, type SceneContent } from './scene';
@@ -76,14 +76,18 @@ const MAKE_VERBS: Partial<Record<StationId, string>> = { campfire: 'Cook', furna
 const DRAG_START = 6;
 /** The menu bar's height, which windows stay above. */
 const MENUBAR_H = 40;
-/** The windows on the menu bar, with their hotkeys. */
-const PANELS: { id: string; title: string; key: string }[] = [
-  { id: 'inventory', title: 'Inventory', key: 'i' },
-  { id: 'journal', title: 'Journal', key: 'j' },
-  { id: 'skills', title: 'Skills', key: 'k' },
-  { id: 'map', title: 'Map', key: 'm' },
-  { id: 'settings', title: 'Settings', key: 'o' },
+/** The windows on the menu bar, with their hotkeys and a 16 by 16 line icon each: a pouch, a book, a star, a compass, a cog. */
+const PANELS: { id: string; title: string; key: string; icon: string }[] = [
+  { id: 'inventory', title: 'Inventory', key: 'i', icon: '<path d="M3 6.5h10l1 7.5H2z"/><path d="M5.5 6.5V4.8a2.5 2.5 0 0 1 5 0v1.7"/>' },
+  { id: 'journal', title: 'Journal', key: 'j', icon: '<path d="M2.5 3h4a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 0-1.5-1.5h-4z"/><path d="M13.5 3h-4A1.5 1.5 0 0 0 8 4.5v9a1.5 1.5 0 0 1 1.5-1.5h4z"/>' },
+  { id: 'skills', title: 'Skills', key: 'k', icon: '<path d="M8 2l1.8 3.8 4.2.6-3 2.9.7 4.2L8 11.5l-3.7 2 .7-4.2-3-2.9 4.2-.6z"/>' },
+  { id: 'map', title: 'Map', key: 'm', icon: '<circle cx="8" cy="8" r="6"/><path d="M10.6 5.4L9.2 9.2 5.4 10.6 6.8 6.8z"/>' },
+  { id: 'settings', title: 'Settings', key: 'o', icon: '<circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v2.2M8 12v2.2M1.8 8H4M12 8h2.2M3.6 3.6l1.6 1.6M10.8 10.8l1.6 1.6M3.6 12.4l1.6-1.6M10.8 5.2l1.6-1.6"/>' },
 ];
+/** Item names wear their tier's colour, the ladder every MMO taught: white, green, blue, purple, orange, gold. */
+const tierClass = (tier: number) => `t${tier}`;
+/** A few groups read better under another name. */
+const GROUP_NAMES: Partial<Record<ItemGroup, string>> = { book: 'Tome', misc: 'Other' };
 /** The gear grid: the head between the trinkets, the hands either side of the torso, then the rest. */
 const GEAR_LAYOUT: EquipSlot[] = ['trinket_1', 'head', 'trinket_2', 'main_hand', 'body', 'off_hand', 'hands', 'legs', 'feet'];
 const TIER_LEVEL = (tier: number) => levelForTier(tier as 1 | 2 | 3 | 4 | 5 | 6);
@@ -152,7 +156,7 @@ export class OnlineApp {
       '<main class="stage stage-closed" id="on-stage"><div class="world" id="on-world"></div>' +
       '<div class="tracker" id="on-tracker" hidden></div>' +
       '<div class="balloon" id="on-balloon" hidden><div class="balloon-head"><b id="on-balloon-name"></b><span class="muted" id="on-balloon-title"></span><button class="win-x" type="button" id="on-balloon-x" title="Close">&times;</button></div><div class="balloon-lines" id="on-balloon-lines"></div></div>' +
-      '<nav class="menubar" id="on-menubar">' + PANELS.map((p) => `<button type="button" data-win="${p.id}" title="${p.title} (${p.key.toUpperCase()})">${p.title}</button>`).join('') + '</nav>' +
+      '<nav class="menubar" id="on-menubar">' + PANELS.map((p) => `<button type="button" data-win="${p.id}" title="${p.title} (${p.key.toUpperCase()})"><svg viewBox="0 0 16 16" aria-hidden="true">${p.icon}</svg><span>${p.title}</span><kbd>${p.key.toUpperCase()}</kbd></button>`).join('') + '</nav>' +
       '<div class="menu" id="on-menu" hidden></div>' +
       '<div class="confirm" id="on-confirm" hidden><div class="confirm-card"><p id="on-confirm-text"></p><div class="row"><button class="menu-btn join-button" type="button" id="on-confirm-yes">Yes</button><button class="menu-btn" type="button" id="on-confirm-no">Never mind</button></div></div></div>' +
       '<div class="chatbox" id="on-chat" hidden><div class="chat-log" id="on-log"></div><form class="chat-form" id="on-chat-form"><input id="on-chat-input" type="text" autocomplete="off" maxlength="' + LIMITS.CHAT_MAX + '" placeholder="Press Enter to talk"></form></div>' +
@@ -308,6 +312,11 @@ export class OnlineApp {
       if (pick) {
         const [kind, id] = pick.dataset.pick!.split(':') as ['quest' | 'monster' | 'item', string];
         this.picked[kind] = id as never;
+        // A link on a page: go to that thing's tab, and show the whole list so the pick is in it.
+        if (pick.closest('.jdetail')) {
+          this.journalTab = kind === 'quest' ? 'Quests' : kind === 'monster' ? 'Bestiary' : 'Items';
+          this.itemFilter = '';
+        }
         this.renderJournal();
         return;
       }
@@ -542,7 +551,7 @@ export class OnlineApp {
     if (def.group === 'log' && this.replica.station?.fid != null) options.push({ label: 'Add to the fire', run: () => this.socket?.send({ t: 'fire', op: 'feed' }) });
     if (this.replica.bank !== null) options.push({ label: `Deposit ${def.name}`, run: () => this.socket?.send({ t: 'bank', op: 'deposit', slot, qty: entry[1] }) });
     options.push({ label: `Drop ${def.name}`, run: () => this.socket?.send({ t: 'drop', slot }) });
-    options.push({ label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) });
+    options.push({ label: `Examine ${def.name}`, run: () => this.appendSystem(this.describe(def)) });
     this.openMenu(options, at);
   }
 
@@ -552,7 +561,7 @@ export class OnlineApp {
     const def = this.content.item(hung[1]);
     this.openMenu([
       { label: `Take off ${def.name}`, run: () => this.socket?.send({ t: 'belt', op: 'off', skill }) },
-      { label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) },
+      { label: `Examine ${def.name}`, run: () => this.appendSystem(this.describe(def)) },
     ], at);
   }
 
@@ -562,7 +571,7 @@ export class OnlineApp {
     const def = this.content.item(worn[1]);
     this.openMenu([
       { label: `Remove ${def.name}`, run: () => this.socket?.send({ t: 'unequip', slot }) },
-      { label: `Examine ${def.name}`, run: () => this.appendSystem(describe(def)) },
+      { label: `Examine ${def.name}`, run: () => this.appendSystem(this.describe(def)) },
     ], at);
   }
 
@@ -749,7 +758,7 @@ export class OnlineApp {
     const active = this.replica.quests.filter((q) => q[1] === 'active' && this.content.questIds.includes(q[0] as QuestId));
     this.els.tracker.hidden = active.length === 0;
     if (active.length === 0) return;
-    this.els.tracker.innerHTML = active.map(([id, , progress]) => {
+    this.els.tracker.innerHTML = '<div class="track-head">Quests</div>' + active.map(([id, , progress]) => {
       const def = this.content.quest(id as QuestId);
       return `<div class="track"><b>${escapeHtml(def.name)}</b>${def.objectives.map((o, i) => this.objectiveHtml(o, progress[i] ?? 0)).join('')}</div>`;
     }).join('');
@@ -834,7 +843,7 @@ export class OnlineApp {
       const need = TIER_LEVEL(recipe.tier);
       const locked = progressOf(this.replica.skills.get(recipe.skill) ?? 0).level < need;
       const takes = recipe.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(', ');
-      rows += `<div class="cook-row">${icon(out)}<span class="cook-name" title="${escapeHtml(takes)}">${escapeHtml(this.recipeName(recipe))}${locked ? `<span class="muted small"> needs ${escapeHtml(this.content.skill(recipe.skill).name)} ${need}</span>` : ''}</span><span class="stack-qty">${can}</span>` +
+      rows += `<div class="cook-row">${icon(out)}<span class="cook-name ${tierClass(out.tier)}" title="${escapeHtml(takes)}">${escapeHtml(this.recipeName(recipe))}${locked ? `<span class="muted small"> needs ${escapeHtml(this.content.skill(recipe.skill).name)} ${need}</span>` : ''}</span><span class="stack-qty">${can}</span>` +
         `<span class="stack-buttons"><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="1" ${locked ? 'disabled' : ''}>${verb} 1</button><button class="menu-btn" type="button" data-make="${recipe.id}" data-qty="${can}" ${locked ? 'disabled' : ''}>${verb} all</button></span></div>`;
     }
     const makes = recipes.map((r) => this.recipeName(r));
@@ -861,14 +870,14 @@ export class OnlineApp {
       body.querySelector('[data-now]')?.scrollIntoView({ block: 'center' });
       return;
     }
-    let html = '<div class="skill-list">';
+    let html = '<div class="skill-grid">';
     for (const id of this.content.skillIds) {
       const xp = this.replica.skills.get(id) ?? 0;
       const { level, into, span } = progressOf(xp);
       const pct = span > 0 ? Math.round((into / span) * 100) : 100;
-      html += `<div class="skill-row" data-skill="${id}" title="${xp.toLocaleString()} xp${span > 0 ? `, ${(span - into).toLocaleString()} to level ${level + 1}` : ''}"><span class="skill-name">${escapeHtml(this.content.skill(id).name)}</span><span class="skill-level">${level}</span><span class="bar"><span class="bar-fill" style="width:${pct}%"></span></span></div>`;
+      html += `<div class="skill-card" data-skill="${id}" title="${xp.toLocaleString()} xp${span > 0 ? `, ${(span - into).toLocaleString()} to level ${level + 1}` : ''}"><span class="skill-name">${escapeHtml(this.content.skill(id).name)}</span><span class="skill-level">${level}</span><span class="bar"><span class="bar-fill" style="width:${pct}%"></span></span></div>`;
     }
-    body.innerHTML = html + '</div><p class="muted small">Click a skill to see what every level gives.</p>';
+    body.innerHTML = html + '</div><p class="muted small">Click a skill for what every level gives.</p>';
   }
 
   private renderBank(): void {
@@ -887,7 +896,7 @@ export class OnlineApp {
     for (const [item, qty] of bank) {
       if (!this.content.hasItem(item)) continue;
       const def = this.content.item(item);
-      html += `<div class="stack">${icon(def)}<span class="stack-name">${escapeHtml(def.name)}</span><span class="stack-qty">${qty}</span>` +
+      html += `<div class="stack">${icon(def)}<span class="stack-name ${tierClass(def.tier)}">${escapeHtml(def.name)}</span><span class="stack-qty">${qty}</span>` +
         `<span class="stack-buttons"><button class="menu-btn" type="button" data-item="${item}" data-qty="1">1</button><button class="menu-btn" type="button" data-item="${item}" data-qty="5">5</button><button class="menu-btn" type="button" data-item="${item}" data-qty="${qty}">All</button></span></div>`;
     }
     list.innerHTML = html;
@@ -925,11 +934,10 @@ export class OnlineApp {
         : status === 'active' ? `<span class="tag">Active</span><button class="menu-btn" type="button" data-quest-op="abandon" data-quest="${id}">Abandon</button>`
         : status === 'done' ? '<span class="tag">Completed</span>'
         : `<span class="tag">Needs ${escapeHtml(prereqs.join(', '))}</span>`;
-      detail = `<h3>${escapeHtml(def.name)}</h3><div class="muted">${escapeHtml(giver.name)}, ${escapeHtml(giver.title.toLowerCase())}</div>` +
-        `<h4>The task</h4><p>${escapeHtml(def.description)}</p>` +
-        `<h4>Objectives</h4>${def.objectives.map((o, i) => this.objectiveHtml(o, mine ? mine[2][i] ?? 0 : null)).join('')}` +
-        (rewards.length > 0 ? `<h4>Rewards</h4><p>${escapeHtml(rewards.join(', '))}</p>` : '') +
-        (status === 'done' ? `<h4>Afterwards</h4><p>${escapeHtml(def.completionText)}</p>` : '') +
+      detail = `<h3 class="iname">${escapeHtml(def.name)}</h3><div class="isub">${escapeHtml(giver.name)}<i>·</i>${escapeHtml(giver.title.toLowerCase())}</div><p class="iflavor">${escapeHtml(def.description)}</p>` +
+        part('Objectives', def.objectives.map((o, i) => this.objectiveHtml(o, mine ? mine[2][i] ?? 0 : null)).join('')) +
+        part('Rewards', rewards.map((r) => line(r, 'good')).join('')) +
+        (status === 'done' ? part('Afterwards', `<p>${escapeHtml(def.completionText)}</p>`) : '') +
         `<div class="row">${button}</div>`;
     }
     return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
@@ -947,34 +955,59 @@ export class OnlineApp {
     if (this.picked.monster && known(this.picked.monster)) {
       const m = this.content.monster(this.picked.monster);
       const where = this.content.zoneIds.filter((z) => (this.content.zone(z).monsters as readonly string[]).includes(m.id)).map((z) => this.content.zone(z).name);
-      detail = `<h3>${escapeHtml(m.name)}</h3><div class="muted">Tier ${m.tier} · HP ${m.hp} · attack ${m.attack} · armor ${m.armor}</div><p>${escapeHtml(m.description)}</p>` +
-        `<h4>Found in</h4><p>${escapeHtml(where.join(', ') || 'Nowhere yet')}</p>` +
-        `<h4>Drops</h4>${m.loot.map((l) => `<div class="objective"><span>${escapeHtml(this.content.item(l.itemId).name)}${l.max > 1 ? ` (${l.min} to ${l.max})` : ''}</span><span>${Math.round(l.chance * 100)}%</span></div>`).join('') || '<p class="muted">Nothing.</p>'}`;
+      detail = `<h3 class="iname ${tierClass(m.tier)}">${escapeHtml(m.name)}</h3><div class="isub">Tier ${m.tier}<i>·</i>HP ${m.hp}<i>·</i>Attack ${m.attack}<i>·</i>Armor ${m.armor}</div><p class="iflavor">${escapeHtml(m.description)}</p>` +
+        part('Found in', where.map((w) => line(w)).join('') || line('Nowhere yet')) +
+        part('Drops', m.loot.map((l) => `<div class="iline irow">${this.itemLink(l.itemId)}<span>${l.max > 1 ? `${l.min}-${l.max} · ` : ''}${Math.round(l.chance * 100)}%</span></div>`).join('') || line('Nothing'));
     } else if (this.picked.monster) {
-      detail = `<h3>???</h3><p class="muted">Not met yet.</p><div class="chips"><span class="chip">${this.replica.bestiary.size} / ${monsters.length} met</span></div>`;
+      detail = `<h3 class="iname">???</h3><p class="iflavor">Not met yet.</p>${part('Bestiary', line(`${this.replica.bestiary.size} / ${monsters.length} met`))}`;
     }
     return `<div class="jpane"><div class="jlist">${list}</div><div class="jdetail">${detail}</div></div>`;
   }
 
-  /** An item's page: the name; type, tier and worth as chips; one line about it; then where it comes from and what it goes into, as bullets. */
+  /** The Items tab: the list with its filter, and the picked item's page. */
   private itemsPane(): string {
-    let detail = '<p class="muted">Pick an item.</p>';
-    if (this.picked.item && this.content.hasItem(this.picked.item)) {
-      const i = this.content.item(this.picked.item);
-      const sources = this.itemSources(this.picked.item);
-      const uses = this.itemUses(this.picked.item);
-      const bullets = (lines: string[]) => `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
-      detail = `<h3>${escapeHtml(i.name)}</h3>` +
-        `<div class="chips"><span class="chip">${escapeHtml(i.group)}</span><span class="chip">tier ${i.tier}</span><span class="chip"><span class="coin"></span>${i.value}</span>${itemChips(i).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('')}</div>` +
-        `<p>${escapeHtml(i.description)}</p>` +
-        `<h4>How to get it</h4>${bullets(sources)}` +
-        (uses.length > 0 ? `<h4>Used in</h4>${bullets(uses)}` : '');
-    }
+    const detail = this.picked.item && this.content.hasItem(this.picked.item) ? this.itemPage(this.picked.item) : '<p class="muted">Pick an item.</p>';
     return `<div class="jpane"><div class="jlist"><input id="on-item-filter" class="filter" type="text" placeholder="Filter items" value="${escapeHtml(this.itemFilter)}"><div id="on-item-list">${this.itemListHtml()}</div></div><div class="jdetail">${detail}</div></div>`;
+  }
+
+  /**
+   * An item's page, read like a tooltip: the name in its tier's colour; the
+   * type, the slot, the tier and the worth on the line below; one line about
+   * it; then a block per thing worth knowing, one fact to a line: what it
+   * adds, what it needs, what eating it does, what tool it is, every way to
+   * get it, and what it goes into. Ingredients, rewards and drops are links.
+   */
+  private itemPage(id: ItemId): string {
+    const i = this.content.item(id);
+    const type = GROUP_NAMES[i.group] ?? cap(i.group);
+    const slot = i.equip ? SLOT_NAMES[slotsFor(i.equip.kind)[0]!] : '';
+    const sub = [type, slot === type ? '' : slot, `Tier ${i.tier}`].filter((s) => s !== '').map((s) => escapeHtml(s));
+    let html = `<h3 class="iname ${tierClass(i.tier)}">${escapeHtml(i.name)}</h3><div class="isub">${sub.join('<i>·</i>')}<i>·</i><span class="coin"></span>${i.value}</div><p class="iflavor">${escapeHtml(i.description)}</p>`;
+    const bonus = statLines(i).map((l) => line(l, 'good'));
+    if (i.equip?.attackIntervalMs) bonus.push(line(`Speed ${(i.equip.attackIntervalMs / 1000).toFixed(1)} s`));
+    html += part('Bonus', bonus.join(''));
+    html += part('Requirement', (i.equip?.requirements ?? []).map((r) => this.skillLine(r.skill, levelForTier(r.tier))).join(''));
+    const heal = healOf(i);
+    if (heal > 0) html += part('Eat', line(`+${heal} HP`, 'good') + line(`${EAT_TICKS} ticks`));
+    if (i.tool) html += part('Tool', line(cap(isToolSkill(i.tool.skill) ? TOOL_NAMES[i.tool.skill] : 'tool')) + (i.tool.tier > 1 ? line(`Pace ×${(1 + 0.2 * (i.tool.tier - 1)).toFixed(1)}`, 'good') : ''));
+    html += part('How to get it', this.itemSources(id).join('') || line('Nowhere yet'));
+    html += part('Used in', this.itemUses(id).join(''));
+    return html;
   }
 
   private recipeName(recipe: RecipeDef): string {
     return recipe.name ?? this.content.item(recipe.outputs[0]!.itemId).name;
+  }
+
+  /** A line naming an item, in its tier's colour, that opens its page. */
+  private itemLink(id: ItemId, qty = 0): string {
+    const def = this.content.item(id);
+    return `<button type="button" class="iline ilink ${tierClass(def.tier)}" data-pick="item:${id}">${qty > 0 ? `${qty} ` : ''}${escapeHtml(def.name)}</button>`;
+  }
+
+  /** "Smithing lvl 1", red while your level is below it. */
+  private skillLine(skill: SkillId, level: number): string {
+    return line(`${this.content.skill(skill).name} lvl ${level}`, progressOf(this.replica.skills.get(skill) ?? 0).level < level ? 'bad' : '');
   }
 
   /** The zones that pass `test`, two at most by name, the rest counted. */
@@ -984,61 +1017,71 @@ export class OnlineApp {
     return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
   }
 
-  /** Every way an item comes into the world, one short line each: made, gathered, sold, handed out, a reward, dropped. */
+  /** Every way an item comes into the world, a block each: a station with what it takes and the level, a node, a shop with the price, someone who hands it out, a quest, what drops it. */
   private itemSources(id: ItemId): string[] {
-    const lines: string[] = [];
+    const blocks: string[] = [];
     for (const rid of this.content.recipeIds) {
       const r = this.content.recipe(rid);
       if (!r.outputs.some((o) => o.itemId === id)) continue;
-      const inputs = r.inputs.map((i) => `${i.qty} ${this.content.item(i.itemId).name}`).join(' + ');
-      const where = this.zonesWhere((z) => (z.stations as readonly string[]).includes(r.station));
-      lines.push(`${this.content.station(r.station).name} (${where}): ${inputs} · ${this.content.skill(r.skill).name} ${levelForTier(r.tier)}`);
+      blocks.push(block(this.content.station(r.station).name, this.zonesWhere((z) => (z.stations as readonly string[]).includes(r.station)),
+        r.inputs.map((i) => this.itemLink(i.itemId, i.qty)).join('') + this.skillLine(r.skill, levelForTier(r.tier))));
     }
     for (const nid of this.content.nodeIds) {
       const n = this.content.node(nid);
       if (n.itemId !== id) continue;
-      const where = this.zonesWhere((z) => (z.nodes as readonly string[]).includes(nid));
-      const tool = isToolSkill(n.skill) ? ` · ${TOOL_NAMES[n.skill]}` : '';
-      lines.push(`${n.name} (${where}) · ${this.content.skill(n.skill).name} ${levelForTier(n.tier)}${tool}`);
+      blocks.push(block(n.name, this.zonesWhere((z) => (z.nodes as readonly string[]).includes(nid)),
+        this.skillLine(n.skill, levelForTier(n.tier)) + (isToolSkill(n.skill) ? line(cap(TOOL_NAMES[n.skill])) : '')));
     }
     for (const sid of this.content.shopIds) {
       const s = this.content.shop(sid);
-      if (s.stock.some((st) => st.itemId === id)) lines.push(`${s.name} (${this.zonesWhere((z) => (z.shops as readonly string[]).includes(sid))}) · sold`);
+      const stock = s.stock.find((st) => st.itemId === id);
+      if (stock) blocks.push(block(s.name, this.zonesWhere((z) => (z.shops as readonly string[]).includes(sid)), line(`${stock.price ?? Math.ceil(this.content.item(id).value * s.markup)} coins`)));
     }
     for (const nid of this.content.npcIds) {
       const n = this.content.npc(nid);
-      if (n.handout?.itemId === id) lines.push(`${n.name} the ${n.title.toLowerCase()} (${this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid))}) · free`);
+      if (n.handout?.itemId === id) blocks.push(block(`${n.name} the ${n.title.toLowerCase()}`, this.zonesWhere((z) => (z.npcs as readonly string[]).includes(nid)), line('Free', 'good')));
     }
-    for (const qid of this.content.questIds) {
-      const q = this.content.quest(qid);
-      if (q.rewards.some((r) => r.type === 'item' && r.itemId === id)) lines.push(`Quest: ${q.name}`);
-    }
+    const quests = this.content.questIds.filter((q) => this.content.quest(q).rewards.some((r) => r.type === 'item' && r.itemId === id));
+    if (quests.length > 0) blocks.push(block('Quest', null, quests.map((q) => `<button type="button" class="iline ilink" data-pick="quest:${q}">${escapeHtml(this.content.quest(q).name)}</button>`).join('')));
+    const drops: string[] = [];
     for (const m of this.content.monsterIds) {
-      if (this.content.monster(m).loot.some((l) => l.itemId === id)) lines.push(`Dropped by ${this.replica.bestiary.has(m) ? this.content.monster(m).name : '???'}`);
+      const loot = this.content.monster(m).loot.find((l) => l.itemId === id);
+      if (!loot) continue;
+      drops.push(this.replica.bestiary.has(m) ? `<button type="button" class="iline ilink" data-pick="monster:${m}">${escapeHtml(this.content.monster(m).name)} · ${Math.round(loot.chance * 100)}%</button>` : line('???'));
     }
-    if (lines.length === 0) lines.push('Unknown');
-    return lines;
+    if (drops.length > 0) blocks.push(block('Dropped by', null, drops.join('')));
+    return blocks;
   }
 
-  /** What an item goes into, one short line each. */
+  /** What an item goes into: a block per station naming what is made from it there, and the campfire for stones and logs. */
   private itemUses(id: ItemId): string[] {
-    const lines: string[] = [];
+    const byStation = new Map<StationId, Set<ItemId>>();
     for (const rid of this.content.recipeIds) {
       const r = this.content.recipe(rid);
-      if (r.inputs.some((i) => i.itemId === id)) lines.push(`${this.recipeName(r)} · ${this.content.station(r.station).name}`);
+      if (!r.inputs.some((i) => i.itemId === id)) continue;
+      const outs = byStation.get(r.station) ?? new Set<ItemId>();
+      outs.add(r.outputs[0]!.itemId);
+      byStation.set(r.station, outs);
     }
+    const blocks = [...byStation].map(([station, outs]) => block(this.content.station(station).name, null, [...outs].map((o) => this.itemLink(o)).join('')));
     const def = this.content.item(id);
-    if (id === 'stone' || def.group === 'log') lines.push(`Campfire: ${FIRE_STONES} stones + 1 log`);
-    if (def.group === 'log') lines.push('Feeds a campfire');
-    if (healOf(def) > 0) lines.push(`Eat: +${healOf(def)} HP`);
-    if (def.tool) lines.push(`Belt: ${VERBS[def.tool.skill] ?? 'gather'}`);
-    return lines;
+    if (id === 'stone' || def.group === 'log') blocks.push(block('Campfire', null, line(`Build: ${FIRE_STONES} stones + ${FIRE_LOGS} log`) + (def.group === 'log' ? line(`Feed: ${Math.round(fuelMs(def.tier) / 60_000)} min`) : '')));
+    return blocks;
+  }
+
+  /** An item in one line for the chat: what it is and its numbers. */
+  private describe(def: ItemDef): string {
+    const facts = [...statLines(def), ...(def.equip?.requirements ?? []).map((r) => `needs ${this.content.skill(r.skill).name} ${levelForTier(r.tier)}`)];
+    if (def.tool) facts.push(`${isToolSkill(def.tool.skill) ? TOOL_NAMES[def.tool.skill] : 'tool'} ${def.tool.tier}`);
+    const heal = healOf(def);
+    if (heal > 0) facts.push(`+${heal} HP`);
+    return facts.length > 0 ? `${def.description} ${facts.join(' · ')}.` : def.description;
   }
 
   private itemListHtml(): string {
     const items = this.content.itemIds.map((id) => this.content.item(id)).filter((i) => !this.itemFilter || i.name.toLowerCase().includes(this.itemFilter) || i.group.includes(this.itemFilter));
     items.sort((a, b) => a.group.localeCompare(b.group) || a.tier - b.tier || a.name.localeCompare(b.name));
-    return items.slice(0, 300).map((i) => `<button type="button" class="jitem${i.id === this.picked.item ? ' on' : ''}" data-pick="item:${i.id}">${icon(i)}<span class="jname">${escapeHtml(i.name)}</span><span class="tag">${i.tier}</span></button>`).join('') + (items.length > 300 ? '<p class="muted small">Filter to see more.</p>' : '');
+    return items.slice(0, 300).map((i) => `<button type="button" class="jitem${i.id === this.picked.item ? ' on' : ''}" data-pick="item:${i.id}">${icon(i)}<span class="jname ${tierClass(i.tier)}">${escapeHtml(i.name)}</span></button>`).join('') + (items.length > 300 ? '<p class="muted small">Filter to see more.</p>' : '');
   }
 
   private renderSettings(): void {
@@ -1156,26 +1199,33 @@ function icon(def: ItemDef): string {
   return `<span class="icon" style="background:${ITEM_COLORS[def.group]}">${escapeHtml(initials(def.name))}</span>`;
 }
 
-/** An item's numbers as short chips: what it adds when worn and needs, what it heals, what tool it is. */
-function itemChips(def: ItemDef): string[] {
-  const chips: string[] = [];
-  if (def.equip) {
-    for (const [k, v] of Object.entries(def.equip.stats)) if (v) chips.push(`${v > 0 ? '+' : ''}${v} ${STAT_NAMES[k] ?? k}`);
-    for (const r of def.equip.requirements ?? []) chips.push(`needs ${r.skill.replace('_', ' ')} ${levelForTier(r.tier)}`);
-  }
-  if (def.tool) chips.push(`${isToolSkill(def.tool.skill) ? TOOL_NAMES[def.tool.skill] : 'tool'} ${def.tool.tier}`);
-  const heal = healOf(def);
-  if (heal > 0) chips.push(`+${heal} HP`);
-  return chips;
+/** One fact of a page on its own line; `good` is green, `bad` red. */
+function line(text: string, cls = ''): string {
+  return `<div class="iline${cls ? ` ${cls}` : ''}">${escapeHtml(text)}</div>`;
 }
 
-/** An item's description with its numbers, for the chat. */
-function describe(def: ItemDef): string {
-  const chips = itemChips(def);
-  return chips.length > 0 ? `${def.description} ${chips.join(' · ')}.` : def.description;
+/** A block of a page: what, where it is (muted, to the right), then its lines. */
+function block(name: string, where: string | null, lines: string): string {
+  return `<div class="iblock"><div class="iblock-head"><b>${escapeHtml(name)}</b>${where ? `<span class="iwhere">${escapeHtml(where)}</span>` : ''}</div>${lines}</div>`;
 }
 
-const STAT_NAMES: Record<string, string> = { hp: 'hit points', mana: 'mana', armor: 'armor', attack: 'attack', spellPower: 'spell power' };
+/** A titled part of a page; nothing when there is nothing to put in it. */
+function part(title: string, inner: string): string {
+  return inner ? `<section class="ipart"><h4>${escapeHtml(title)}</h4>${inner}</section>` : '';
+}
+
+/** What a piece of gear adds, a stat to a line: "Armor +3". */
+function statLines(def: ItemDef): string[] {
+  const lines: string[] = [];
+  if (def.equip) for (const [k, v] of Object.entries(def.equip.stats)) if (v) lines.push(`${STAT_NAMES[k] ?? k} ${v > 0 ? '+' : ''}${v}`);
+  return lines;
+}
+
+function cap(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+const STAT_NAMES: Record<string, string> = { hp: 'Hit points', mana: 'Mana', armor: 'Armor', attack: 'Attack', spellPower: 'Spell power' };
 
 function read(store: Storage, key: string): string | null {
   try {
